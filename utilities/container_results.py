@@ -2,6 +2,7 @@
 All of the content for the Results section.
 """
 import numpy as np
+import streamlit as st
 
 
 def split_results_dict_by_pathway(results_dict):
@@ -64,3 +65,11 @@ def make_multiindex_stroke_type(df_columns, split_list):
                 new_cols[0][c] = s
                 new_cols[1][c] = new_col_name
     return new_cols
+
+
+def make_column_style_dict(cols, format='%.3f'):
+    style_dict = dict([
+        [col, st.column_config.NumberColumn(format="%.3f")]
+        for col in cols]
+        )
+    return style_dict

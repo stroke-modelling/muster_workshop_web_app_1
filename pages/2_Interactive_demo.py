@@ -86,16 +86,36 @@ if group_by == 'Stroke type':
     df_results_other = df_results['']
 
     st.markdown('### nLVO IVT')
-    st.table(df_results_nlvo_ivt.T)
+    style_dict = results.make_column_style_dict(
+        df_results_nlvo_ivt.index, format='%.3f')
+    st.dataframe(
+        df_results_nlvo_ivt.T,
+        column_config=style_dict
+        )
 
     st.markdown('### LVO IVT')
-    st.table(df_results_lvo_ivt.T)
+    style_dict = results.make_column_style_dict(
+        df_results_lvo_ivt.index, format='%.3f')
+    st.dataframe(
+        df_results_lvo_ivt.T,
+        column_config=style_dict
+        )
 
     st.markdown('### LVO MT')
-    st.table(df_results_lvo_mt.T)
+    style_dict = results.make_column_style_dict(
+        df_results_lvo_mt.index, format='%.3f')
+    st.dataframe(
+        df_results_lvo_mt.T,
+        column_config=style_dict
+        )
 
     st.markdown('### LVO IVT & MT')
-    st.table(df_results_lvo_ivt_mt.T)
+    style_dict = results.make_column_style_dict(
+        df_results_lvo_ivt_mt.index, format='%.3f')
+    st.dataframe(
+        df_results_lvo_ivt_mt.T,
+        column_config=style_dict
+        )
 else:
     # Pick out the outcome types and stick them
     # in a MultiIndex header.
@@ -114,16 +134,36 @@ else:
     df_results_other = df_results['']
 
     st.markdown('### mRS 0-2')
-    st.table(df_results_mrs_02.T)
+    style_dict = results.make_column_style_dict(
+        df_results_mrs_02.index, format='%.3f')
+    st.dataframe(
+        df_results_mrs_02.T,
+        column_config=style_dict
+        )
 
     st.markdown('### mrs_shift')
-    st.table(df_results_mrs_shift.T)
+    style_dict = results.make_column_style_dict(
+        df_results_mrs_shift.index, format='%.3f')
+    st.dataframe(
+        df_results_mrs_shift.T,
+        column_config=style_dict
+        )
 
     st.markdown('### utility')
-    st.table(df_results_utility.T)
+    style_dict = results.make_column_style_dict(
+        df_results_utility.index, format='%.3f')
+    st.dataframe(
+        df_results_utility.T,
+        column_config=style_dict
+        )
 
     st.markdown('### utility_shift')
-    st.table(df_results_utility_shift.T)
+    style_dict = results.make_column_style_dict(
+        df_results_utility_shift.index, format='%.3f')
+    st.dataframe(
+        df_results_utility_shift.T,
+        column_config=style_dict
+        )
 
 with container_shared_data:
     st.markdown('### Shared results')
