@@ -62,8 +62,33 @@ new_cols = results.make_multiindex_stroke_type(df_results.columns)
 tuples = list(zip(*new_cols))
 df_results.columns = pd.MultiIndex.from_tuples(tuples)
 
-st.table(df_results)
+# Pick out the occlusion and treatment types and stick them
+# into separate DataFrames.
+df_results_nlvo_ivt = df_results['nlvo_ivt']
+df_results_lvo_ivt = df_results['lvo_ivt']
+df_results_lvo_mt = df_results['lvo_mt']
+df_results_lvo_ivt_mt = df_results['lvo_ivt_mt']
+df_results_other = df_results['']
 
-st.write(results_all)
+st.markdown('### Shared results')
+
+df_results_all = pd.DataFrame.from_dict(
+    [results_all], orient='columns').T
+st.table(df_results_all)
+st.table(df_results_other.T)
+
+st.markdown('### nLVO IVT')
+st.table(df_results_nlvo_ivt.T)
+
+st.markdown('### LVO IVT')
+st.table(df_results_lvo_ivt.T)
+
+st.markdown('### LVO MT')
+st.table(df_results_lvo_mt.T)
+
+st.markdown('### LVO IVT & MT')
+st.table(df_results_lvo_ivt_mt.T)
+
+
 
 # ----- The end! -----
