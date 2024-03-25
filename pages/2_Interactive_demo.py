@@ -43,17 +43,34 @@ scenario_id = inputs.find_scenario_id(input_dict)
 # Pick out results for this scenario ID:
 results_dict = inputs.find_scenario_results(scenario_id)
 
-pathway_dicts = results.split_results_dict_by_pathway(results_dict)
+# Separate the fixed parameters
+# (currently in results data for some reason):
+fixed_keys = [
+    'nearest_ivt_time', 'nearest_mt_time', 'transfer_time',
+    'nearest_msu_time', 'Admissions', 'England',
+    'nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility',
+    ]
+fixed_dict = dict([(k, results_dict[k]) for k in fixed_keys])
+results_dict = dict([(k, results_dict[k]) for k in list(results_dict.keys()) if k not in fixed_keys])
 
+# Separate times and outcomes:
+time_keys = [
+    'drip_ship_ivt_time', 'drip_ship_mt_time',
+    'mothership_ivt_time', 'mothership_mt_time',
+    'msu_ivt_time', 'msu_mt_time'
+]
+treatment_time_dict = dict([(k, results_dict[k]) for k in time_keys])
+results_dict = dict([(k, results_dict[k]) for k in list(results_dict.keys()) if k not in time_keys])
+
+# Separate pathways:
+pathway_dicts = results.split_results_dict_by_pathway(results_dict)
 results_all = pathway_dicts['all']
 results_drip_ship = pathway_dicts['drip_ship']
 results_mothership = pathway_dicts['mothership']
 results_msu = pathway_dicts['msu']
 
-# Parameters shared across all pathway types:
-df_results_all = pd.DataFrame.from_dict(
-    [results_all], orient='columns').T
-
+# Make a container for parameters shared across all pathway types.
+# The results will be drawn first but this container appears higher.
 container_shared_data = st.container()
 
 # DataFrame with one row per pathway type:
@@ -63,6 +80,7 @@ df_results = pd.DataFrame.from_dict(
 )
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
+# User inputs for how to display the data:
 group_by = st.radio(
     'Group results by:',
     ['Stroke type', 'Outcome type']
@@ -167,41 +185,49 @@ else:
 
 with container_shared_data:
     st.markdown('## Fixed values')
+
     cols = ['nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility']
-    df_outcomes = df_results_all.loc[cols].T
+    df_outcomes = pd.Series(dict([(k, fixed_dict[k]) for k in cols]))
     style_dict = results.make_column_style_dict(
-        df_outcomes.columns, format='%.3f')
+        df_outcomes.index, format='%.3f')
     st.dataframe(
-        df_outcomes,
+        pd.DataFrame(df_outcomes).T,
         column_config=style_dict,
         hide_index=True
         )
 
     # Travel times:
-    cols = ['nearest_ivt_time', 'nearest_mt_time', 'transfer_time']
-    df_travel = df_results_all.loc[cols].T
+    cols = ['nearest_ivt_time', 'nearest_mt_time',
+            'transfer_time', 'nearest_msu_time']
+    df_travel = pd.Series(dict([(k, fixed_dict[k]) for k in cols]))
     style_dict = results.make_column_style_dict(
-        df_travel.columns, format='%d')
+        df_travel.index, format='%d')
     st.dataframe(
-        df_travel,
+        pd.DataFrame(df_travel).T,
         column_config=style_dict,
         hide_index=True
         )
 
-    st.markdown('## This scenario:')
+    st.markdown('## This scenario')
     # Times to treatment:
-    cols = ['ivt_time', 'mt_time']
-    df_times = df_results_other[cols]
+    columns = ['drip_ship', 'mothership', 'msu']
+    index = ['ivt', 'mt']
+    table = [[0, 0, 0], [0, 0, 0]]
+    for c, col in enumerate(columns):
+        for i, ind in enumerate(index):
+            key = f'{col}_{ind}_time'
+            table[i][c] = int(round(treatment_time_dict[key], 0))
+    df_times = pd.DataFrame(table, columns=columns, index=index)
     style_dict = results.make_column_style_dict(
-        df_times.index, format='%d')
+        df_times.columns, format='%d')
     st.dataframe(
-        df_times.T,
+        df_times,
         column_config=style_dict,
         # hide_index=True
         )
 
     # MSU bits:
-    cols = ['nearest_time', 'occupied_treatment', 'occupied_no_treatment']
+    cols = ['occupied_treatment', 'occupied_no_treatment']
     # Extra pd.DataFrame() here otherwise streamlit sees it's a Series
     # and overrides the style dict.
     df_msu = pd.DataFrame(df_results_other.loc['MSU', cols])
