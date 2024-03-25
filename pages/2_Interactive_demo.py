@@ -166,8 +166,52 @@ else:
         )
 
 with container_shared_data:
-    st.markdown('### Shared results')
-    st.table(df_results_all)
-    st.table(df_results_other.T)
+    st.markdown('## Fixed values')
+    cols = ['nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility']
+    df_outcomes = df_results_all.loc[cols].T
+    style_dict = results.make_column_style_dict(
+        df_outcomes.columns, format='%.3f')
+    st.dataframe(
+        df_outcomes,
+        column_config=style_dict,
+        hide_index=True
+        )
+
+    # Travel times:
+    cols = ['nearest_ivt_time', 'nearest_mt_time', 'transfer_time']
+    df_travel = df_results_all.loc[cols].T
+    style_dict = results.make_column_style_dict(
+        df_travel.columns, format='%d')
+    st.dataframe(
+        df_travel,
+        column_config=style_dict,
+        hide_index=True
+        )
+
+    st.markdown('## This scenario:')
+    # Times to treatment:
+    cols = ['ivt_time', 'mt_time']
+    df_times = df_results_other[cols]
+    style_dict = results.make_column_style_dict(
+        df_times.index, format='%d')
+    st.dataframe(
+        df_times.T,
+        column_config=style_dict,
+        # hide_index=True
+        )
+
+    # MSU bits:
+    cols = ['nearest_time', 'occupied_treatment', 'occupied_no_treatment']
+    # Extra pd.DataFrame() here otherwise streamlit sees it's a Series
+    # and overrides the style dict.
+    df_msu = pd.DataFrame(df_results_other.loc['MSU', cols])
+    style_dict = results.make_column_style_dict(
+        df_msu.index, format='%d')
+    st.dataframe(
+        df_msu.T,
+        column_config=style_dict,
+        # hide_index=True
+        )
+
 
 # ----- The end! -----

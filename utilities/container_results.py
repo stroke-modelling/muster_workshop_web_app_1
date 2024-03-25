@@ -69,7 +69,7 @@ def make_multiindex_stroke_type(df_columns, split_list):
 
 def make_column_style_dict(cols, format='%.3f'):
     style_dict = dict([
-        [col, st.column_config.NumberColumn(format="%.3f")]
+        [col, st.column_config.NumberColumn(format=format)]
         for col in cols]
         )
     return style_dict
