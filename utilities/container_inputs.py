@@ -76,6 +76,13 @@ def find_scenario_results(id):
     # Find the row of this dataframe with that scenario ID:
     row = df.loc[df['Scenario'] == id]
 
+    # Rename any 'utilility' to 'utility:
+    new_cols = []
+    for c in row.columns:
+        c = c.replace('utilility', 'utility')
+        new_cols.append(c)
+    row.columns = new_cols
+
     # Convert to dictionary:
     row = row.to_dict(orient='records')[0]
 

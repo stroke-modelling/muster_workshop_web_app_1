@@ -50,45 +50,84 @@ results_drip_ship = pathway_dicts['drip_ship']
 results_mothership = pathway_dicts['mothership']
 results_msu = pathway_dicts['msu']
 
+# Parameters shared across all pathway types:
+df_results_all = pd.DataFrame.from_dict(
+    [results_all], orient='columns').T
+
+container_shared_data = st.container()
+
+# DataFrame with one row per pathway type:
 df_results = pd.DataFrame.from_dict(
     [results_drip_ship, results_mothership, results_msu],
     orient='columns',
 )
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
-# Pick out the occlusion and treatment types and stick them
-# in a MultiIndex header.
-new_cols = results.make_multiindex_stroke_type(df_results.columns)
-tuples = list(zip(*new_cols))
-df_results.columns = pd.MultiIndex.from_tuples(tuples)
+group_by = st.radio(
+    'Group results by:',
+    ['Stroke type', 'Outcome type']
+    )
 
-# Pick out the occlusion and treatment types and stick them
-# into separate DataFrames.
-df_results_nlvo_ivt = df_results['nlvo_ivt']
-df_results_lvo_ivt = df_results['lvo_ivt']
-df_results_lvo_mt = df_results['lvo_mt']
-df_results_lvo_ivt_mt = df_results['lvo_ivt_mt']
-df_results_other = df_results['']
+if group_by == 'Stroke type':
+    # Pick out the occlusion and treatment types and stick them
+    # in a MultiIndex header.
+    split_list = ['lvo_ivt_mt_', 'nlvo_ivt_', 'lvo_ivt_', 'lvo_mt_']
+    new_cols = results.make_multiindex_stroke_type(
+        df_results.columns, split_list)
+    tuples = list(zip(*new_cols))
+    df_results.columns = pd.MultiIndex.from_tuples(tuples)
 
-st.markdown('### Shared results')
+    # Pick out the occlusion and treatment types and stick them
+    # into separate DataFrames.
+    df_results_nlvo_ivt = df_results['nlvo_ivt']
+    df_results_lvo_ivt = df_results['lvo_ivt']
+    df_results_lvo_mt = df_results['lvo_mt']
+    df_results_lvo_ivt_mt = df_results['lvo_ivt_mt']
+    df_results_other = df_results['']
 
-df_results_all = pd.DataFrame.from_dict(
-    [results_all], orient='columns').T
-st.table(df_results_all)
-st.table(df_results_other.T)
+    st.markdown('### nLVO IVT')
+    st.table(df_results_nlvo_ivt.T)
 
-st.markdown('### nLVO IVT')
-st.table(df_results_nlvo_ivt.T)
+    st.markdown('### LVO IVT')
+    st.table(df_results_lvo_ivt.T)
 
-st.markdown('### LVO IVT')
-st.table(df_results_lvo_ivt.T)
+    st.markdown('### LVO MT')
+    st.table(df_results_lvo_mt.T)
 
-st.markdown('### LVO MT')
-st.table(df_results_lvo_mt.T)
+    st.markdown('### LVO IVT & MT')
+    st.table(df_results_lvo_ivt_mt.T)
+else:
+    # Pick out the outcome types and stick them
+    # in a MultiIndex header.
+    split_list = ['utility_shift', 'mrs_0-2', 'mrs_shift', 'utility']
+    new_cols = results.make_multiindex_stroke_type(
+        df_results.columns, split_list)
+    tuples = list(zip(*new_cols))
+    df_results.columns = pd.MultiIndex.from_tuples(tuples)
 
-st.markdown('### LVO IVT & MT')
-st.table(df_results_lvo_ivt_mt.T)
+    # Pick out the occlusion and treatment types and stick them
+    # into separate DataFrames.
+    df_results_mrs_02 = df_results['mrs_0-2']
+    df_results_mrs_shift = df_results['mrs_shift']
+    df_results_utility = df_results['utility']
+    df_results_utility_shift = df_results['utility_shift']
+    df_results_other = df_results['']
 
+    st.markdown('### mRS 0-2')
+    st.table(df_results_mrs_02.T)
 
+    st.markdown('### mrs_shift')
+    st.table(df_results_mrs_shift.T)
+
+    st.markdown('### utility')
+    st.table(df_results_utility.T)
+
+    st.markdown('### utility_shift')
+    st.table(df_results_utility_shift.T)
+
+with container_shared_data:
+    st.markdown('### Shared results')
+    st.table(df_results_all)
+    st.table(df_results_other.T)
 
 # ----- The end! -----
