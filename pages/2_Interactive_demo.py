@@ -10,6 +10,7 @@ done in functions stored in files named container_(something).py
 # ----- Imports -----
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 # Custom functions:
 from utilities.fixed_params import page_setup
@@ -55,7 +56,13 @@ df_results = pd.DataFrame.from_dict(
 )
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
-st.write(df_results)
+# Pick out the occlusion and treatment types and stick them
+# in a MultiIndex header.
+new_cols = results.make_multiindex_stroke_type(df_results.columns)
+tuples = list(zip(*new_cols))
+df_results.columns = pd.MultiIndex.from_tuples(tuples)
+
+st.table(df_results)
 
 st.write(results_all)
 

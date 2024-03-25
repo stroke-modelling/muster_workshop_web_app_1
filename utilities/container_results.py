@@ -1,6 +1,7 @@
 """
 All of the content for the Results section.
 """
+import numpy as np
 
 
 def split_results_dict_by_pathway(results_dict):
@@ -42,3 +43,18 @@ def split_results_dict_by_pathway(results_dict):
     }
 
     return new_dict
+
+
+def make_multiindex_stroke_type(df_columns):
+    # Start with 'lvo_ivt_mt' because 'lvo_ivt' starts the same,
+    # checking first for 'lvo_ivt' would also pick up 'lvo_ivt_mt'.
+    stroke_strings = ['lvo_ivt_mt_', 'nlvo_ivt_', 'lvo_ivt_', 'lvo_mt_']
+    new_cols = np.array([[''] * len(df_columns), df_columns])
+    for s in stroke_strings:
+        cols = np.array(new_cols[1])
+        cols_split = [c.split(s) for c in cols]
+        for c, col_list in enumerate(cols_split):
+            if len(col_list) > 1:
+                new_cols[0][c] = s[:-1]  # Remove final underscore
+                new_cols[1][c] = col_list[1]
+    return new_cols
