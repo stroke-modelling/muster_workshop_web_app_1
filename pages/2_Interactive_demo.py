@@ -9,11 +9,13 @@ done in functions stored in files named container_(something).py
 """
 # ----- Imports -----
 import streamlit as st
+import pandas as pd
 
 # Custom functions:
 from utilities.fixed_params import page_setup
 # Containers:
 import utilities.container_inputs as inputs
+import utilities.container_results as results
 
 
 # ###########################
@@ -40,6 +42,21 @@ scenario_id = inputs.find_scenario_id(input_dict)
 # Pick out results for this scenario ID:
 results_dict = inputs.find_scenario_results(scenario_id)
 
-st.write(results_dict)
+pathway_dicts = results.split_results_dict_by_pathway(results_dict)
+
+results_all = pathway_dicts['all']
+results_drip_ship = pathway_dicts['drip_ship']
+results_mothership = pathway_dicts['mothership']
+results_msu = pathway_dicts['msu']
+
+df_results = pd.DataFrame.from_dict(
+    [results_drip_ship, results_mothership, results_msu],
+    orient='columns',
+)
+df_results.index = ['Drip & ship', 'Mothership', 'MSU']
+
+st.write(df_results)
+
+st.write(results_all)
 
 # ----- The end! -----

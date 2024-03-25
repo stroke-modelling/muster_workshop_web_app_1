@@ -77,6 +77,6 @@ def find_scenario_results(id):
     row = df.loc[df['Scenario'] == id]
 
     # Convert to dictionary:
-    row = row.to_dict(orient='records')
+    row = row.to_dict(orient='records')[0]
 
     return row
