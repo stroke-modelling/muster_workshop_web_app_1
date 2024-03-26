@@ -13,66 +13,66 @@ def select_parameters():
         'process_time_call_ambulance': {
             'values': [0, 60, 120, 180],
             'name': 'Time to call ambulance',
-            'default': 1  # index for 60
+            'default': 60  # 1  # index for 60
         },
         'process_time_ambulance_response': {
             'values': [15, 30, 45],
             'name': 'Ambulance response time',
-            'default': 1  # index for 30
+            'default': 30  # 1  # index for 30
         },
         'process_ambulance_on_scene_duration': {
             'values': [20, 30, 40],
             'name': 'Time ambulance is on scene',
-            'default': 0  # index for 20
+            'default': 20  # 0  # index for 20
         },
         'process_msu_dispatch': {
             'values': [0, 15, 30],
             'name': 'MSU dispatch time',
-            'default': 1  # index for 15
+            'default': 15  # 1  # index for 15
         },
         'process_msu_thrombolysis': {
             'values': [15, 30, 45],
             'name': 'MSU IVT time',
-            'default': 1  # index for 30
+            'default': 30  # 1  # index for 30
         },
         'process_msu_on_scene_post_thrombolysis': {
             'values': [15, 30],
             'name': 'MSU on scene post IVT time',
-            'default': 0  # index for 15
+            'default': 15  # 0  # index for 15
         },
         'process_time_arrival_to_needle': {
             'values': [30, 45],
             'name': 'Hospital arrival to IVT time',
-            'default': 0  # index for 30
+            'default': 30  # 0  # index for 30
         },
         'transfer_time_delay': {
             'values': [30, 60, 90],
             'name': 'Transfer time delay (for MT)',
-            'default': 1  # index for 60
+            'default': 60  # 1  # index for 60
         },
         'process_time_arrival_to_puncture': {
             'values': [30, 45, 60],
             'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 2  # index for 60
+            'default': 60  # 2  # index for 60
         },
         'process_time_transfer_arrival_to_puncture': {
             'values': [30, 45, 60],
             'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 2  # index for 60
+            'default': 60  # 2  # index for 60
         },
         'process_time_msu_arrival_to_puncture': {
             'values': [30, 45, 60],
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
-            'default': 2  # index for 60
+            'default': 60  # 2  # index for 60
         },
     }
 
     input_dict = {}
     for key, s_dict in scenarios.items():
-        input_dict[key] = st.selectbox(
+        input_dict[key] = st.select_slider(
             s_dict['name'],
             s_dict['values'],
-            index=s_dict['default'],
+            value=s_dict['default'],
             key=key
             )
 
