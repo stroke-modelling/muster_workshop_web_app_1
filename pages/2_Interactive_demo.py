@@ -200,7 +200,7 @@ with container_shared_data:
         )
 
     # Travel times:
-    st.markdown('Average travel times to closest units')
+    st.markdown('Average travel times (minutes) to closest units')
     cols = ['nearest_ivt_time', 'nearest_mt_time',
             'transfer_time', 'nearest_msu_time']
     df_travel = pd.Series(dict([(k, fixed_dict[k]) for k in cols]))
@@ -213,6 +213,7 @@ with container_shared_data:
         )
 
     st.markdown('## This scenario')
+    st.markdown('Average times (minutes) to treatment')
     # Times to treatment:
     columns = ['drip_ship', 'mothership', 'msu']
     index = ['ivt', 'mt']
@@ -231,6 +232,7 @@ with container_shared_data:
         )
 
     # MSU bits:
+    st.markdown('MSU use time (minutes) per patient')
     cols = ['occupied_treatment', 'occupied_no_treatment']
     # Extra pd.DataFrame() here otherwise streamlit sees it's a Series
     # and overrides the style dict.
