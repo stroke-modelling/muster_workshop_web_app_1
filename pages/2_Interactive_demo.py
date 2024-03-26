@@ -186,6 +186,7 @@ else:
 
 with container_shared_data:
     st.markdown('## Fixed values')
+    st.markdown('Baseline outcomes')
 
     cols = ['nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility',
         'lvo_no_treatment_mrs_0-2', 'lvo_no_treatment_utility',]
@@ -199,6 +200,7 @@ with container_shared_data:
         )
 
     # Travel times:
+    st.markdown('Average travel times to closest units')
     cols = ['nearest_ivt_time', 'nearest_mt_time',
             'transfer_time', 'nearest_msu_time']
     df_travel = pd.Series(dict([(k, fixed_dict[k]) for k in cols]))
