@@ -81,13 +81,13 @@ def select_parameters():
 
 @st.cache_data
 def load_scenario_list():
-    df = pd.read_csv('./data/scenario_list.csv')
+    df = pd.read_csv('./data/scenario_list_england.csv')
     return df
 
 
 @st.cache_data
 def load_scenario_results():
-    df = pd.read_csv('./data/scenario_results.csv')
+    df = pd.read_csv('./data/scenario_results_england.csv')
     return df
 
 

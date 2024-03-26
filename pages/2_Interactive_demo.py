@@ -49,6 +49,7 @@ fixed_keys = [
     'nearest_ivt_time', 'nearest_mt_time', 'transfer_time',
     'nearest_msu_time', 'Admissions', 'England',
     'nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility',
+    'lvo_no_treatment_mrs_0-2', 'lvo_no_treatment_utility',
     ]
 fixed_dict = dict([(k, results_dict[k]) for k in fixed_keys])
 results_dict = dict([(k, results_dict[k]) for k in list(results_dict.keys()) if k not in fixed_keys])
@@ -186,7 +187,8 @@ else:
 with container_shared_data:
     st.markdown('## Fixed values')
 
-    cols = ['nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility']
+    cols = ['nlvo_no_treatment_mrs_0-2', 'nlvo_no_treatment_utility',
+        'lvo_no_treatment_mrs_0-2', 'lvo_no_treatment_utility',]
     df_outcomes = pd.Series(dict([(k, fixed_dict[k]) for k in cols]))
     style_dict = results.make_column_style_dict(
         df_outcomes.index, format='%.3f')
