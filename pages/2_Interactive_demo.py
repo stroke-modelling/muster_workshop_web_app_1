@@ -79,6 +79,9 @@ df_results = pd.DataFrame.from_dict(
     [results_drip_ship, results_mothership, results_msu],
     orient='columns',
 )
+
+ st.markdown('### Outcomes ###')
+ 
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
 # User inputs for how to display the data:
@@ -213,6 +216,9 @@ with container_shared_data:
         )
 
     st.markdown('## This scenario')
+    
+    st.markdown('### Treatment times ###')
+    
     st.markdown('Average times (minutes) to treatment')
     # Times to treatment:
     columns = ['drip_ship', 'mothership', 'msu']
@@ -232,6 +238,9 @@ with container_shared_data:
         )
 
     # MSU bits:
+    
+    st.markdown('### MSU Use ###')
+     
     st.markdown('MSU use time (minutes) per patient')
     cols = ['occupied_treatment', 'occupied_no_treatment']
     # Extra pd.DataFrame() here otherwise streamlit sees it's a Series
