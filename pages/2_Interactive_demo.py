@@ -80,7 +80,7 @@ df_results = pd.DataFrame.from_dict(
     orient='columns',
 )
 
- st.markdown('### Outcomes ###')
+st.markdown('### Outcomes ###')
  
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
