@@ -28,6 +28,10 @@ page_setup()
 st.markdown('# MUSTER')
 
 
+import streamlit as st
+st.image('.images/stroke_treatment.jpg')
+
+
 # ###########################
 # ########## SETUP ##########
 # ###########################
