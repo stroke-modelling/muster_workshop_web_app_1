@@ -47,7 +47,7 @@ def select_parameters():
         },
         'transfer_time_delay': {
             'values': [30, 60, 90],
-            'name': 'Door-in to door-out (for MT)',
+            'name': 'Door-in to door-out (for transfer to MT)',
             'default': 60  # 1  # index for 60
         },
         'process_time_arrival_to_puncture': {
