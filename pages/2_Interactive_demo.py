@@ -29,7 +29,7 @@ st.markdown('# MUSTER')
 
 
 import streamlit as st
-st.image('.images/stroke_treatment.jpg')
+st.image('./images/stroke_treatment.jpg')
 
 
 # ###########################
