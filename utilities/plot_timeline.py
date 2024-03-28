@@ -102,32 +102,32 @@ def build_cumulative_time_dicts_for_scenarios(
 
     keys_cum_drip_ship = [
         'Onset',
-        'Call ambulance',
-        'Ambulance arrives on scene',
-        'Ambulance leaves scene',
-        'IVT unit arrival',
+        'Call<br>ambulance',
+        'Ambulance<br>arrives on scene',
+        'Ambulance<br>leaves scene',
+        'IVT unit<br>arrival',
         'IVT',
-        'IVT unit departure',
-        'MT unit arrival',
+        'IVT unit<br>departure',
+        'MT unit<br>arrival',
         'MT',
     ]
     keys_cum_mothership = [
         'Onset',
-        'Call ambulance',
-        'Ambulance arrives on scene',
-        'Ambulance leaves scene',
-        'MT unit arrival',
+        'Call<br>ambulance',
+        'Ambulance<br>arrives on scene',
+        'Ambulance<br>leaves scene',
+        'MT unit<br>arrival',
         'IVT',
         'MT',
     ]
     keys_cum_msu = [
         'Onset',
-        'Call ambulance',
-        'MSU leaves base',
-        'MSU arrives on scene',
+        'Call<br>ambulance',
+        'MSU<br>leaves base',
+        'MSU<br>arrives on scene',
         'IVT',
-        'MSU leaves scene',
-        'MT unit arrival',
+        'MSU<br>leaves scene',
+        'MT unit<br>arrival',
         'MT',
     ]
 
@@ -142,16 +142,16 @@ def build_cumulative_time_dicts_for_scenarios(
     # Special case in drip-and-ship -
     # the time delay for transfer is counted from arrival at unit, not
     # from time to IVT which is the result of build_cumulative_times().
-    times_cum_dict_drip_ship['IVT unit departure'] = (
-            times_cum_dict_drip_ship['IVT unit arrival'] +
+    times_cum_dict_drip_ship['IVT unit<br>departure'] = (
+            times_cum_dict_drip_ship['IVT unit<br>arrival'] +
             times_dict_drip_ship['transfer_time_delay']
         )
-    times_cum_dict_drip_ship['MT unit arrival'] = (
-            times_cum_dict_drip_ship['IVT unit departure'] +
+    times_cum_dict_drip_ship['MT unit<br>arrival'] = (
+            times_cum_dict_drip_ship['IVT unit<br>departure'] +
             times_dict_drip_ship['transfer_time']
         )
     times_cum_dict_drip_ship['MT'] = (
-            times_cum_dict_drip_ship['MT unit arrival'] +
+            times_cum_dict_drip_ship['MT unit<br>arrival'] +
             times_dict_drip_ship['process_time_transfer_arrival_to_puncture']
         )
 
@@ -159,7 +159,7 @@ def build_cumulative_time_dicts_for_scenarios(
     # the time to MT is counted from arrival at unit, not
     # from time to IVT which is the result of build_cumulative_times().
     times_cum_dict_mothership['MT'] = (
-        times_cum_dict_mothership['MT unit arrival'] +
+        times_cum_dict_mothership['MT unit<br>arrival'] +
         times_dict_mothership['process_time_arrival_to_puncture']
     )
 
@@ -203,20 +203,21 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
     # 💉 \U0001f489
     emoji_dict = {
         'Onset': '',
-        'Call ambulance': '\U0000260E',
-        'Ambulance arrives on scene': '\U0001f691',
-        'Ambulance leaves scene': '\U0001f691',
-        'IVT unit arrival': '\U0001f3e5',
+        'Call<br>ambulance': '\U0000260E',
+        'Ambulance<br>arrives on scene': '\U0001f691',
+        'Ambulance<br>leaves scene': '\U0001f691',
+        'IVT unit<br>arrival': '\U0001f3e5',
         'IVT': '\U0001f489',
-        'IVT unit departure': '\U0001f691',
-        'MT unit arrival': '\U0001f3e5',
+        'IVT unit<br>departure': '\U0001f691',
+        'MT unit<br>arrival': '\U0001f3e5',
         'MT': '\U0001f527',
-        'MSU leaves base': '\U0001f691',
-        'MSU arrives on scene': '\U0001f691',
-        'MSU leaves scene': '\U0001f691',
+        'MSU<br>leaves base': '\U0001f691',
+        'MSU<br>arrives on scene': '\U0001f691',
+        'MSU<br>leaves scene': '\U0001f691',
         }
 
     emoji_offset = 0.0
+    label_offset = 0.2
 
     fig = go.Figure()
 
@@ -268,22 +269,35 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
         #             text = labels[t] + '<br>'+time_cum_str_list[t]
         #         else:
         #             text = labels[t]
-        #         # Write the label:
-        #         fig.add_annotation(
-        #             y=time_cum,
-        #             x=x + label_offset,
-        #             text=text,
-        #             showarrow=False,
-        #             font=dict(color=time_colour_list[t], size=10),
-        #             )
 
         # Add emoji for each scatter marker
         for t, time in enumerate(time_cum_list):
+            label = labels[t]
+            time_label = time_cum_str_list[t]
+            if labels[t] in ['IVT', 'MT']:
+                colour = 'red'
+                # label = f'<b>{label}'  # bold
+                label += f'<br>{time_label}'  # time
+            else:
+                colour = None
+            # Write the label:
+            fig.add_annotation(
+                x=time,
+                y=axis_values[i] + label_offset,
+                text=label,
+                showarrow=False,
+                font=dict(
+                    color=colour,
+                    size=10),
+                )
             fig.add_annotation(
                 x=time,
                 y=axis_values[i] + emoji_offset,
                 text=emoji_list[t],
                 showarrow=False,
+                font=dict(
+                    # color=time_colour_list[t],
+                    size=24),
                 # font=dict(color=time_colour_list[t])
                 )
 
