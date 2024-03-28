@@ -37,6 +37,10 @@ emergency call - the model shows outcomes if all patients were seen by a MSU.
 
 ![]('./pages/images/stroke_treatment.jpg')
 
+![]('../images/stroke_treatment.jpg')
+
+![]('pages/images/stroke_treatment.jpg')
+
 
 
 ## Model parameters
