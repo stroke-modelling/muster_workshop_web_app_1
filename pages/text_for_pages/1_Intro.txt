@@ -1,44 +1,17 @@
-# To be printed as markdown on the landing page. 
-# ---------------------------------------------------------------------
+# Mobile stroke unit scenario explorer
 
-# Streamlit app template
+## Model parameters
 
-## Summary
-
-Give a short summary of what the app does here. You could also include some links that contain more information than there's space for here. 
-
-
-## Background information 
-
-It's worth having a quick overview of what the app is about, if it's not obvious. 
-
-We're looking at how 
-
-+ input 1 
-+ input 2 and
-+ input 3
-
-affect the output. 
-
-Emoji can be written too. For :ambulance: the `:ambulance:` format can be used in markdown, and the `\U0001f691` format can be used in streamlit input labels. 
-
-
-## How to use this app
-
-Go to the "Interactive demo" in the left sidebar.
-There you can change **the input parameters** to see the resulting effect on **the output**.
-
-To change between light mode and dark mode or to make the display wider, change the settings under the Menu in the top right of the screen.
-
-
-### Acronym reference 
-
-| Acronym | Full name | 
-|---|---|
-| WAUA | Weird And Unusual Acronym  | 
-| TCBU | This Can Be Useful  |
-
-
-### Limitations 
-
-Is there anything your app *does not* do but that people might reasonably misunderstand it to be doing? 
+| **Parameter**                                        | **Values**      | **Applies to**            |
+|------------------------------------------------------|-----------------|---------------------------|
+| Time to call ambulance                               | 0, 60, 120, 180 | All models                |
+| Ambulance response time (call to ambo arrival)       | 15, 30, 45      | Drip-and-Ship, Mothership |
+| Time ambulance on scene                              | 20, 30, 40      | Drip-and-Ship, Mothership |
+| MSU dispatch time (call to MSU moving)               | 0, 15, 30       | MSU                       |
+| MSU IVT time (time to IVT from MSU arrival)          | 15, 30, 45      | MSU                       |
+| MSU on scene post IVT time                           | 15, 30          | MSU                       |
+| Hospital arrival to IVT time                         | 30, 45          | Drip-and-Ship, Mothership |
+| Door-in to door-out (for transfer to MT)             | 30, 60, 90      | Drip-and-Ship             |
+| Hospital arrival to MT time (for in-hospital IVT+MT) | 30, 45, 60      | Mothership                |
+| Hospital arrival to MT time (for transfers)          | 30, 45, 60      | Drip-and-Ship             |
+| Hospital arrival to MT time (for MSU arrivals)       | 30, 45, 60      | MSU                       |
