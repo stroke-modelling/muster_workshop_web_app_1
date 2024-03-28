@@ -195,15 +195,41 @@ def make_formatted_time_str_list(times):
             for t in times]
 
 
-def draw_timeline(times_dicts, times_cum_dicts, times_cum_label_dicts):
+def draw_timeline(times_cum_dicts, times_cum_label_dicts):
+    # Emoji unicode reference:
+    # 🔧 \U0001f527
+    # 🏥 \U0001f3e5
+    # 🚑 \U0001f691
+    # 💉 \U0001f489
+    emoji_dict = {
+        'Onset': '',
+        'Call ambulance': '\U0000260E',
+        'Ambulance arrives on scene': '\U0001f691',
+        'Ambulance leaves scene': '\U0001f691',
+        'IVT unit arrival': '\U0001f3e5',
+        'IVT': '\U0001f489',
+        'IVT unit departure': '\U0001f691',
+        'MT unit arrival': '\U0001f3e5',
+        'MT': '\U0001f527',
+        'MSU leaves base': '\U0001f691',
+        'MSU arrives on scene': '\U0001f691',
+        'MSU leaves scene': '\U0001f691',
+        }
+
+    emoji_offset = 0.0
+
     fig = go.Figure()
 
-    x_vals = ['Drip & ship', 'Mothership', 'MSU']
+    axis_labels = ['Drip & ship', 'Mothership', 'MSU']
+    axis_values = [2, 1, 0]
     for i, times_cum_dict in enumerate(times_cum_dicts):
-        x = i
         time_cum_list = list(times_cum_dict.values())
+        # Convert from minutes to hours:
+        time_cum_list = np.array(time_cum_list) / 60.0
+
         time_cum_str_list = list(times_cum_label_dicts[i].values())
         labels = list(times_cum_dict.keys())
+        emoji_list = [emoji_dict[k] for k in list(times_cum_dict.keys())]
 
         # --- Plot ---
         # Make new labels list with line breaks removed
@@ -211,10 +237,10 @@ def draw_timeline(times_dicts, times_cum_dicts, times_cum_label_dicts):
         labels_plain = [l.replace('<br>', ' ') for l in labels]
         # Draw straight line along the time axis:
         fig.add_trace(go.Scatter(
-            y=time_cum_list,
-            x=[x] * len(time_cum_list),
+            x=time_cum_list,
+            y=[axis_values[i]] * len(time_cum_list),
             mode='lines+markers',
-            marker=dict(size=6, symbol='line-ew-open'),
+            marker=dict(size=6, symbol='line-ns-open'),
             line=dict(color='grey'),    # OK in light and dark mode.
             showlegend=False,
             customdata=np.stack((time_cum_str_list, labels_plain), axis=-1)
@@ -250,14 +276,16 @@ def draw_timeline(times_dicts, times_cum_dicts, times_cum_label_dicts):
         #             showarrow=False,
         #             font=dict(color=time_colour_list[t], size=10),
         #             )
-        #         # Add emoji for each scatter marker
-        #         fig.add_annotation(
-        #             y=time_cum,
-        #             x=x + emoji_offset,
-        #             text=emoji_to_draw[t],
-        #             showarrow=False,
-        #             font=dict(color=time_colour_list[t])
-        #             )
+
+        # Add emoji for each scatter marker
+        for t, time in enumerate(time_cum_list):
+            fig.add_annotation(
+                x=time,
+                y=axis_values[i] + emoji_offset,
+                text=emoji_list[t],
+                showarrow=False,
+                # font=dict(color=time_colour_list[t])
+                )
 
         # # Update y-axis limit value if necessary:
         # if time_cumulative > y_max:
@@ -266,25 +294,25 @@ def draw_timeline(times_dicts, times_cum_dicts, times_cum_label_dicts):
     # # Set y range:
     # fig.update_yaxes(range=[y_max * 1.05, 0 - y_max * 0.025])
     # Set y-axis label
-    fig.update_yaxes(title_text='Time since onset (hours)')
+    fig.update_xaxes(title_text='Time since onset (hours)')
     # Change y-axis title font size:
-    fig.update_yaxes(title_font_size=10)
+    fig.update_xaxes(title_font_size=10)
 
     # Set x range:
-    fig.update_xaxes(range=[-0.1, 2.5])
+    fig.update_yaxes(range=[-0.1, 2.5])
     # Set x-axis labels
     fig.update_layout(
-        xaxis=dict(
+        yaxis=dict(
             tickmode='array',
-            tickvals=x_vals,
-            ticktext=['<b>Case 1', '<b>Case 2'],   # <b> for bold
-            side='top'  # Moves the labels to the top of the grid
+            tickvals=axis_values,
+            ticktext=[f'<b>{x}' for x in axis_labels],   # <b> for bold
+            # side='top'  # Moves the labels to the top of the grid
         ),
     )
 
     # Remove y=0 and x=0 lines (zeroline) and grid lines:
-    fig.update_yaxes(zeroline=False, showgrid=False)
     fig.update_xaxes(zeroline=False, showgrid=False)
+    fig.update_yaxes(zeroline=False, showgrid=False)
 
 
     # Reduce size of figure by adjusting margins:

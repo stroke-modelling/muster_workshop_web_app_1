@@ -85,7 +85,6 @@ df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 (times_dicts, times_cum_dicts, times_cum_label_dicts
  ) = build_data_for_timeline(fixed_dict | treatment_time_dict | input_dict)
 draw_timeline(
-    times_dicts,
     times_cum_dicts,
     times_cum_label_dicts
     )
