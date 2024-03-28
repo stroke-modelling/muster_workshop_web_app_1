@@ -14,6 +14,7 @@ import numpy as np
 
 # Custom functions:
 from utilities.fixed_params import page_setup
+from utilities.plot_timeline import build_data_for_timeline, draw_timeline
 # Containers:
 import utilities.container_inputs as inputs
 import utilities.container_results as results
@@ -125,6 +126,14 @@ st.markdown('''
 
  
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
+
+(times_dicts, times_cum_dicts, times_cum_label_dicts
+ ) = build_data_for_timeline(fixed_dict | treatment_time_dict | input_dict)
+draw_timeline(
+    times_cum_dicts,
+    times_cum_label_dicts
+    )
+
 
 # User inputs for how to display the data:
 group_by = st.radio(
