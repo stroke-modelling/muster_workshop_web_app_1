@@ -35,7 +35,7 @@ ambulance conveys the patient to the closest emergency stroke unit. In this part
 are no capacity limits for the MSU, and it is assumed all strokes are triaged correctly with the 
 emergency call - the model shows outcomes if all patients were seen by a MSU.
 
-![]('./pages/images/stroke_treatment.jpg')
+![](../images/stroke_treatment.jpg)
 
 
 
