@@ -98,6 +98,10 @@ time_keys = [
 treatment_time_dict = dict([(k, results_dict[k]) for k in time_keys])
 results_dict = dict([(k, results_dict[k]) for k in list(results_dict.keys()) if k not in time_keys])
 
+# Gather cumulative times and nicer-formatted cumulative time labels:
+(times_dicts, times_cum_dicts, times_cum_label_dicts
+ ) = build_data_for_timeline(fixed_dict | treatment_time_dict | input_dict)
+
 # Separate pathways:
 pathway_dicts = results.split_results_dict_by_pathway(results_dict)
 results_all = pathway_dicts['all']
@@ -115,6 +119,8 @@ df_results = pd.DataFrame.from_dict(
     orient='columns',
 )
 
+draw_timeline(times_cum_dicts, times_cum_label_dicts)
+
 st.markdown('''
 ### Outcomes ###
 
@@ -124,15 +130,7 @@ st.markdown('''
 * **utility_shift**: Average improvement in (higher is better)
 ''')
 
- 
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
-
-(times_dicts, times_cum_dicts, times_cum_label_dicts
- ) = build_data_for_timeline(fixed_dict | treatment_time_dict | input_dict)
-draw_timeline(
-    times_cum_dicts,
-    times_cum_label_dicts
-    )
 
 
 # User inputs for how to display the data:
