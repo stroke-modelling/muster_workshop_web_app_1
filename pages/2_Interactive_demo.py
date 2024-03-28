@@ -35,7 +35,28 @@ This model shows predicted outcomes for non-large vessel occlusion (nLVO) and la
 stroke. Outcomes are calculated for 34,000 small areas (LSOAs) across England based on expected 
 travel times, and other timing parameters chosen by the slider bars on the right.
 
-More detail may be found on estimation of stroke outcomes [here](https://samuel-book.github.io/stroke_outcome/intro.html)
+More detail may be found on estimation of stroke outcomes [here](https://samuel-book.github.io/stroke_outcome/intro.html). 
+The reported outcomes are for treated patients (they do not include patients unsuitable for treatment, 
+haemorrhagic strokes, or mimics)
+
+Three pathways are modelled, through to thrombectomy (note: thrombectomy is only applied to large 
+vessel occlusions; non-large vessel occlusions are treated with thrombolysis only). The three pathways are:
+
+1) *Drip-and-ship*: All patients are taken to their closest emergency stroke unit, all of which 
+provide thrombolysis. For patients who receive thrombectomy there is a transfer to a thrombectomy-capable 
+if the patient has first attended a hopsital that provides thrombolysis only.
+
+2) *Mothership*: All patients are taken to a comprehensive stroke centre that can provide both 
+thrombolysis and thrombectomy.
+
+3) *Mobile stroke unit *MSU*: MSUs are dispatched, from comprehensive stroke centres, to stroke patients. 
+Head scans and thrombolysis are provided on-scene, where the patient is. For patients who have been 
+treated with thrombolysis or considered suitable for thrombectomy, the MSU takes the patient to the 
+comprehensive stroke centre. Where a patient does not receive thrombolysis, and is not considered 
+a candidate for thrombectomy, the MSU becomes available for another stroke patient, and a standard 
+ambulance conveys the patient to the closest emergency stroke unit. In this particular model there 
+are no capacity limits for the MSU, and it is assumed all strokes are triaged correctly with the 
+emergency call - the model shows outcomes if all patients were seen by a MSU.
 ''')
 
 st.image('./pages/images/stroke_treatment.jpg')
