@@ -49,7 +49,7 @@ if the patient has first attended a hopsital that provides thrombolysis only.
 2) *Mothership*: All patients are taken to a comprehensive stroke centre that can provide both 
 thrombolysis and thrombectomy.
 
-3) *Mobile stroke unit *MSU*: MSUs are dispatched, from comprehensive stroke centres, to stroke patients. 
+3) *Mobile stroke unit (MSU)*: MSUs are dispatched, from comprehensive stroke centres, to stroke patients. 
 Head scans and thrombolysis are provided on-scene, where the patient is. For patients who have been 
 treated with thrombolysis or considered suitable for thrombectomy, the MSU takes the patient to the 
 comprehensive stroke centre. Where a patient does not receive thrombolysis, and is not considered 
