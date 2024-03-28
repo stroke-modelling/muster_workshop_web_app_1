@@ -217,12 +217,13 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
         }
 
     emoji_offset = 0.0
-    label_offset = 0.2
+    label_offset = 0.3
 
     fig = go.Figure()
+    y_max = 0.0
 
     axis_labels = ['Drip & ship', 'Mothership', 'MSU']
-    axis_values = [2, 1, 0]
+    axis_values = np.array([0, 1, 2]) * 0.9
     for i, times_cum_dict in enumerate(times_cum_dicts):
         time_cum_list = list(times_cum_dict.values())
         # Convert from minutes to hours:
@@ -238,10 +239,10 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
         labels_plain = [l.replace('<br>', ' ') for l in labels]
         # Draw straight line along the time axis:
         fig.add_trace(go.Scatter(
-            x=time_cum_list,
-            y=[axis_values[i]] * len(time_cum_list),
+            y=time_cum_list,
+            x=[axis_values[i]] * len(time_cum_list),
             mode='lines+markers',
-            marker=dict(size=6, symbol='line-ns-open'),
+            marker=dict(size=6, symbol='line-ew-open'),
             line=dict(color='grey'),    # OK in light and dark mode.
             showlegend=False,
             customdata=np.stack((time_cum_str_list, labels_plain), axis=-1)
@@ -277,22 +278,22 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
             if labels[t] in ['IVT', 'MT']:
                 colour = 'red'
                 # label = f'<b>{label}'  # bold
-                label += f'<br>{time_label}'  # time
+                label += f': {time_label}'  # time
             else:
                 colour = None
             # Write the label:
             fig.add_annotation(
-                x=time,
-                y=axis_values[i] + label_offset,
+                y=time,
+                x=axis_values[i] + label_offset,
                 text=label,
                 showarrow=False,
                 font=dict(
                     color=colour,
-                    size=10),
+                    size=14),
                 )
             fig.add_annotation(
-                x=time,
-                y=axis_values[i] + emoji_offset,
+                y=time,
+                x=axis_values[i] + emoji_offset,
                 text=emoji_list[t],
                 showarrow=False,
                 font=dict(
@@ -301,26 +302,26 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
                 # font=dict(color=time_colour_list[t])
                 )
 
-        # # Update y-axis limit value if necessary:
-        # if time_cumulative > y_max:
-        #     y_max = time_cumulative
+        # Update y-axis limit value if necessary:
+        if np.max(time_cum_list) > y_max:
+            y_max = np.max(time_cum_list)
 
     # # Set y range:
-    # fig.update_yaxes(range=[y_max * 1.05, 0 - y_max * 0.025])
+    fig.update_yaxes(range=[y_max * 1.05, 0 - y_max * 0.025])
     # Set y-axis label
-    fig.update_xaxes(title_text='Time since onset (hours)')
+    fig.update_yaxes(title_text='Time since onset (hours)')
     # Change y-axis title font size:
-    fig.update_xaxes(title_font_size=10)
+    fig.update_yaxes(title_font_size=10)
 
     # Set x range:
-    fig.update_yaxes(range=[-0.1, 2.5])
+    fig.update_xaxes(range=[-0.1, 2.5])
     # Set x-axis labels
     fig.update_layout(
-        yaxis=dict(
+        xaxis=dict(
             tickmode='array',
             tickvals=axis_values,
             ticktext=[f'<b>{x}' for x in axis_labels],   # <b> for bold
-            # side='top'  # Moves the labels to the top of the grid
+            side='top'  # Moves the labels to the top of the grid
         ),
     )
 
@@ -329,8 +330,15 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
     fig.update_yaxes(zeroline=False, showgrid=False)
 
 
+    fig_height = 200 * y_max
+    fig.update_layout(
+        # autosize=False,
+        # width=500,
+        height=fig_height
+    )
+
     # Reduce size of figure by adjusting margins:
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0), height=500)
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
 
     # Disable zoom and pan:
     fig.update_layout(xaxis=dict(fixedrange=True),
