@@ -114,11 +114,15 @@ df_results = pd.DataFrame.from_dict(
     orient='columns',
 )
 
-st.markdown('### Outcomes ###')
-st.markdown('**mrs_0-2**: Proportion patients modified Rankin Scale 0-2 (higher is better)')
-st.markdown('**mrs_shift**: Average shift in modified Rankin Scale (lower is better)')
-st.markdown('**utility**: Average utility (higher is better)')
-st.markdown('**utility_shift**: Average improvement in (higher is better)')
+st.markdown('''
+### Outcomes ###
+
+* **mrs_0-2**: Proportion patients modified Rankin Scale 0-2 (higher is better)
+* **mrs_shift**: Average shift in modified Rankin Scale (negative is better)
+* **utility**: Average utility (higher is better)
+* **utility_shift**: Average improvement in (higher is better)
+''')
+
  
 df_results.index = ['Drip & ship', 'Mothership', 'MSU']
 
