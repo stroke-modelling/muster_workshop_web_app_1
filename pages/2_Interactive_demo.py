@@ -34,7 +34,8 @@ st.markdown('''
 This model shows predicted outcomes for non-large vessel occlusion (nLVO) and large vessel occlusion 
 stroke. Outcomes are calculated for 34,000 small areas (LSOAs) across England based on expected 
 travel times, and other timing parameters chosen by the slider bars on the right.
-''''
+''')
+
 st.image('./pages/images/stroke_treatment.jpg')
 
 
