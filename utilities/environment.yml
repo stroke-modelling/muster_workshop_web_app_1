@@ -1,0 +1,21 @@
+name: muster_app_dev
+channels:
+  - defaults
+dependencies:
+  - geopandas
+  - joblib
+  - jupyter
+  - jupyterlab
+  - matplotlib
+  - numpy
+  - pandas
+  - plotly
+  - pip
+  - pyproj
+  - pytest
+  - python=3.10
+  - scipy
+  - streamlit
+  - pip:
+    - stroke-outcome
+
