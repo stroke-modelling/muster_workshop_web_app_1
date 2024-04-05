@@ -1,6 +1,8 @@
 numpy
 pandas
 plotly
+geopandas
+pyproj
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 
 streamlit
