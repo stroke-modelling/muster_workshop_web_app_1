@@ -53,7 +53,9 @@ def import_geojson(region_type: 'str'):
     """
     # Select geojson file based on input region type:
     geojson_file_dict = {
-        'LSOA11NM': 'LSOA.geojson',
+        # 'LSOA11NM': 'LSOA_V3_reduced.geojson',  # 'LSOA.geojson',
+        'LSOA11NM': 'LSOA_V3_reduced_simplified.geojson',
+        'MSOA11NM': 'MSOA_V3_reduced_simplified.geojson',
         'SICBL22NM': 'SICBL.geojson',
         'LHB20NM': 'LHB.geojson'
     }
@@ -68,8 +70,19 @@ def import_geojson(region_type: 'str'):
     if region_type == 'LSOA11NM':
         index_col = 'LSOA11CD'
         # Only keep these columns.
-        geo_cols = ['LSOA11NM', 'BNG_E', 'BNG_N',
-                    'LONG', 'LAT', 'GlobalID', 'geometry']
+        geo_cols = [
+            'LSOA11NM',
+            # 'BNG_E', 'BNG_N',
+            # 'LONG', 'LAT', 'GlobalID',
+            'geometry']
+    elif region_type == 'MSOA11NM':
+        index_col = 'MSOA11CD'
+        # Only keep these columns.
+        geo_cols = [
+            'MSOA11NM',
+            # 'BNG_E', 'BNG_N',
+            # 'LONG', 'LAT', 'GlobalID',
+            'geometry']
 
     else:
         index_col = 'region_code'
@@ -150,13 +163,16 @@ def _load_geometry_lsoa(df_lsoa):
     """
 
     # All LSOA shapes:
-    gdf_boundaries_lsoa = import_geojson('LSOA11NM')
+    gdf_boundaries_lsoa = import_geojson('MSOA11NM')#'LSOA11NM')
     crs = gdf_boundaries_lsoa.crs
     # Index column: LSOA11CD.
     # Always has only one unnamed column index level.
     gdf_boundaries_lsoa = gdf_boundaries_lsoa.reset_index()
+    # gdf_boundaries_lsoa = gdf_boundaries_lsoa.rename(
+    #     columns={'LSOA11NM': 'lsoa', 'LSOA11CD': 'lsoa_code'})
+    # gdf_boundaries_lsoa = gdf_boundaries_lsoa.set_index(['lsoa', 'lsoa_code'])
     gdf_boundaries_lsoa = gdf_boundaries_lsoa.rename(
-        columns={'LSOA11NM': 'lsoa', 'LSOA11CD': 'lsoa_code'})
+        columns={'MSOA11NM': 'lsoa', 'MSOA11CD': 'lsoa_code'})
     gdf_boundaries_lsoa = gdf_boundaries_lsoa.set_index(['lsoa', 'lsoa_code'])
 
     # ----- Prepare separate data -----
@@ -214,21 +230,22 @@ def plotly_big_map(
         v_bands_str,
         colour_map
         ):
+    time_f_start = datetime.now()
     gdf = gdf.copy()
     crs = gdf.crs
     gdf = gdf.reset_index()
 
-    col_lsoa = utils.find_multiindex_column_names(
-        gdf, property=['lsoa'])
+    # col_lsoa = utils.find_multiindex_column_names(
+    #     gdf, property=['lsoa'])
 
     # Only keep the required columns:
-    gdf = gdf[[col_lsoa, column_colour, column_geometry]]
+    gdf = gdf[[column_colour, column_geometry]]
     # Only keep the 'property' subheading:
     gdf = pd.DataFrame(
         gdf.values,
-        columns=['lsoa', 'outcome', 'geometry']
+        columns=['outcome', 'geometry']
     )
-    gdf = gdf.set_index('lsoa')
+    # gdf = gdf.set_index('lsoa')
     gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
 
     # Has to be this CRS to prevent Picasso drawing:
@@ -239,21 +256,57 @@ def plotly_big_map(
     mask = ~pd.isna(gdf['outcome'])
     inds = np.digitize(gdf.loc[mask, 'outcome'], v_bands)
     # Store inds for sorting the resulting gdf:
-    gdf.loc[mask, 'inds'] = inds
-    gdf.loc[~mask, 'inds'] = np.NaN
+    # gdf.loc[mask, 'inds'] = inds
+    # gdf.loc[~mask, 'inds'] = np.NaN
     labels = v_bands_str[inds]
     # Flag NaN values:
     gdf.loc[mask, 'labels'] = labels
     gdf.loc[~mask, 'labels'] = 'rubbish'
+    # Drop outcome column:
+    gdf = gdf.drop('outcome', axis='columns')
     # Dissolve by shared outcome value:
-    gdf = gdf.dissolve(by='labels')
+    time_diss_start = datetime.now()
+    gdf = gdf.dissolve(by='labels', sort=False)
+    # from shapely import unary_union
+    # ind_values = range(len(v_bands) + 1)
+    # gdf_new = pd.DataFrame(#geopandas.GeoDataFrame(
+    #     index=ind_values,
+    #     # crs=gdf.crs
+    #     )
+    # gdf_new.index.names = ['inds']
+    # gdf_new['labels'] = v_bands_str
+    # for i in ind_values:
+    #     polys = gdf.loc[gdf['inds'] == i, 'geometry']
+    #     poly = unary_union(polys)
+    #     gdf_new.loc[i, 'geometry'] = poly
+    # gdf_new = geopandas.GeoDataFrame(gdf_new, geometry='geometry', crs=gdf.crs)
+    # # gdf = gdf.set_geometry('geometry')
+    # gdf_new = gdf_new.reset_index()
+    # gdf = gdf_new
+    time_diss_end = datetime.now()
+    # st.write(f'Time to dissolve: {time_diss_end - time_diss_start}')
     gdf = gdf.reset_index()
     # Remove the NaN polygon:
     gdf = gdf[gdf['labels'] != 'rubbish']
 
+    # Add back in the inds:
+    df_inds = pd.DataFrame(
+        np.array([np.arange(len(v_bands_str)), v_bands_str]).T,
+        columns=['inds', 'labels']
+        )
+    gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
     # Sort the dataframe for the sake of the legend order:
     gdf = gdf.sort_values(by='inds')
 
+    # Simplify the polygons:
+    # # simplify geometry to 1000m accuracy
+    # gdf['geometry'] = (
+    #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(1000).to_crs(gdf.crs)
+    # )
+    time_f_end = datetime.now()
+    # st.write(f'Time to prepare map: {time_f_end - time_f_start}')
+
+    time_d_start = datetime.now()
     # Begin plotting.
     fig = go.Figure()
 
@@ -379,9 +432,11 @@ def plotly_big_map(
     # )
     fig.update_traces(hovertemplate='%{z}<extra>%{location}</extra>')
 
-    # fig.write_html('data_maps/plotly_test.html')
+    # fig.write_html('./plotly_choro_test.html')
 
     st.plotly_chart(fig)
+    time_d_end = datetime.now()
+    # st.write(f'Time to draw map: {time_d_end - time_d_start}')
 
 
 def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
@@ -612,6 +667,31 @@ df_lsoa.columns.names = ['property']
 # because current setup just wants some averaged added utility outcome
 # rather than split by stroke type.
 
+# Convert LSOA to MSOA:
+df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+df_lsoa = df_lsoa.reset_index()
+df_lsoa = pd.merge(
+    df_lsoa,
+    df_lsoa_to_msoa[['lsoa11nm', 'msoa11cd', 'msoa11nm']],
+    left_on='lsoa', right_on='lsoa11nm', how='left'
+    )
+# Remove string columns:
+# (temporary - I don't know how else to groupby a df with some object columns)
+df_lsoa = df_lsoa.drop(['lsoa', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit', 'nearest_msu_unit', 'lsoa11nm', 'msoa11nm'], axis='columns')
+# Aggregate by MSOA:
+df_lsoa = df_lsoa.groupby('msoa11cd').mean()
+# df_lsoa = df_lsoa.set_index('msoa11cd')
+# Merge the MSOA names back in and set the index to (lsoa_code, lsoa):
+df_lsoa = df_lsoa.reset_index()
+df_lsoa = pd.merge(
+    df_lsoa, df_lsoa_to_msoa[['msoa11cd', 'msoa11nm']],
+    left_on='msoa11cd', right_on='msoa11cd', how='left'
+    )
+# Remove duplicate rows:
+df_lsoa = df_lsoa.drop_duplicates()
+df_lsoa = df_lsoa.rename(columns={'msoa11cd': 'lsoa_code', 'msoa11nm': 'lsoa'})
+df_lsoa = df_lsoa.set_index(['lsoa', 'lsoa_code'])
+
 # Check whether the input DataFrames have a 'scenario' column level.
 # If not, add one now with a placeholder scenario name.
 df_lsoa = check_scenario_level(df_lsoa)
@@ -702,13 +782,13 @@ colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 # Merge outcome and geography:
 time_m_start = datetime.now()
 gdf_boundaries_lsoa = _load_geometry_lsoa(df_lsoa)
-
+# st.write(gdf_boundaries_lsoa)
 # st.write(type(gdf_boundaries_lsoa))
 # st.write('')
 # st.write(gdf_boundaries_lsoa.info())
 # st.write(gdf_boundaries_lsoa.crs)
 time_m_end = datetime.now()
-st.write(f'Time to merge geography and outcomes: {time_m_end - time_m_start}')
+# st.write(f'Time to merge geography and outcomes: {time_m_end - time_m_start}')
 
 # Find geometry column for plot function:
 col_geo = utils.find_multiindex_column_names(
@@ -765,9 +845,10 @@ with st.spinner(text='Drawing map'):
         colour_map=colour_map
         )
 time_p_end = datetime.now()
-st.write(f'Time to draw map: {time_p_end - time_p_start}')
+# st.write(f'Time to make and draw map: {time_p_end - time_p_start}')
 
 st.stop()
+
 # Build up the times to treatment in the different scenarios:
 
 # Run the outcome model:
