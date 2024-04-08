@@ -97,3 +97,21 @@ def convert_row_to_table(df_here, index_cols_list):
     # Remove useless extra index column:
     df_here.index = df_here.index.droplevel('pants')
     return df_here
+
+
+def make_outline_england_wales():
+    """Similar to stroke-maps."""
+    from stroke_maps.geo import import_geojson
+    # All region polygons:
+    gdf_list = []
+    gdf_boundaries_regions_e = import_geojson('SICBL22NM')
+    gdf_list.append(gdf_boundaries_regions_e)
+    gdf_boundaries_regions_w = import_geojson('LHB20NM')
+    gdf_list.append(gdf_boundaries_regions_w)
+    # Combine:
+    gdf_boundaries_regions = pd.concat(gdf_list, axis='rows')
+
+    gdf_boundaries_regions['ind'] = 0
+    gdf_boundaries_regions = gdf_boundaries_regions.dissolve(by='ind')
+    # Save:
+    gdf_boundaries_regions.to_file('data/outline_england_wales.geojson')

@@ -5,6 +5,7 @@ All of the content for the Inputs section.
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt  # for colour maps
 
 def select_parameters():
     # Set up scenarios
@@ -121,3 +122,251 @@ def find_scenario_results(id):
     row = row.to_dict(orient='records')[0]
 
     return row
+
+
+def select_scenario(containers=[]):
+    if len(containers) == 0:
+        containers = [st.container() for i in range(4)]
+
+    # Outcome type input:
+    with containers[0]:
+        outcome_type_str = st.radio(
+            'Outcome measure',
+            ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
+            # horizontal=True
+        )
+    # Match the input string to the file name string:
+    outcome_type_dict = {
+        'Utility': 'utility',
+        'Added utility': 'utility_shift',
+        'Mean shift in mRS': 'mrs_shift',
+        'mRS <= 2': 'mrs_0-2'
+    }
+    outcome_type = outcome_type_dict[outcome_type_str]
+
+    # Scenario input:
+    with containers[1]:    
+        scenario_type_str = st.radio(
+            'Scenario',
+            ['Drip-and-ship', 'Mothership', 'MSU'],
+            # horizontal=True
+        )
+    # Match the input string to the file name string:
+    scenario_type_dict = {
+        'Drip-and-ship': 'drip_ship',
+        'Mothership': 'mothership',
+        'MSU': 'msu'
+    }
+    scenario_type = scenario_type_dict[scenario_type_str]
+
+    # Treatment type:
+    with containers[2]:
+        treatment_type_str = st.radio(
+            'Treatment type',
+            ['IVT', 'MT', 'IVT & MT']
+            )
+    # Match the input string to the file name string:
+    treatment_type_dict = {
+        'IVT': 'ivt',
+        'MT': 'mt',
+        'IVT & MT': 'ivt_mt'
+    }
+    treatment_type = treatment_type_dict[treatment_type_str]
+
+    # Stroke type:
+    with containers[3]:
+        stroke_type_str = st.radio(
+            'Stroke type',
+            ['LVO', 'nLVO']
+            )
+    # Match the input string to the file name string:
+    stroke_type_dict = {
+        'LVO': 'lvo',
+        'nLVO': 'nlvo',
+    }
+    stroke_type = stroke_type_dict[stroke_type_str]
+
+    scenario_dict = {}
+    scenario_dict['outcome_type_str'] = outcome_type_str
+    scenario_dict['outcome_type'] = outcome_type
+    scenario_dict['scenario_type_str'] = scenario_type_str
+    scenario_dict['scenario_type'] = scenario_type
+    scenario_dict['treatment_type_str'] = treatment_type_str
+    scenario_dict['treatment_type'] = treatment_type
+    scenario_dict['stroke_type_str'] = stroke_type_str
+    scenario_dict['stroke_type'] = stroke_type
+    return scenario_dict
+
+
+def convert_lsoa_to_msoa_results(df_lsoa):
+    # Convert LSOA to MSOA:
+    df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+    df_lsoa = df_lsoa.reset_index()
+    df_msoa = pd.merge(
+        df_lsoa,
+        df_lsoa_to_msoa[['lsoa11nm', 'msoa11cd', 'msoa11nm']],
+        left_on='lsoa', right_on='lsoa11nm', how='left'
+        )
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with some object columns)
+    df_msoa = df_msoa.drop([
+        'lsoa', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
+        'nearest_msu_unit', 'lsoa11nm', 'msoa11nm'
+        ], axis='columns')
+    # Aggregate by MSOA:
+    df_msoa = df_msoa.groupby('msoa11cd').mean()
+    # df_msoa = df_msoa.set_index('msoa11cd')
+    # Merge the MSOA names back in and set the index to (msoa_code, msoa):
+    df_msoa = df_msoa.reset_index()
+    df_msoa = pd.merge(
+        df_msoa, df_lsoa_to_msoa[['msoa11cd', 'msoa11nm']],
+        left_on='msoa11cd', right_on='msoa11cd', how='left'
+        )
+    # Remove duplicate rows:
+    df_msoa = df_msoa.drop_duplicates()
+    df_msoa = df_msoa.rename(columns={'msoa11cd': 'msoa_code', 'msoa11nm': 'msoa'})
+    df_msoa = df_msoa.set_index(['msoa', 'msoa_code'])
+
+    return df_msoa
+
+
+def set_up_colours(scenario_dict):
+    """
+    max ever displayed:
+
+    utility:
+    max times: > 0.300, 
+
+    
+    utility shift:
+    min times: 0.100 < 0.150, 0.150 < 0.200, 0.200 < 0.250, 
+    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
+    
+    mrs shift:
+    min times: <0.000, 
+    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
+    
+    mrs 0-2:
+    min times: 0.250 - 0.0300, > 0.300, 
+    max times: 0.250 - 0.300, > 0.300
+    
+    """
+    # Define shared colour scales:
+    cbar_dict = {
+        'utility': {
+            'scenario': {
+                'vmin': 0.3,
+                'vmax': 0.6,
+                'step_size': 0.05,
+                'cmap_name': 'inferno'
+            },
+            'diff': {
+                'vmin': -0.3,
+                'vmax': 0.3,
+                'step_size': 0.05,
+                'cmap_name': 'RdBu'
+            },
+        },
+        'utility_shift': {
+            'scenario': {
+                'vmin': 0.0,
+                'vmax': 0.25,
+                'step_size': 0.05,
+                'cmap_name': 'inferno'
+            },
+            'diff': {
+                'vmin': -0.3,
+                'vmax': 0.3,
+                'step_size': 0.05,
+                'cmap_name': 'RdBu'
+            },
+        },
+        'mrs_shift': {
+            'scenario': {
+                'vmin': -0.3,
+                'vmax': 0.0,
+                'step_size': 0.05,
+                'cmap_name': 'inferno'
+            },
+            'diff': {
+                'vmin': -0.3,
+                'vmax': 0.3,
+                'step_size': 0.05,
+                'cmap_name': 'RdBu'
+            },
+        },
+        'mrs_0-2': {
+            'scenario': {
+                'vmin': 0.30,
+                'vmax': 0.70,
+                'step_size': 0.05,
+                'cmap_name': 'inferno'
+            },
+            'diff': {
+                'vmin': -0.3,
+                'vmax': 0.3,
+                'step_size': 0.05,
+                'cmap_name': 'RdBu'
+            },
+        }
+    }
+    if scenario_dict['scenario_type'].startswith('diff'):
+        scen = 'diff'
+    else:
+        scen = 'scenario'
+
+    v_min = cbar_dict[scenario_dict['outcome_type']][scen]['vmin']
+    v_max = cbar_dict[scenario_dict['outcome_type']][scen]['vmax']
+    step_size = cbar_dict[scenario_dict['outcome_type']][scen]['step_size']
+    cmap_name = cbar_dict[scenario_dict['outcome_type']][scen]['cmap_name']
+
+    # Make a new column for the colours.
+    v_bands = np.arange(v_min, v_max + step_size, step_size)
+    v_bands_str = make_v_bands_str(v_bands)
+    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
+
+    colour_dict = {
+        'v_min': v_min,
+        'v_max': v_max,
+        'step_size': step_size,
+        'cmap_name': cmap_name,
+        'v_bands': v_bands,
+        'v_bands_str': v_bands_str,
+        'colour_map': colour_map,
+    }
+    return colour_dict
+
+
+def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
+    # Get colour values:
+    cmap = plt.get_cmap(cmap_name)
+    cbands = np.linspace(0.0, 1.0, len(v_bands_str))
+    colour_list = cmap(cbands)
+    # # Convert tuples to strings:
+    colour_list = np.array([
+        f'rgba{tuple(c)}' for c in colour_list])
+    # Sample the colour list:
+    colour_map = [(c, colour_list[i]) for i, c in enumerate(v_bands_str)]
+
+    # # Set over and under colours:
+    # colour_list[0] = 'black'
+    # colour_list[-1] = 'LimeGreen'
+
+    # Return as dict to track which colours are for which bands:
+    colour_map = dict(zip(v_bands_str, colour_list))
+    return colour_map
+
+
+def make_v_bands_str(v_bands):
+    """Turn contour ranges into formatted strings."""
+    v_min = v_bands[0]
+    v_max = v_bands[-1]
+
+    v_bands_str = [f'v < {v_min:.3f}']
+    for i, band in enumerate(v_bands[:-1]):
+        b = f'{band:.3f} <= v < {v_bands[i+1]:.3f}'
+        v_bands_str.append(b)
+    v_bands_str.append(f'{v_max:.3f} <= v')
+
+    v_bands_str = np.array(v_bands_str)
+    return v_bands_str
