@@ -17,6 +17,7 @@ import geopandas
 import pyproj  # for crs conversion
 import matplotlib.pyplot as plt  # for colour maps
 from datetime import datetime
+from shapely.validation import make_valid  # for fixing dodgy polygons
 
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
@@ -209,10 +210,13 @@ def _load_geometry_lsoa(df_lsoa):
     # Sort the results by scenario:
     gdf_boundaries_lsoa = gdf_boundaries_lsoa.sort_index(
         axis='columns', level='scenario')
-
-    # Convert to GeoDataFrame:
+    
+    # Make geometry valid:
     col_geo = utils.find_multiindex_column_names(
         gdf_boundaries_lsoa, property=['geometry'])
+    gdf_boundaries_lsoa[col_geo] = [make_valid(g) if g is not None else g for g in gdf_boundaries_lsoa[col_geo].values ]
+
+    # Convert to GeoDataFrame:
     gdf_boundaries_lsoa = geopandas.GeoDataFrame(
         gdf_boundaries_lsoa,
         geometry=col_geo,
