@@ -384,8 +384,8 @@ def plotly_many_maps(
             columns=['inds', 'labels']
             )
         gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
-        # Sort the dataframe for the sake of the legend order:
-        gdf = gdf.sort_values(by='inds')
+        # # Sort the dataframe for the sake of the legend order:
+        # gdf = gdf.sort_values(by='inds')
 
         gdf['scenario'] = col_col
 
@@ -405,9 +405,10 @@ def plotly_many_maps(
     # the first polygon with each index value, not the one
     # that actually belongs to the scenario in facet_col.
 
+    # Sort the dataframe for the sake of the legend order:
+    gdf_polys = gdf_polys.sort_values(by='inds')
 
     # Begin plotting.
-    # fig = make_subplots(rows=3, cols=4, shared_yaxes=True, shared_xaxes=True)
     fig = px.choropleth(
         gdf_polys,
         locations=gdf_polys.index,
@@ -417,24 +418,6 @@ def plotly_many_maps(
         facet_col='scenario',
         # facet_col_wrap=3  # How many subplots to get on a single row
         )
-    # fig.update_layout(
-    #     geo=dict(
-    #         scope='world',
-    #         projection=go.layout.geo.Projection(type='airy'),
-    #         fitbounds='locations',
-    #         visible=False))
-    # fig.update_layout(
-    #     geo2=dict(
-    #         scope='world',
-    #         projection=go.layout.geo.Projection(type='airy'),
-    #         fitbounds='locations',
-    #         visible=False))
-    # fig.update_layout(
-    #     geo3=dict(
-    #         scope='world',
-    #         projection=go.layout.geo.Projection(type='airy'),
-    #         fitbounds='locations',
-    #         visible=False))
 
     fig.update_geos(
         scope='world',
@@ -447,21 +430,21 @@ def plotly_many_maps(
         height=800
         )
 
-    # fig.update_xaxes(row=1, col=1, matches='x')
-    # fig.update_xaxes(row=1, col=2, matches='x')
-    # fig.update_xaxes(row=1, col=3, matches='x')
-    # fig.update_yaxes(row=1, col=1, matches='y')
-    # fig.update_yaxes(row=1, col=2, matches='y')
-    # fig.update_yaxes(row=1, col=3, matches='y')
-    # fig.update_xaxes(matches='x')
-    # fig.update_yaxes(matches='y')
-    # fig.update_layout(
-    #     shared_xaxes=True,
-    #     shared_yaxes=True
-    #     )
+    # Remove repeat legend names:
+    # from https://stackoverflow.com/a/62162555
+    names = set()
+    fig.for_each_trace(
+        lambda trace:
+            trace.update(showlegend=False)
+            if (trace.name in names) else names.add(trace.name))
+    
+    # Disable clicking legend to remove trace:
+    fig.update_layout(legend_itemclick=False)
+    fig.update_layout(legend_itemdoubleclick=False)
 
     with container_map:
         st.plotly_chart(fig)
+
 
 # ###########################
 # ##### START OF SCRIPT #####
