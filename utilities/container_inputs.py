@@ -144,23 +144,23 @@ def select_scenario(containers=[]):
     }
     outcome_type = outcome_type_dict[outcome_type_str]
 
-    # Scenario input:
-    with containers[1]:    
-        scenario_type_str = st.radio(
-            'Scenario',
-            ['Drip-and-ship', 'Mothership', 'MSU'],
-            # horizontal=True
-        )
-    # Match the input string to the file name string:
-    scenario_type_dict = {
-        'Drip-and-ship': 'drip_ship',
-        'Mothership': 'mothership',
-        'MSU': 'msu'
-    }
-    scenario_type = scenario_type_dict[scenario_type_str]
+    # # Scenario input:
+    # with containers[1]:    
+    #     scenario_type_str = st.radio(
+    #         'Scenario',
+    #         ['Drip-and-ship', 'Mothership', 'MSU'],
+    #         # horizontal=True
+    #     )
+    # # Match the input string to the file name string:
+    # scenario_type_dict = {
+    #     'Drip-and-ship': 'drip_ship',
+    #     'Mothership': 'mothership',
+    #     'MSU': 'msu'
+    # }
+    # scenario_type = scenario_type_dict[scenario_type_str]
 
     # Treatment type:
-    with containers[2]:
+    with containers[1]:
         treatment_type_str = st.radio(
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT']
@@ -174,7 +174,7 @@ def select_scenario(containers=[]):
     treatment_type = treatment_type_dict[treatment_type_str]
 
     # Stroke type:
-    with containers[3]:
+    with containers[2]:
         stroke_type_str = st.radio(
             'Stroke type',
             ['LVO', 'nLVO']
@@ -189,8 +189,8 @@ def select_scenario(containers=[]):
     scenario_dict = {}
     scenario_dict['outcome_type_str'] = outcome_type_str
     scenario_dict['outcome_type'] = outcome_type
-    scenario_dict['scenario_type_str'] = scenario_type_str
-    scenario_dict['scenario_type'] = scenario_type
+    # scenario_dict['scenario_type_str'] = scenario_type_str
+    # scenario_dict['scenario_type'] = scenario_type
     scenario_dict['treatment_type_str'] = treatment_type_str
     scenario_dict['treatment_type'] = treatment_type
     scenario_dict['stroke_type_str'] = stroke_type_str
@@ -257,7 +257,7 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': 0.3,
                 'vmax': 0.6,
-                'step_size': 0.05,
+                'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {
@@ -271,13 +271,13 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': 0.0,
                 'vmax': 0.25,
-                'step_size': 0.05,
+                'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {
                 'vmin': -0.3,
                 'vmax': 0.3,
-                'step_size': 0.05,
+                'step_size': 0.025,
                 'cmap_name': 'RdBu'
             },
         },
@@ -285,7 +285,7 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': -0.3,
                 'vmax': 0.0,
-                'step_size': 0.05,
+                'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {
@@ -299,7 +299,7 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': 0.30,
                 'vmax': 0.70,
-                'step_size': 0.05,
+                'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {

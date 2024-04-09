@@ -17,6 +17,7 @@ import os
 import geopandas
 import pyproj  # for crs conversion
 from shapely.validation import make_valid  # for fixing dodgy polygons
+from plotly.subplots import make_subplots
 
 # For setting up maps:
 from stroke_maps.geo import import_geojson, check_scenario_level
@@ -177,6 +178,55 @@ def plotly_blank_map():
     st.plotly_chart(fig)
 
 
+def plotly_blank_maps(col_cols=[]):
+    path_to_file = os.path.join('data', 'outline_england_wales.geojson')
+    gdf = geopandas.read_file(path_to_file)
+    # Has to be this CRS to prevent Picasso drawing:
+    gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
+
+    # Blank name to make nothing show up in the legend:
+    label = '.' + ' '*40 + '.'
+    gdf[' '] = label
+
+    # Make a new gdf containing all combined polygons
+    # for all plots:
+    # gdf_polys
+    gdfs_to_combine = []
+
+    if len(col_cols) == 0:
+        col_cols = range(3)
+
+    for i in range(3):
+        gdf_here = gdf.copy()
+        gdf_here['scenario'] = col_cols[i]
+        gdfs_to_combine.append(gdf_here)
+
+    gdf = pd.concat(gdfs_to_combine, axis='rows')
+
+    # Begin plotting.
+    fig = px.choropleth(
+        gdf,
+        locations=gdf.index,
+        geojson=gdf.geometry.__geo_interface__,
+        color=gdf[' '],
+        color_discrete_map={label: 'rgba(0, 0, 0, 0)'},
+        facet_col='scenario',
+        )
+
+    fig.update_layout(
+        width=1200,
+        height=800
+        )
+    fig.update_geos(
+            scope='world',
+            projection=go.layout.geo.Projection(type='airy'),
+            fitbounds='locations',
+            visible=False
+        )
+
+    st.plotly_chart(fig)
+
+
 def plotly_big_map(
         gdf,
         column_colour,
@@ -257,80 +307,6 @@ def plotly_big_map(
     # Remove msoa borders:
     fig.update_traces(marker_line_width=0, selector=dict(type='choropleth'))
 
-    # The initial colour map setting can take very many options,
-    # but the later update with the drop-down menu only has a small list
-    # of about ten coded in. You can't even provide a list of colours instead.
-    # The available options are:
-    # Blackbody, Bluered, Blues, Cividis, Earth, Electric, Greens, Greys,
-    # Hot, Jet, Picnic, Portland, Rainbow, RdBu, Reds, Viridis, YlGnBu, YlOrRd.
-    # As listed in: https://plotly.com/python-api-reference/generated/
-    # plotly.graph_objects.Choropleth.html
-
-    # fig.update_layout(
-    #     coloraxis_colorscale='Electric',
-    #     coloraxis_colorbar_title_text='Added utility',
-    #     coloraxis_cmin=outcome_vmin,
-    #     coloraxis_cmax=outcome_vmax,
-    #     )
-
-    # fig.update_layout(title_text='<b>Drip and Ship</b>', title_x=0.5)
-
-    # fig.update_layout(
-    #     updatemenus=[go.layout.Updatemenu(
-    #         x=0, xanchor='right', y=1.15, type="dropdown",
-    #         pad={'t': 5, 'r': 20, 'b': 0, 'l': 30},
-    #         # ^ around all buttons (not indiv buttons)
-    #         buttons=list([
-    #             dict(
-    #                 args=[
-    #                     {
-    #                         'z': [df_outcomes[
-    #                             'drip_ship_lvo_mt_added_utility']],
-    #                     },
-    #                     {
-    #                         'coloraxis.colorscale': 'Electric',
-    #                         'coloraxis.reversescale': False,
-    #                         'coloraxis.cmin': outcome_vmin,
-    #                         'coloraxis.cmax': outcome_vmax,
-    #                         'title.text': '<b>Drip and Ship</b>'
-    #                     }],
-    #                 label='Drip & Ship',
-    #                 method='update'
-    #             ),
-    #             dict(
-    #                 args=[
-    #                     {
-    #                         'z': [df_outcomes[
-    #                             'mothership_lvo_mt_added_utility']],
-    #                     },
-    #                     {
-    #                         'coloraxis.colorscale': 'Electric',
-    #                         'coloraxis.reversescale': False,
-    #                         'coloraxis.cmin': outcome_vmin,
-    #                         'coloraxis.cmax': outcome_vmax,
-    #                         'title.text': '<b>Mothership</b>'
-    #                     }],
-    #                 label='Mothership',
-    #                 method='update'
-    #             ),
-    #             dict(
-    #                 args=[
-    #                     {
-    #                         'z': [df_outcomes['diff_lvo_mt_added_utility']],
-    #                     },
-    #                     {
-    #                         'coloraxis.colorscale': 'RdBu',
-    #                         'coloraxis.reversescale': True,
-    #                         'coloraxis.cmin': diff_vmin,
-    #                         'coloraxis.cmax': diff_vmax,
-    #                         'title.text': '<b>Difference</b>'
-    #                     }],
-    #                 label='Diff',
-    #                 method='update'
-    #             )
-    #             ])
-    #     )]
-    # )
     fig.update_traces(hovertemplate='%{z}<extra>%{location}</extra>')
 
     # fig.write_html('./plotly_choro_test.html')
@@ -338,11 +314,154 @@ def plotly_big_map(
         st.plotly_chart(fig)
 
 
+def plotly_many_maps(
+        gdf_all,
+        columns_colour,
+        column_geometry,
+        v_bands,
+        v_bands_str,
+        colour_map
+        ):
+
+    # Make a new gdf containing all combined polygons
+    # for all plots:
+    # gdf_polys
+    gdfs_to_combine = []
+
+    for i, col_col in enumerate(columns_colour):
+        gdf = gdf_all.copy()
+        crs = gdf.crs
+        gdf = gdf.reset_index()
+
+        # Find geometry column for plot function:
+        column_geometry = utils.find_multiindex_column_names(
+            gdf, property=['geometry'])
+
+        # Selected column to use for colour values:
+        column_colour = utils.find_multiindex_column_names(
+            gdf_boundaries_msoa,
+            property=[col_col],
+            # scenario=[scenario_type],
+            # subtype=['mean']
+            )
+
+        # st.write(gdf.columns)
+
+        # Only keep the required columns:
+        gdf = gdf[[column_colour, column_geometry]]
+        # Only keep the 'property' subheading:
+        gdf = pd.DataFrame(
+            gdf.values,
+            columns=['outcome', 'geometry']
+        )
+        gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
+
+        # Has to be this CRS to prevent Picasso drawing:
+        gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
+
+        # Group by outcome band.
+        # Only group by non-NaN values:
+        mask = ~pd.isna(gdf['outcome'])
+        inds = np.digitize(gdf.loc[mask, 'outcome'], v_bands)
+        labels = v_bands_str[inds]
+        # Flag NaN values:
+        gdf.loc[mask, 'labels'] = labels
+        gdf.loc[~mask, 'labels'] = 'rubbish'
+        # Drop outcome column:
+        gdf = gdf.drop('outcome', axis='columns')
+        # Dissolve by shared outcome value:
+        gdf = gdf.dissolve(by='labels', sort=False)
+        gdf = gdf.reset_index()
+        # Remove the NaN polygon:
+        gdf = gdf[gdf['labels'] != 'rubbish']
+
+        # Add back in the inds:
+        df_inds = pd.DataFrame(
+            np.array([np.arange(len(v_bands_str)), v_bands_str]).T,
+            columns=['inds', 'labels']
+            )
+        gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
+        # Sort the dataframe for the sake of the legend order:
+        gdf = gdf.sort_values(by='inds')
+
+        gdf['scenario'] = col_col
+
+        # Simplify the polygons:
+        # # Simplify geometry to 1000m accuracy
+        # gdf['geometry'] = (
+        #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(1000).to_crs(gdf.crs)
+        # )
+
+        gdfs_to_combine.append(gdf)
+
+    gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
+
+    # Begin plotting.
+    # fig = make_subplots(rows=3, cols=4, shared_yaxes=True, shared_xaxes=True)
+    fig = px.choropleth(
+        gdf_polys,
+        locations=gdf_polys.index,
+        geojson=gdf_polys.geometry.__geo_interface__,
+        color=gdf_polys['labels'],
+        color_discrete_map=colour_map,
+        facet_col='scenario',
+        # facet_col_wrap=3  # How many subplots to get on a single row
+        )
+    # fig.update_layout(
+    #     geo=dict(
+    #         scope='world',
+    #         projection=go.layout.geo.Projection(type='airy'),
+    #         fitbounds='locations',
+    #         visible=False))
+    # fig.update_layout(
+    #     geo2=dict(
+    #         scope='world',
+    #         projection=go.layout.geo.Projection(type='airy'),
+    #         fitbounds='locations',
+    #         visible=False))
+    # fig.update_layout(
+    #     geo3=dict(
+    #         scope='world',
+    #         projection=go.layout.geo.Projection(type='airy'),
+    #         fitbounds='locations',
+    #         visible=False))
+
+    fig.update_geos(
+        scope='world',
+        projection=go.layout.geo.Projection(type='airy'),
+        fitbounds='locations',
+        visible=False
+        )
+    fig.update_layout(
+        width=1200,
+        height=800
+        )
+
+    # fig.update_xaxes(row=1, col=1, matches='x')
+    # fig.update_xaxes(row=1, col=2, matches='x')
+    # fig.update_xaxes(row=1, col=3, matches='x')
+    # fig.update_yaxes(row=1, col=1, matches='y')
+    # fig.update_yaxes(row=1, col=2, matches='y')
+    # fig.update_yaxes(row=1, col=3, matches='y')
+    # fig.update_xaxes(matches='x')
+    # fig.update_yaxes(matches='y')
+    # fig.update_layout(
+    #     shared_xaxes=True,
+    #     shared_yaxes=True
+    #     )
+
+    with container_map:
+        st.plotly_chart(fig)
 
 # ###########################
 # ##### START OF SCRIPT #####
 # ###########################
-page_setup()
+# page_setup()
+st.set_page_config(
+    page_title='MUSTER',
+    page_icon=':ambulance:',
+    layout='wide'
+    )
 
 # Make containers:
 # +-----------------------+
@@ -373,9 +492,9 @@ with st.sidebar:
     input_dict = inputs.select_parameters()
 
 with container_map_inputs:
-    cols = st.columns(4)
+    cols = st.columns(3)
     scenario_dict = inputs.select_scenario(cols)
-colour_dict = inputs.set_up_colours(scenario_dict)
+colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
 # If the requested data is nLVO + MT, stop now.
 stop_bool = (
@@ -386,10 +505,20 @@ if stop_bool:
     st.warning('No data for nLVO with MT.')
     st.stop()
 
+columns_colours = [
+    '_'.join([
+        scenario_dict['stroke_type'],
+        scenario_type,
+        scenario_dict['treatment_type'],
+        scenario_dict['outcome_type']
+    ])
+    for scenario_type in ['drip_ship', 'mothership', 'msu']
+    ]
+
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
-    plotly_blank_map()
+    plotly_blank_maps(columns_colours)
 
 gdf_boundaries_msoa = main_calculations(input_dict)
 
@@ -397,32 +526,41 @@ gdf_boundaries_msoa = main_calculations(input_dict)
 col_geo = utils.find_multiindex_column_names(
     gdf_boundaries_msoa, property=['geometry'])
 
-column_to_plot = '_'.join([
-    scenario_dict['stroke_type'],
-    scenario_dict['scenario_type'],
-    scenario_dict['treatment_type'],
-    scenario_dict['outcome_type']
-])
 
-# Selected column to use for colour values:
-col_col = utils.find_multiindex_column_names(
+plotly_many_maps(
     gdf_boundaries_msoa,
-    property=[column_to_plot],
-    # scenario=[scenario_type],
-    # subtype=['mean']
-    )
+    columns_colours,
+    column_geometry=col_geo,
+    v_bands=colour_dict['v_bands'],
+    v_bands_str=colour_dict['v_bands_str'],
+    colour_map=colour_dict['colour_map']
+)
 
+# # Plot map:
+# with st.spinner(text='Drawing maps'):
+#     for scenario_type in ['drip_ship', 'mothership', 'msu']:
+#         column_to_plot = '_'.join([
+#             scenario_dict['stroke_type'],
+#             scenario_type,
+#             scenario_dict['treatment_type'],
+#             scenario_dict['outcome_type']
+#         ])
 
-# Plot map:
-with st.spinner(text='Drawing map'):
-    plotly_big_map(
-        gdf_boundaries_msoa,
-        column_colour=col_col,
-        column_geometry=col_geo,
-        v_bands=colour_dict['v_bands'],
-        v_bands_str=colour_dict['v_bands_str'],
-        colour_map=colour_dict['colour_map']
-        )
+#         # Selected column to use for colour values:
+#         col_col = utils.find_multiindex_column_names(
+#             gdf_boundaries_msoa,
+#             property=[column_to_plot],
+#             # scenario=[scenario_type],
+#             # subtype=['mean']
+#             )
+#         plotly_big_map(
+#             gdf_boundaries_msoa,
+#             column_colour=col_col,
+#             column_geometry=col_geo,
+#             v_bands=colour_dict['v_bands'],
+#             v_bands_str=colour_dict['v_bands_str'],
+#             colour_map=colour_dict['colour_map']
+#             )
 
 st.stop()
 
