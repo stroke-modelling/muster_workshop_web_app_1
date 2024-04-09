@@ -6,6 +6,7 @@ pyproj
 matplotlib
 shapely==2.0.1
 stroke-outcome
+stroke-maps
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 
 streamlit
