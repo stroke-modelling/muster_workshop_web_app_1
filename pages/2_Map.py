@@ -217,9 +217,11 @@ def plotly_blank_maps(col_cols=[]):
         )
 
     fig.update_layout(
-        width=1200,
-        height=800
+        width=1300,
+        height=500
         )
+    fig.update_layout(margin_t=20)
+    fig.update_layout(margin_b=0)
     fig.update_geos(
             scope='world',
             projection=go.layout.geo.Projection(type='airy'),
@@ -405,8 +407,15 @@ def plotly_many_maps(
     # the first polygon with each index value, not the one
     # that actually belongs to the scenario in facet_col.
 
+    # Drop any 'none' geometry:
+    gdf_polys = gdf_polys.dropna(axis='rows', subset=['geometry'])
+    # If any polygon is None then all polygons in that facet_col
+    # will fail to be displayed.
+    # None seems to happen when there are very few (only one? or zero?)
+    # polygons in that outcome band. Maybe a rounding error?
+
     # Sort the dataframe for the sake of the legend order:
-    gdf_polys = gdf_polys.sort_values(by='inds')
+    gdf_polys = gdf_polys.sort_values(by=['scenario', 'inds'])
 
     # Begin plotting.
     fig = px.choropleth(
@@ -419,6 +428,9 @@ def plotly_many_maps(
         # facet_col_wrap=3  # How many subplots to get on a single row
         )
 
+    fig.update_traces(hoverinfo='skip')
+    fig.update_traces(marker_line_width=0)
+
     fig.update_geos(
         scope='world',
         projection=go.layout.geo.Projection(type='airy'),
@@ -426,9 +438,16 @@ def plotly_many_maps(
         visible=False
         )
     fig.update_layout(
-        width=1200,
-        height=800
+        width=1300,
+        height=500
         )
+
+    fig.update_layout(hovermode=False)
+
+    fig.update_layout(margin_t=20)
+    fig.update_layout(margin_b=0)
+    # fig.update_layout(margin_t=0)
+    # fig.update_layout(margin_t=0)
 
     # Remove repeat legend names:
     # from https://stackoverflow.com/a/62162555
@@ -437,7 +456,7 @@ def plotly_many_maps(
         lambda trace:
             trace.update(showlegend=False)
             if (trace.name in names) else names.add(trace.name))
-    
+
     # Disable clicking legend to remove trace:
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
