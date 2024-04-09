@@ -125,6 +125,8 @@ def find_scenario_results(id):
 
 
 def select_scenario(containers=[]):
+    """
+    """
     if len(containers) == 0:
         containers = [st.container() for i in range(4)]
 
@@ -133,7 +135,7 @@ def select_scenario(containers=[]):
         outcome_type_str = st.radio(
             'Outcome measure',
             ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
-            # horizontal=True
+            index=1  # 'added utility' as default
         )
     # Match the input string to the file name string:
     outcome_type_dict = {
@@ -163,7 +165,8 @@ def select_scenario(containers=[]):
     with containers[1]:
         treatment_type_str = st.radio(
             'Treatment type',
-            ['IVT', 'MT', 'IVT & MT']
+            ['IVT', 'MT', 'IVT & MT'],
+            index=2  # IVT & MT as default
             )
     # Match the input string to the file name string:
     treatment_type_dict = {
