@@ -506,7 +506,6 @@ with st.sidebar:
 with container_map_inputs:
     cols = st.columns(3)
     scenario_dict = inputs.select_scenario(cols)
-colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
 # If the requested data is nLVO + MT, stop now.
 stop_bool = (
@@ -531,6 +530,8 @@ columns_colours = [
 # this intended map once it's finished being drawn
 with container_map:
     plotly_blank_maps(columns_colours)
+
+colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
 gdf_boundaries_msoa = main_calculations(input_dict)
 
