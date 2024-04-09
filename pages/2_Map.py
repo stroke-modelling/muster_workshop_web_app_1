@@ -45,6 +45,9 @@ def main_calculations(input_dict):
 
     df_msoa = inputs.convert_lsoa_to_msoa_results(df_lsoa)
 
+    st.markdown('### Results by MSOA')
+    st.write(df_msoa)
+
     # Check whether the input DataFrames have a 'scenario' column level.
     # This is required for talking to stroke-maps package.
     # If not, add one now with a placeholder scenario name.
@@ -395,6 +398,13 @@ def plotly_many_maps(
         gdfs_to_combine.append(gdf)
 
     gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
+    # Make a new index column:
+    gdf_polys['index'] = range(len(gdf_polys))
+    gdf_polys = gdf_polys.set_index('index')
+    # Otherwise the px.choropleth line below will only draw
+    # the first polygon with each index value, not the one
+    # that actually belongs to the scenario in facet_col.
+
 
     # Begin plotting.
     # fig = make_subplots(rows=3, cols=4, shared_yaxes=True, shared_xaxes=True)
@@ -525,7 +535,6 @@ gdf_boundaries_msoa = main_calculations(input_dict)
 # Find geometry column for plot function:
 col_geo = utils.find_multiindex_column_names(
     gdf_boundaries_msoa, property=['geometry'])
-
 
 plotly_many_maps(
     gdf_boundaries_msoa,
