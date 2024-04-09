@@ -17,7 +17,7 @@ import os
 import geopandas
 import pyproj  # for crs conversion
 from shapely.validation import make_valid  # for fixing dodgy polygons
-from plotly.subplots import make_subplots
+# from plotly.subplots import make_subplots
 
 # For setting up maps:
 from stroke_maps.geo import import_geojson, check_scenario_level

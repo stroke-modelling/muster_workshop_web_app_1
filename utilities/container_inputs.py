@@ -257,7 +257,7 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': 0.3,
                 'vmax': 0.6,
-                'step_size': 0.025,
+                'step_size': 0.05,
                 'cmap_name': 'inferno'
             },
             'diff': {
@@ -277,15 +277,15 @@ def set_up_colours(scenario_dict):
             'diff': {
                 'vmin': -0.3,
                 'vmax': 0.3,
-                'step_size': 0.025,
+                'step_size': 0.05,
                 'cmap_name': 'RdBu'
             },
         },
         'mrs_shift': {
             'scenario': {
-                'vmin': -0.3,
+                'vmin': -0.5,
                 'vmax': 0.0,
-                'step_size': 0.025,
+                'step_size': 0.1,
                 'cmap_name': 'inferno'
             },
             'diff': {
@@ -299,7 +299,7 @@ def set_up_colours(scenario_dict):
             'scenario': {
                 'vmin': 0.30,
                 'vmax': 0.70,
-                'step_size': 0.025,
+                'step_size': 0.05,
                 'cmap_name': 'inferno'
             },
             'diff': {
