@@ -415,7 +415,7 @@ def plotly_many_maps(
     # polygons in that outcome band. Maybe a rounding error?
 
     # Sort the dataframe for the sake of the legend order:
-    gdf_polys = gdf_polys.sort_values(by=['scenario', 'inds'])
+    gdf_polys = gdf_polys.sort_values(by=['inds'])
 
     # Begin plotting.
     fig = px.choropleth(
@@ -425,6 +425,8 @@ def plotly_many_maps(
         color=gdf_polys['labels'],
         color_discrete_map=colour_map,
         facet_col='scenario',
+        # Which order the plots should appear in:
+        category_orders={'scenario': columns_colour}
         # facet_col_wrap=3  # How many subplots to get on a single row
         )
 
