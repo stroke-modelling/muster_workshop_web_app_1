@@ -7,6 +7,8 @@ matplotlib
 shapely==2.0.1
 stroke-outcome
 stroke-maps
+yaml
+# yaml is temporary - should have been included in stroke-maps package
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 
 streamlit
