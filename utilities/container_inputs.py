@@ -238,21 +238,20 @@ def set_up_colours(scenario_dict):
     max ever displayed:
 
     utility:
-    max times: > 0.300, 
+    max times: > 0.300,
 
-    
     utility shift:
-    min times: 0.100 < 0.150, 0.150 < 0.200, 0.200 < 0.250, 
+    min times: 0.100 < 0.150, 0.150 < 0.200, 0.200 < 0.250,
     max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-    
+
     mrs shift:
-    min times: <0.000, 
+    min times: <0.000,
     max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-    
+
     mrs 0-2:
-    min times: 0.250 - 0.0300, > 0.300, 
+    min times: 0.250 - 0.0300, > 0.300,
     max times: 0.250 - 0.300, > 0.300
-    
+
     """
     # Define shared colour scales:
     cbar_dict = {
@@ -325,7 +324,7 @@ def set_up_colours(scenario_dict):
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
-    v_bands_str = make_v_bands_str(v_bands)
+    v_bands_str = make_v_bands_str(v_bands, v_name='v')
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
     colour_dict = {
@@ -360,16 +359,16 @@ def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
     return colour_map
 
 
-def make_v_bands_str(v_bands):
+def make_v_bands_str(v_bands, v_name='v'):
     """Turn contour ranges into formatted strings."""
     v_min = v_bands[0]
     v_max = v_bands[-1]
 
-    v_bands_str = [f'v < {v_min:.3f}']
+    v_bands_str = [f'{v_name} < {v_min:.3f}']
     for i, band in enumerate(v_bands[:-1]):
-        b = f'{band:.3f} <= v < {v_bands[i+1]:.3f}'
+        b = f'{band:.3f} <= {v_name} < {v_bands[i+1]:.3f}'
         v_bands_str.append(b)
-    v_bands_str.append(f'{v_max:.3f} <= v')
+    v_bands_str.append(f'{v_max:.3f} <= {v_name}')
 
     v_bands_str = np.array(v_bands_str)
     return v_bands_str

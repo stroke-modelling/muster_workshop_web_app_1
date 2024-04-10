@@ -210,7 +210,8 @@ def plotly_many_maps(
         v_bands,
         v_bands_str,
         colour_map,
-        subplot_titles=[]  # plot titles
+        subplot_titles=[],  # plot titles
+        legend_title='Outcome'
         ):
 
     if len(subplot_titles) == 0:
@@ -258,22 +259,22 @@ def plotly_many_maps(
         inds = np.digitize(gdf.loc[mask, 'outcome'], v_bands)
         labels = v_bands_str[inds]
         # Flag NaN values:
-        gdf.loc[mask, 'labels'] = labels
-        gdf.loc[~mask, 'labels'] = 'rubbish'
+        gdf.loc[mask, legend_title] = labels
+        gdf.loc[~mask, legend_title] = 'rubbish'
         # Drop outcome column:
         gdf = gdf.drop('outcome', axis='columns')
         # Dissolve by shared outcome value:
-        gdf = gdf.dissolve(by='labels', sort=False)
+        gdf = gdf.dissolve(by=legend_title, sort=False)
         gdf = gdf.reset_index()
         # Remove the NaN polygon:
-        gdf = gdf[gdf['labels'] != 'rubbish']
+        gdf = gdf[gdf[legend_title] != 'rubbish']
 
         # Add back in the inds:
         df_inds = pd.DataFrame(
             np.array([np.arange(len(v_bands_str)), v_bands_str]).T,
-            columns=['inds', 'labels']
+            columns=['inds', legend_title]
             )
-        gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
+        gdf = pd.merge(gdf, df_inds, left_on=legend_title, right_on=legend_title)
         # # Sort the dataframe for the sake of the legend order:
         # gdf = gdf.sort_values(by='inds')
         gdf['inds'] = gdf['inds'].astype(int)
@@ -293,7 +294,7 @@ def plotly_many_maps(
     # each colour, so that the legend has all of the colour entries
     # and is always in increasing order.
     gdf_bonus = pd.DataFrame()
-    gdf_bonus['labels'] = v_bands_str
+    gdf_bonus[legend_title] = v_bands_str
     gdf_bonus['inds'] = range(len(v_bands_str))
     gdf_bonus['scenario'] = subplot_titles[0]
     # Make a tiny polygon around these coordinates on the Isle of Man
@@ -338,7 +339,7 @@ def plotly_many_maps(
         gdf_polys,
         locations=gdf_polys.index,
         geojson=gdf_polys.geometry.__geo_interface__,
-        color=gdf_polys['labels'],
+        color=gdf_polys[legend_title],
         color_discrete_map=colour_map,
         facet_col='scenario',
         # Which order the plots should appear in:
@@ -467,7 +468,8 @@ plotly_many_maps(
     v_bands=colour_dict['v_bands'],
     v_bands_str=colour_dict['v_bands_str'],
     colour_map=colour_dict['colour_map'],
-    subplot_titles=scenario_types
+    subplot_titles=scenario_types,
+    legend_title=f'v: {scenario_dict["outcome_type_str"]}'
 )
 
 # # Plot map:
