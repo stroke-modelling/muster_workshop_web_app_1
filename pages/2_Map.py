@@ -18,6 +18,7 @@ import geopandas
 import pyproj  # for crs conversion
 from shapely.validation import make_valid  # for fixing dodgy polygons
 # from plotly.subplots import make_subplots
+from shapely import Polygon  # for dummy polygons for legend order
 
 # For setting up maps:
 from stroke_maps.geo import import_geojson, check_scenario_level
@@ -145,43 +146,10 @@ def _load_geometry_msoa(df_msoa):
     return gdf_boundaries_msoa
 
 
-def plotly_blank_map():
-    path_to_file = os.path.join('data', 'outline_england_wales.geojson')
-    gdf = geopandas.read_file(path_to_file)
-    # Has to be this CRS to prevent Picasso drawing:
-    gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
-
-    # Blank name to make nothing show up in the legend:
-    label = '.' + ' '*40 + '.'
-    gdf[' '] = label
-
-    # Begin plotting.
-    fig = go.Figure()
-
-    fig = px.choropleth(
-        gdf,
-        locations=gdf.index,
-        geojson=gdf.geometry.__geo_interface__,
-        color=gdf[' '],
-        color_discrete_map={label: 'rgba(0, 0, 0, 0)'}
-        )
-
-    fig.update_layout(
-        width=800,
-        height=800
-        )
-    fig.update_layout(
-        geo=dict(
-            scope='world',
-            projection=go.layout.geo.Projection(type='airy'),
-            fitbounds='locations',
-            visible=False
-        ))
-
-    st.plotly_chart(fig)
-
-
-def plotly_blank_maps(col_cols=[]):
+def plotly_blank_maps(subplot_titles=[]):
+    """
+    Show some blank England & Wales outlines while real map loads.
+    """
     path_to_file = os.path.join('data', 'outline_england_wales.geojson')
     gdf = geopandas.read_file(path_to_file)
     # Has to be this CRS to prevent Picasso drawing:
@@ -196,12 +164,12 @@ def plotly_blank_maps(col_cols=[]):
     # gdf_polys
     gdfs_to_combine = []
 
-    if len(col_cols) == 0:
-        col_cols = range(3)
+    if len(subplot_titles) == 0:
+        subplot_titles = range(3)
 
     for i in range(3):
         gdf_here = gdf.copy()
-        gdf_here['scenario'] = col_cols[i]
+        gdf_here['scenario'] = subplot_titles[i]
         gdfs_to_combine.append(gdf_here)
 
     gdf = pd.concat(gdfs_to_combine, axis='rows')
@@ -214,6 +182,7 @@ def plotly_blank_maps(col_cols=[]):
         color=gdf[' '],
         color_discrete_map={label: 'rgba(0, 0, 0, 0)'},
         facet_col='scenario',
+        category_orders={'scenario': subplot_titles}
         )
 
     fig.update_layout(
@@ -223,100 +192,15 @@ def plotly_blank_maps(col_cols=[]):
     fig.update_layout(margin_t=20)
     fig.update_layout(margin_b=0)
     fig.update_geos(
-            scope='world',
-            projection=go.layout.geo.Projection(type='airy'),
-            fitbounds='locations',
-            visible=False
+        scope='world',
+        projection=go.layout.geo.Projection(type='airy'),
+        fitbounds='locations',
+        visible=False,
+        bgcolor='rgba(0,0,0,0)'  # transparent background
         )
+    fig.update_traces(marker_line_color='grey')
 
     st.plotly_chart(fig)
-
-
-def plotly_big_map(
-        gdf,
-        column_colour,
-        column_geometry,
-        v_bands,
-        v_bands_str,
-        colour_map
-        ):
-    gdf = gdf.copy()
-    crs = gdf.crs
-    gdf = gdf.reset_index()
-
-    # Only keep the required columns:
-    gdf = gdf[[column_colour, column_geometry]]
-    # Only keep the 'property' subheading:
-    gdf = pd.DataFrame(
-        gdf.values,
-        columns=['outcome', 'geometry']
-    )
-    gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
-
-    # Has to be this CRS to prevent Picasso drawing:
-    gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
-
-    # Group by outcome band.
-    # Only group by non-NaN values:
-    mask = ~pd.isna(gdf['outcome'])
-    inds = np.digitize(gdf.loc[mask, 'outcome'], v_bands)
-    labels = v_bands_str[inds]
-    # Flag NaN values:
-    gdf.loc[mask, 'labels'] = labels
-    gdf.loc[~mask, 'labels'] = 'rubbish'
-    # Drop outcome column:
-    gdf = gdf.drop('outcome', axis='columns')
-    # Dissolve by shared outcome value:
-    gdf = gdf.dissolve(by='labels', sort=False)
-    gdf = gdf.reset_index()
-    # Remove the NaN polygon:
-    gdf = gdf[gdf['labels'] != 'rubbish']
-
-    # Add back in the inds:
-    df_inds = pd.DataFrame(
-        np.array([np.arange(len(v_bands_str)), v_bands_str]).T,
-        columns=['inds', 'labels']
-        )
-    gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
-    # Sort the dataframe for the sake of the legend order:
-    gdf = gdf.sort_values(by='inds')
-
-    # Simplify the polygons:
-    # # Simplify geometry to 1000m accuracy
-    # gdf['geometry'] = (
-    #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(1000).to_crs(gdf.crs)
-    # )
-
-    # Begin plotting.
-    fig = go.Figure()
-
-    fig = px.choropleth(
-        gdf,
-        locations=gdf.index,
-        geojson=gdf.geometry.__geo_interface__,
-        color=gdf['labels'],
-        color_discrete_map=colour_map
-        )
-
-    fig.update_layout(
-        width=800,
-        height=800
-        )
-    fig.update_layout(
-        geo=dict(
-            scope='world',
-            projection=go.layout.geo.Projection(type='airy'),
-            fitbounds='locations',
-            visible=False
-        ))
-    # Remove msoa borders:
-    fig.update_traces(marker_line_width=0, selector=dict(type='choropleth'))
-
-    fig.update_traces(hovertemplate='%{z}<extra>%{location}</extra>')
-
-    # fig.write_html('./plotly_choro_test.html')
-    with container_map:
-        st.plotly_chart(fig)
 
 
 def plotly_many_maps(
@@ -325,8 +209,12 @@ def plotly_many_maps(
         column_geometry,
         v_bands,
         v_bands_str,
-        colour_map
+        colour_map,
+        subplot_titles=[]  # plot titles
         ):
+
+    if len(subplot_titles) == 0:
+        subplot_titles = columns_colour
 
     # Make a new gdf containing all combined polygons
     # for all plots:
@@ -388,16 +276,44 @@ def plotly_many_maps(
         gdf = pd.merge(gdf, df_inds, left_on='labels', right_on='labels')
         # # Sort the dataframe for the sake of the legend order:
         # gdf = gdf.sort_values(by='inds')
+        gdf['inds'] = gdf['inds'].astype(int)
 
-        gdf['scenario'] = col_col
+        gdf['scenario'] = subplot_titles[i]
 
-        # Simplify the polygons:
-        # # Simplify geometry to 1000m accuracy
+        # # # Simplify the polygons:
+        # # For Picasso mode.
+        # # Simplify geometry to 10000m accuracy
         # gdf['geometry'] = (
-        #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(1000).to_crs(gdf.crs)
+        #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(10000).to_crs(gdf.crs)
         # )
 
         gdfs_to_combine.append(gdf)
+
+    # Make a bonus gdf of the world's tiniest polygons, one of
+    # each colour, so that the legend has all of the colour entries
+    # and is always in increasing order.
+    gdf_bonus = pd.DataFrame()
+    gdf_bonus['labels'] = v_bands_str
+    gdf_bonus['inds'] = range(len(v_bands_str))
+    gdf_bonus['scenario'] = subplot_titles[0]
+    # Make a tiny polygon around these coordinates on the Isle of Man
+    # (coordinates should be included on our England & Wales map
+    # but not expecting anyone to closely look at this area).
+    # Coords: 54.147729, -4.471397
+    bonus_long = 54.147729
+    bonus_lat = -4.471397
+    poly = Polygon([
+        [bonus_lat, bonus_long],
+        [bonus_lat+1e-5, bonus_long],
+        [bonus_lat+1e-5, bonus_long+1e-5],
+        [bonus_lat, bonus_long+1e-5],
+        ])
+    gdf_bonus['geometry'] = poly
+    gdf_bonus['inds'] = gdf_bonus['inds'].astype(int)
+    gdf_bonus = geopandas.GeoDataFrame(
+        gdf_bonus, geometry='geometry', crs='EPSG:4326')
+
+    gdfs_to_combine.append(gdf_bonus)
 
     gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
     # Make a new index column:
@@ -426,7 +342,7 @@ def plotly_many_maps(
         color_discrete_map=colour_map,
         facet_col='scenario',
         # Which order the plots should appear in:
-        category_orders={'scenario': columns_colour}
+        category_orders={'scenario': subplot_titles},
         # facet_col_wrap=3  # How many subplots to get on a single row
         )
 
@@ -437,7 +353,8 @@ def plotly_many_maps(
         scope='world',
         projection=go.layout.geo.Projection(type='airy'),
         fitbounds='locations',
-        visible=False
+        visible=False,
+        bgcolor='rgba(0,0,0,0)'  # transparent background
         )
     fig.update_layout(
         width=1300,
@@ -518,20 +435,11 @@ if stop_bool:
     st.warning('No data for nLVO with MT.')
     st.stop()
 
-columns_colours = [
-    '_'.join([
-        scenario_dict['stroke_type'],
-        scenario_type,
-        scenario_dict['treatment_type'],
-        scenario_dict['outcome_type']
-    ])
-    for scenario_type in ['drip_ship', 'mothership', 'msu']
-    ]
-
+scenario_types = ['drip_ship', 'mothership', 'msu']
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
-    plotly_blank_maps(columns_colours)
+    plotly_blank_maps(scenario_types)
 
 colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
@@ -541,13 +449,25 @@ gdf_boundaries_msoa = main_calculations(input_dict)
 col_geo = utils.find_multiindex_column_names(
     gdf_boundaries_msoa, property=['geometry'])
 
+
+columns_colours = [
+    '_'.join([
+        scenario_dict['stroke_type'],
+        scenario_type,
+        scenario_dict['treatment_type'],
+        scenario_dict['outcome_type']
+    ])
+    for scenario_type in scenario_types
+    ]
+
 plotly_many_maps(
     gdf_boundaries_msoa,
     columns_colours,
     column_geometry=col_geo,
     v_bands=colour_dict['v_bands'],
     v_bands_str=colour_dict['v_bands_str'],
-    colour_map=colour_dict['colour_map']
+    colour_map=colour_dict['colour_map'],
+    subplot_titles=scenario_types
 )
 
 # # Plot map:
