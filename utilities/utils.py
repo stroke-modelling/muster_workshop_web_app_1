@@ -99,7 +99,7 @@ def convert_row_to_table(df_here, index_cols_list):
     return df_here
 
 
-def make_outline_england_wales():
+def make_outline_england_wales_full():
     """Similar to stroke-maps."""
     from stroke_maps.geo import import_geojson
     # All region polygons:
@@ -115,3 +115,32 @@ def make_outline_england_wales():
     gdf_boundaries_regions = gdf_boundaries_regions.dissolve(by='ind')
     # Save:
     gdf_boundaries_regions.to_file('data/outline_england_wales.geojson')
+
+
+def make_outline_england_wales():
+    """Similar to stroke-maps."""
+    from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+    import shapely
+
+    # All msoa shapes:
+    gdf = import_geojson(
+        'MSOA11NM',
+        path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        )
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Combine:
+    gdf['ind'] = 0
+    gdf = gdf.dissolve(by='ind')
+
+    # Reduce precision
+    gdf.geometry = shapely.set_precision(gdf.geometry, grid_size=0.001)
+
+    # Save:
+    gdf.to_file('data/outline_england_wales.geojson')
