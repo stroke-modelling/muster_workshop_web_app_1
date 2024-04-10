@@ -288,7 +288,7 @@ def set_up_colours(scenario_dict):
                 'vmin': -0.5,
                 'vmax': 0.0,
                 'step_size': 0.1,
-                'cmap_name': 'inferno'
+                'cmap_name': 'inferno_r'  # lower numbers are better
             },
             'diff': {
                 'vmin': -0.3,

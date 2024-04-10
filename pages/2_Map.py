@@ -346,8 +346,12 @@ def plotly_many_maps(
         category_orders={'scenario': subplot_titles},
         # facet_col_wrap=3  # How many subplots to get on a single row
         )
-
-    fig.update_traces(hoverinfo='skip')
+    # Remove hover labels for choropleth:
+    fig.update_traces(
+        hovertemplate=None,
+        hoverinfo='skip'
+        )
+    # Remove outlines of contours:
     fig.update_traces(marker_line_width=0)
 
     fig.update_geos(
@@ -362,12 +366,101 @@ def plotly_many_maps(
         height=500
         )
 
-    fig.update_layout(hovermode=False)
-
     fig.update_layout(margin_t=20)
     fig.update_layout(margin_b=0)
     # fig.update_layout(margin_t=0)
     # fig.update_layout(margin_t=0)
+
+    # Disable clicking legend to remove trace:
+    fig.update_layout(legend_itemclick=False)
+    fig.update_layout(legend_itemdoubleclick=False)
+
+    # Add a blank trace to put a gap in the legend.
+    # Stupid? Yes. Works? Also yes.
+    fig.add_trace(go.Scattergeo(
+        lat=[None], lon=[None], marker={'color': 'rgba(0,0,0,0)'}, name=''
+    ))
+
+    # Add stroke team markers.
+    from stroke_maps.catchment import Catchment
+    from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
+    catchment = Catchment()
+    df_units = catchment.get_unit_services()
+    # Build geometry:
+    df_units = check_scenario_level(df_units)
+    gdf_points_units = _load_geometry_stroke_units(df_units)
+
+    # Set up markers using a new column in DataFrame.
+    # Set everything to the IVT marker:
+    markers = np.full(len(gdf_points_units), 'circle', dtype=object)
+    # Update MT units:
+    from stroke_maps.utils import find_multiindex_column_names
+    col_use_mt = find_multiindex_column_names(
+        gdf_points_units, property=['use_mt'])
+    mask_mt = (gdf_points_units[col_use_mt] == 1)
+    markers[mask_mt] = 'square'
+    # Store in the DataFrame:
+    gdf_points_units[('marker', 'any')] = markers
+
+
+    # Add markers in separate traces for the sake of legend entries.
+    # Pick out which stroke unit types are where in the gdf:
+    col_ivt = ('use_ivt', 'scenario')
+    col_mt = ('use_mt', 'scenario')
+    col_msu = ('use_msu', 'scenario')
+    mask_ivt = (
+        (gdf_points_units[col_ivt] == 1) &
+        (gdf_points_units[col_mt] == 0) &
+        (gdf_points_units[col_msu] == 0)
+    )
+    mask_mt = (
+        (gdf_points_units[col_mt] == 1)
+    )
+    mask_msu = (
+        (gdf_points_units[col_msu] == 1)
+    )
+    # Formatting for the markers:
+    labels = ['IVT unit', 'MT unit', 'MSU base']
+    masks = [mask_ivt, mask_mt, mask_msu]
+    markers = ['circle', 'star', 'square']
+    sizes = [6, 10, 13]
+    colours = ['white', 'white', 'white']
+
+    # Build the traces for the stroke units...
+    traces = []
+    for i in range(3):
+        mask = masks[i]
+        trace = go.Scattergeo(
+            lon=gdf_points_units.loc[mask, ('Longitude', 'any')],
+            lat=gdf_points_units.loc[mask, ('Latitude', 'any')],
+            marker={
+                'symbol': markers[i],
+                'color': colours[i],
+                'line': {'color': 'black', 'width': 1},
+                'size': sizes[i]
+            },
+            name=labels[i],
+            customdata=np.stack([gdf_points_units.loc[mask, ('ssnap_name', 'scenario')]], axis=-1),
+            hovertemplate=(
+                '%{customdata[0]}' +
+                # Need the following line to remove default "trace" bit
+                # in second "extra" box:
+                '<extra></extra>'
+                )
+        )
+        traces.append(trace)
+
+    # ... and THEN add traces to the subplots.
+    # MSU bases:
+    fig.add_trace(traces[2], row=1, col=3)
+    # IVT units:
+    fig.add_trace(traces[0], row=1, col=1)
+    fig.add_trace(traces[0], row=1, col=3)
+    # MT units:
+    fig.add_trace(traces[1], row=1, col=1)
+    fig.add_trace(traces[1], row=1, col=2)
+    fig.add_trace(traces[1], row=1, col=3)
+
 
     # Remove repeat legend names:
     # from https://stackoverflow.com/a/62162555
@@ -376,10 +469,6 @@ def plotly_many_maps(
         lambda trace:
             trace.update(showlegend=False)
             if (trace.name in names) else names.add(trace.name))
-
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
 
     with container_map:
         st.plotly_chart(fig)
@@ -424,7 +513,7 @@ with st.sidebar:
     input_dict = inputs.select_parameters()
 
 with container_map_inputs:
-    cols = st.columns(3)
+    cols = st.columns(6)  # make more columns than needed to space closer
     scenario_dict = inputs.select_scenario(cols)
 
 # If the requested data is nLVO + MT, stop now.
@@ -471,32 +560,6 @@ plotly_many_maps(
     subplot_titles=scenario_types,
     legend_title=f'v: {scenario_dict["outcome_type_str"]}'
 )
-
-# # Plot map:
-# with st.spinner(text='Drawing maps'):
-#     for scenario_type in ['drip_ship', 'mothership', 'msu']:
-#         column_to_plot = '_'.join([
-#             scenario_dict['stroke_type'],
-#             scenario_type,
-#             scenario_dict['treatment_type'],
-#             scenario_dict['outcome_type']
-#         ])
-
-#         # Selected column to use for colour values:
-#         col_col = utils.find_multiindex_column_names(
-#             gdf_boundaries_msoa,
-#             property=[column_to_plot],
-#             # scenario=[scenario_type],
-#             # subtype=['mean']
-#             )
-#         plotly_big_map(
-#             gdf_boundaries_msoa,
-#             column_colour=col_col,
-#             column_geometry=col_geo,
-#             v_bands=colour_dict['v_bands'],
-#             v_bands_str=colour_dict['v_bands_str'],
-#             colour_map=colour_dict['colour_map']
-#             )
 
 st.stop()
 
