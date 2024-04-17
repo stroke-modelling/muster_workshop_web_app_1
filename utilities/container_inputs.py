@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt  # for colour maps
 
+
 def select_parameters():
     # Set up scenarios
     scenarios = {
