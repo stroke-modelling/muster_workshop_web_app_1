@@ -80,12 +80,12 @@ def make_column_style_dict(cols, format='%.3f'):
     return style_dict
 
 
-@st.cache_data
+# @st.cache_data
 def make_outcomes(input_dict):
     # Feed input parameters into Scenario:
     scenario = Scenario({
         'name': 1,
-        'limit_to_england': False,
+        'limit_to_england': True,
         **input_dict
     })
 

@@ -9,6 +9,8 @@ done in functions stored in files named container_(something).py
 """
 # ----- Imports -----
 import streamlit as st
+from importlib_resources import files
+import pandas as pd
 
 from stroke_maps.geo import check_scenario_level
 # Custom functions:
@@ -19,13 +21,10 @@ import utilities.container_inputs as inputs
 import utilities.container_results as results
 
 
-@st.cache_data
+# @st.cache_data
 def main_calculations(input_dict):
     # Run the outcomes with the selected pathway:
     df_lsoa = results.make_outcomes(input_dict)
-
-    st.markdown('### Results by LSOA')
-    st.write(df_lsoa)
 
     # TO DO - the results df contains a mix of scenarios
     # (drip and ship, mothership, msu) in the column names.
@@ -34,6 +33,7 @@ def main_calculations(input_dict):
     # because current setup just wants some averaged added utility outcome
     # rather than split by stroke type.
 
+    # --- MSOAs for geography ---
     df_msoa = inputs.convert_lsoa_to_msoa_results(df_lsoa)
 
     # Check whether the input DataFrames have a 'scenario' column level.
@@ -43,6 +43,59 @@ def main_calculations(input_dict):
 
     # Merge outcome and geography:
     gdf_boundaries_msoa = maps._load_geometry_msoa(df_msoa)
+
+    # --- LSOAs for grouping results ---
+    # Merge in other region info.
+
+    # Load region info for each LSOA:
+    # Relative import from package files:
+    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
+    df_lsoa_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    df_lsoa = pd.merge(df_lsoa, df_lsoa_regions, left_on='lsoa', right_on='lsoa', how='left')
+
+    # Load further region data linking SICBL to other regions:
+    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
+    df_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    # Drop columns already in df_lsoa:
+    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+    df_lsoa = pd.merge(df_lsoa, df_regions, left_on='region_code', right_on='region_code', how='left')
+
+    st.markdown('### Results by LSOA')
+    st.write(df_lsoa)
+
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with some object columns)
+    df_lsoa = df_lsoa.drop([
+        'lsoa', 'lsoa_code', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
+        'nearest_msu_unit', 'short_code', 'country'
+        ], axis='columns')
+
+    # Glob results by ICB:
+    df_icb = df_lsoa.copy()
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with some object columns)
+    df_icb = df_icb.drop([
+        'region', 'region_type', 'region_code', 'icb_code', 'isdn'
+        ], axis='columns')
+    # Average:
+    df_icb = df_icb.groupby('icb').mean()
+
+    # Glob results by ISDN:
+    df_isdn = df_lsoa.copy()
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with some object columns)
+    df_isdn = df_isdn.drop([
+        'region', 'region_type', 'region_code', 'icb', 'icb_code'
+        ], axis='columns')
+    # Average:
+    df_isdn = df_isdn.groupby('isdn').mean()
+
+    st.markdown('### Results by ISDN')
+    st.write(df_isdn)
+
+    st.markdown('### Results by ICB')
+    st.write(df_icb)
+
     return gdf_boundaries_msoa
 
 
