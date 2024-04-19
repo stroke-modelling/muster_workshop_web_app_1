@@ -258,11 +258,11 @@ if stop_bool:
     st.warning('No data for nLVO with MT.')
     st.stop()
 
-scenario_types = ['drip_ship', 'mothership', 'msu']
+scenario_types = ['drip_ship', 'msu']
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
-    maps.plotly_blank_maps(scenario_types)
+    maps.plotly_blank_maps(scenario_types, n_blank=2)
 
 colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
@@ -280,7 +280,7 @@ columns_colours = [
         scenario_dict['treatment_type'],
         scenario_dict['outcome_type']
     ])
-    for scenario_type in scenario_types
+    for scenario_type in ['drip_ship', 'msu']
     ]
 
 maps.plotly_many_maps(
@@ -290,7 +290,7 @@ maps.plotly_many_maps(
     v_bands=colour_dict['v_bands'],
     v_bands_str=colour_dict['v_bands_str'],
     colour_map=colour_dict['colour_map'],
-    subplot_titles=scenario_types,
+    subplot_titles=['drip_ship', 'msu'],
     legend_title=f'v: {scenario_dict["outcome_type_str"]}',
     container_map=container_map,
     df_units=df_unit_services_full

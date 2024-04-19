@@ -101,7 +101,7 @@ def _load_geometry_msoa(df_msoa):
     return gdf_boundaries_msoa
 
 
-def plotly_blank_maps(subplot_titles=[]):
+def plotly_blank_maps(subplot_titles=[], n_blank=2):
     """
     Show some blank England & Wales outlines while real map loads.
     """
@@ -120,9 +120,9 @@ def plotly_blank_maps(subplot_titles=[]):
     gdfs_to_combine = []
 
     if len(subplot_titles) == 0:
-        subplot_titles = range(3)
+        subplot_titles = range(n_blank)
 
-    for i in range(3):
+    for i in range(n_blank):
         gdf_here = gdf.copy()
         gdf_here['scenario'] = subplot_titles[i]
         gdfs_to_combine.append(gdf_here)
@@ -141,7 +141,7 @@ def plotly_blank_maps(subplot_titles=[]):
         )
 
     fig.update_layout(
-        width=1300,
+        width=900,
         height=500
         )
     fig.update_layout(margin_t=20)
@@ -319,7 +319,7 @@ def plotly_many_maps(
         bgcolor='rgba(0,0,0,0)'  # transparent background
         )
     fig.update_layout(
-        width=1300,
+        width=900,
         height=500
         )
 
@@ -410,14 +410,13 @@ def plotly_many_maps(
 
     # ... and THEN add traces to the subplots.
     # MSU bases:
-    fig.add_trace(traces[2], row=1, col=3)
+    fig.add_trace(traces[2], row=1, col=2)
     # IVT units:
     fig.add_trace(traces[0], row=1, col=1)
-    fig.add_trace(traces[0], row=1, col=3)
+    fig.add_trace(traces[0], row=1, col=2)
     # MT units:
     fig.add_trace(traces[1], row=1, col=1)
     fig.add_trace(traces[1], row=1, col=2)
-    fig.add_trace(traces[1], row=1, col=3)
 
 
     # Remove repeat legend names:
