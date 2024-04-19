@@ -10,7 +10,7 @@ class Geoprocessing(object):
     Processing of raw geographic data for model.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         """
         Initialise geographic class.
 
@@ -72,6 +72,13 @@ class Geoprocessing(object):
             Save combined data
                 
         """
+        # Overwrite default values (can take named arguments or a dictionary)
+        for dictionary in args:
+            for key in dictionary:
+                setattr(self, key, dictionary[key])
+
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
 
     def run(self):
         """
@@ -166,8 +173,24 @@ class Geoprocessing(object):
         """
         Load raw geographic data.
         """
-        self.hospitals = pd.read_csv(
-            './data/stroke_hospitals.csv', index_col='Postcode')
+        # self.hospitals = pd.read_csv(
+        #     './data/stroke_hospitals.csv', index_col='Postcode')
+
+        from stroke_maps.catchment import Catchment
+        catchment = Catchment()
+        self.hospitals = catchment.get_unit_services()
+
+        # Rename columns to match what the rest of the model here wants.
+        self.hospitals.index.name = 'Postcode'
+        self.hospitals = self.hospitals.rename(columns={
+            'use_ivt': 'Use_IVT',
+            'use_mt': 'Use_MT',
+            'use_msu': 'Use_MSU',
+        })
+        self.hospitals['Hospital_name'] = self.hospitals.index.copy()
+
+        if hasattr(self, 'df_unit_services'):
+            self.update_unit_services()
 
         self.admissions = pd.read_csv(
             './data/admissions_2017-2019.csv', index_col='area')
@@ -179,6 +202,26 @@ class Geoprocessing(object):
         self.lsoa_travel_time = pd.read_csv(
             './data/lsoa_travel_time_matrix_calibrated.csv', index_col='LSOA')
         self.lsoa_travel_time.sort_index(inplace=True)
+
+    def update_unit_services(self):
+        hospitals = self.hospitals
+        hospitals = hospitals.reset_index()
+
+        df_unit_services = self.df_unit_services
+        cols_new = df_unit_services.columns
+        df_unit_services = df_unit_services.reset_index()
+
+        for col_new in cols_new:
+            hospitals = pd.merge(
+                hospitals, df_unit_services[['Postcode', col_new]],
+                left_on='Postcode', right_on='Postcode',
+                how='right', suffixes=['_old', None]
+            )
+        hospitals = hospitals.set_index('Postcode')
+        # Remove 'old' columns:
+        cols = hospitals.columns
+        cols = [c for c in cols if not c.endswith('_old')]
+        self.hospitals = hospitals[cols]
 
     def save_processed_data(self):
         """

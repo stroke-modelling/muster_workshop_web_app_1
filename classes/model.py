@@ -36,7 +36,17 @@ class Model(object):
 
         if self.scenario.limit_to_england:
             mask = self.geodata['England'] == 1
-            self.geodata = self.geodata[mask]
+            self.geodata = self.geodata.loc[mask].copy(deep=True)
+
+            # Index shenanigans.
+            # I don't know why, but it quietly breaks some of the LSOA
+            # when the index is mostly range index integers but has
+            # gaps where we've taken out the Welsh LSOA.
+            # The affected English LSOAs get all None for their outcomes
+            # and show up as blank in any maps.
+            self.geodata.index.name = 'rubbish'
+            self.geodata = self.geodata.reset_index()
+            self.geodata = self.geodata.drop(['rubbish'], axis='columns')
 
     def run(self):
         """
