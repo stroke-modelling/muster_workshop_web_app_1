@@ -60,6 +60,8 @@ class Model(object):
         self.add_mothership()
         self.add_msu()
 
+        self.add_diff_msu_minus_drip_ship()
+
         # Reindex on LSOA
         self.full_results.set_index('LSOA', inplace=True)
         self.summary_results = self.full_results.describe().T
@@ -292,7 +294,7 @@ class Model(object):
             (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
             self.scenario.process_msu_on_scene_no_thrombolysis
             )
-        
+
         # Add clinical benefit for nLVO outcome (stroke type = 1)
         # Set up input table for stroke outcome package
         outcome_inputs_df = pd.DataFrame()
@@ -355,7 +357,41 @@ class Model(object):
             ['lvo_msu_ivt_utility', 'lvo_msu_mt_utility']].max(axis=1)
         self.full_results['lvo_msu_ivt_mt_utility_shift'] = self.full_results[
             ['lvo_msu_ivt_utility_shift', 'lvo_msu_mt_utility_shift']].max(axis=1)
-        
+
+    def add_diff_msu_minus_drip_ship(self):
+
+        scenario_types = ['msu', 'drip_ship']
+        occlusion_types = ['nlvo', 'lvo']
+        treatment_types = ['ivt', 'mt', 'ivt_mt']
+        outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+        for occ in occlusion_types:
+            for tre in treatment_types:
+                for out in outcome_types:
+                    # Existing column names:
+                    col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
+                    col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
+                    # New column name for the diff data:
+                    col_diff = ''.join([
+                        f'{occ}_',
+                        f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
+                        f'_{tre}_{out}'
+                    ])
+                    try:
+                        data_scen1 = self.full_results[col_scen1]
+                        data_scen2 = self.full_results[col_scen2]
+                        data_exists = True
+                    except KeyError:
+                        # This combination doesn't exist
+                        # (e.g. nLVO with MT).
+                        data_exists = False
+
+                    if data_exists:
+                        data_diff = data_scen1 - data_scen2
+                        self.full_results[col_diff] = data_diff
+                    else:
+                        pass
+
     def save_results(self):
         """Save results to output folder"""
 

@@ -80,6 +80,78 @@ def select_parameters():
     return input_dict
 
 
+def select_parameters_map():
+    # Set up scenarios
+    scenarios = {
+        'process_time_call_ambulance': {
+            'values': [0, 60, 120, 180],
+            'name': 'Time to call ambulance',
+            'default': 60  # 1  # index for 60
+        },
+        'process_time_ambulance_response': {
+            'values': [15, 30, 45],
+            'name': 'Ambulance response time',
+            'default': 30  # 1  # index for 30
+        },
+        'process_ambulance_on_scene_duration': {
+            'values': [20, 30, 40],
+            'name': 'Time ambulance is on scene',
+            'default': 20  # 0  # index for 20
+        },
+        'process_msu_dispatch': {
+            'values': [0, 15, 30],
+            'name': 'MSU dispatch time',
+            'default': 15  # 1  # index for 15
+        },
+        'process_msu_thrombolysis': {
+            'values': [15, 30, 45],
+            'name': 'MSU IVT time',
+            'default': 30  # 1  # index for 30
+        },
+        'process_msu_on_scene_post_thrombolysis': {
+            'values': [15, 30],
+            'name': 'MSU on scene post IVT time',
+            'default': 15  # 0  # index for 15
+        },
+        'process_time_arrival_to_needle': {
+            'values': [30, 45],
+            'name': 'Hospital arrival to IVT time',
+            'default': 30  # 0  # index for 30
+        },
+        'transfer_time_delay': {
+            'values': [30, 60, 90],
+            'name': 'Door-in to door-out (for transfer to MT)',
+            'default': 60  # 1  # index for 60
+        },
+        'process_time_arrival_to_puncture': {
+            'values': [30, 45, 60],
+            'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
+            'default': 60  # 2  # index for 60
+        },
+        'process_time_transfer_arrival_to_puncture': {
+            'values': [30, 45, 60],
+            'name': 'Hospital arrival to MT time (for transfers)',
+            'default': 60  # 2  # index for 60
+        },
+        'process_time_msu_arrival_to_puncture': {
+            'values': [30, 45, 60],
+            'name': 'Hospital arrival to MT time (for MSU arrivals)',
+            'default': 60  # 2  # index for 60
+        },
+    }
+
+    input_dict = {}
+    for key, s_dict in scenarios.items():
+        input_dict[key] = st.number_input(
+            s_dict['name'],
+            value=s_dict['default'],
+            help=f"Reference value: {s_dict['default']}",  # temp
+            key=key
+            )
+
+    return input_dict
+
+
 @st.cache_data
 def load_scenario_list():
     df = pd.read_csv('./data/scenario_list_england.csv')
@@ -136,7 +208,8 @@ def select_scenario(containers=[]):
         outcome_type_str = st.radio(
             'Outcome measure',
             ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
-            index=1  # 'added utility' as default
+            index=1,  # 'added utility' as default
+            horizontal=True
         )
     # Match the input string to the file name string:
     outcome_type_dict = {
@@ -167,7 +240,8 @@ def select_scenario(containers=[]):
         treatment_type_str = st.radio(
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT'],
-            index=2  # IVT & MT as default
+            index=2,  # IVT & MT as default
+            horizontal=True
             )
     # Match the input string to the file name string:
     treatment_type_dict = {
@@ -181,7 +255,8 @@ def select_scenario(containers=[]):
     with containers[2]:
         stroke_type_str = st.radio(
             'Stroke type',
-            ['LVO', 'nLVO']
+            ['LVO', 'nLVO'],
+            horizontal=True
             )
     # Match the input string to the file name string:
     stroke_type_dict = {
@@ -234,7 +309,7 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     return df_msoa
 
 
-def set_up_colours(scenario_dict):
+def set_up_colours(scenario_dict, v_name='v'):
     """
     max ever displayed:
 
@@ -264,9 +339,9 @@ def set_up_colours(scenario_dict):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
-                'step_size': 0.05,
+                'vmin': -0.05,
+                'vmax': 0.05,
+                'step_size': 0.01,
                 'cmap_name': 'RdBu'
             },
         },
@@ -278,9 +353,9 @@ def set_up_colours(scenario_dict):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
-                'step_size': 0.05,
+                'vmin': -0.1,
+                'vmax': 0.1,
+                'step_size': 0.025,
                 'cmap_name': 'RdBu'
             },
         },
@@ -292,8 +367,8 @@ def set_up_colours(scenario_dict):
                 'cmap_name': 'inferno_r'  # lower numbers are better
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
+                'vmin': -0.2,
+                'vmax': 0.2,
                 'step_size': 0.05,
                 'cmap_name': 'RdBu'
             },
@@ -306,8 +381,8 @@ def set_up_colours(scenario_dict):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
+                'vmin': -0.15,
+                'vmax': 0.15,
                 'step_size': 0.05,
                 'cmap_name': 'RdBu'
             },
@@ -325,7 +400,7 @@ def set_up_colours(scenario_dict):
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
-    v_bands_str = make_v_bands_str(v_bands, v_name='v')
+    v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
     colour_dict = {
