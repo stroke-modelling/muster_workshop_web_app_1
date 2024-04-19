@@ -153,44 +153,26 @@ st.set_page_config(
 # +-----------------------+
 # |     container_map     |
 # +-----------------------+
-# | container_shared_data |
+# | container_map_inputs  |
 # +-----------------------+
-# | container_params_here |
+# | container_results_tables  |
 # +-----------------------+
-# |  container_outcomes   |
+# |  container_select_outcome   |
 # +-----------------------+
 container_intro = st.container()
-container_unit_services = st.container()
-container_map_inputs = st.container()
+with st.sidebar:
+    container_unit_services = st.container()
 container_map = st.empty()
-container_shared_data = st.container()
-container_params_here = st.container()
-container_outcomes = st.container()
+container_map_inputs = st.container()
+container_results_tables = st.container()
+container_select_outcome = st.container()
 
 # ###########################
 # ########## SETUP ##########
 # ###########################
 
-# Draw the input selection boxes in this function:
-with st.sidebar:
-    st.header('Pathway inputs')
-    input_dict = inputs.select_parameters_map()
-
-# Set a scale factor for how quickly the MSU can travel.
-with st.sidebar:
-    scale_msu_travel_times = st.number_input(
-        'Scale factor for MSU travel speed',
-        min_value=1.0,
-        max_value=5.0,
-    )
-    input_dict['scale_msu_travel_times'] = scale_msu_travel_times
-    time_not_msu = 20.0
-    time_msu = 20.0 * scale_msu_travel_times
-    st.markdown(''.join([
-        f'For example, a journey that takes {time_not_msu:.0f} minutes ',
-        f'in a normal ambulance would take {time_msu:.0f} minutes ',
-        'in a Mobile Stroke Unit vehicle.'
-        ]))
+with container_intro:
+    st.markdown('# Benefit in outcomes from Mobile Stroke Units')
 
 # Set up stroke unit services (IVT, MT, MSU).
 from stroke_maps.catchment import Catchment
@@ -216,14 +198,51 @@ cols_use = ['use_ivt', 'use_mt', 'use_msu']
 df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
 # Sort by ISDN name for nicer display:
 df_unit_services = df_unit_services.sort_values('isdn')
-with container_unit_services:
-    st.markdown('Update which services the stroke units provide:')
-    # Display and store any changes from the user:
-    df_unit_services = st.data_editor(
-        df_unit_services,
-        disabled=['postcode', 'stroke_team', 'isdn'],
-        height=180  # limit height to show fewer rows
+
+
+# Draw the input selection boxes in this function:
+with st.sidebar:
+    with st.form('Model setup'):
+        st.header('Pathway inputs')
+        input_dict = inputs.select_parameters_map()
+
+        def make_example_str():
+            time_not_msu = 20.0
+            time_msu = 20.0 * scale_msu_travel_times
+
+            example_str = ''.join([
+                f'For example, with a scale factor of {scale_msu_travel_times}, '
+                f'a journey that takes {time_not_msu:.0f} minutes ',
+                f'in a normal ambulance would take {time_msu:.0f} minutes ',
+                'in a Mobile Stroke Unit vehicle.'
+                ])
+            st.markdown(example_str)
+
+        # Set a scale factor for how quickly the MSU can travel.
+        scale_msu_travel_times = st.number_input(
+            'Scale factor for MSU travel speed',
+            min_value=1.0,
+            max_value=5.0,
+            # on_change=make_example_str
         )
+        input_dict['scale_msu_travel_times'] = scale_msu_travel_times
+        make_example_str()
+
+        st.header('Stroke unit services')
+        st.markdown('Update which services the stroke units provide:')
+        # Display and store any changes from the user:
+        df_unit_services = st.data_editor(
+            df_unit_services,
+            disabled=['postcode', 'stroke_team', 'isdn'],
+            height=180  # limit height to show fewer rows
+            )
+        submitted = st.form_submit_button('Submit')
+
+        if submitted:
+            carry_on_please = True
+        else:
+            carry_on_please = False
+
 
 # Restore dtypes:
 df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
@@ -246,8 +265,12 @@ df_unit_services = df_unit_services.rename(columns={
 })
 
 with container_map_inputs:
-    cols = st.columns(6)  # make more columns than needed to space closer
-    scenario_dict = inputs.select_scenario(cols)
+    cols = st.columns(2)  # make more columns than needed to space closer
+with container_select_outcome:
+    st.markdown('### Alternative outcome measure for map')
+    st.markdown('Try these if you dare.')
+scenario_dict = inputs.select_scenario([container_select_outcome] + cols)
+
 
 # If the requested data is nLVO + MT, stop now.
 stop_bool = (
@@ -267,7 +290,8 @@ with container_map:
 colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 colour_diff_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'diff'}, v_name='d')
 
-gdf_boundaries_msoa = main_calculations(input_dict, df_unit_services)
+with container_results_tables:
+    gdf_boundaries_msoa = main_calculations(input_dict, df_unit_services)
 
 # Find geometry column for plot function:
 col_geo = utils.find_multiindex_column_names(
@@ -295,5 +319,3 @@ maps.plotly_many_maps(
     container_map=container_map,
     df_units=df_unit_services_full
 )
-
-st.stop()

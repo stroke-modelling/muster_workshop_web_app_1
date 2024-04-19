@@ -145,6 +145,7 @@ def select_parameters_map():
         input_dict[key] = st.number_input(
             s_dict['name'],
             value=s_dict['default'],
+            help=f"Reference value: {s_dict['default']}",  # temp
             key=key
             )
 
@@ -207,7 +208,8 @@ def select_scenario(containers=[]):
         outcome_type_str = st.radio(
             'Outcome measure',
             ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
-            index=1  # 'added utility' as default
+            index=1,  # 'added utility' as default
+            horizontal=True
         )
     # Match the input string to the file name string:
     outcome_type_dict = {
@@ -238,7 +240,8 @@ def select_scenario(containers=[]):
         treatment_type_str = st.radio(
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT'],
-            index=2  # IVT & MT as default
+            index=2,  # IVT & MT as default
+            horizontal=True
             )
     # Match the input string to the file name string:
     treatment_type_dict = {
@@ -252,7 +255,8 @@ def select_scenario(containers=[]):
     with containers[2]:
         stroke_type_str = st.radio(
             'Stroke type',
-            ['LVO', 'nLVO']
+            ['LVO', 'nLVO'],
+            horizontal=True
             )
     # Match the input string to the file name string:
     stroke_type_dict = {
