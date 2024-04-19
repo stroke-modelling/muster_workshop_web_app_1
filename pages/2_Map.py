@@ -64,6 +64,10 @@ def main_calculations(input_dict, df_unit_services):
     # st calls should be in the main body.
     results_tabs = st.tabs(['Results by ISDN', 'Results by ICB', 'Full results by LSOA'])
 
+    # Replace some zeros with NaN:
+    mask = df_lsoa['transfer_required']
+    df_lsoa.loc[~mask, 'transfer_time'] = pd.NA
+
     with results_tabs[2]:
         st.markdown('### Results by LSOA')
         st.write(df_lsoa)
@@ -97,12 +101,12 @@ def main_calculations(input_dict, df_unit_services):
 
     with results_tabs[0]:
         st.markdown('### Results by ISDN')
-        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.markdown('Results are the mean values of all LSOA in each ISDN.')
         st.write(df_isdn)
 
     with results_tabs[1]:
         st.markdown('### Results by ICB')
-        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.markdown('Results are the mean values of all LSOA in each ICB.')
         st.write(df_icb)
 
     return gdf_boundaries_msoa
@@ -146,6 +150,22 @@ container_outcomes = st.container()
 with st.sidebar:
     st.header('Pathway inputs')
     input_dict = inputs.select_parameters()
+
+# Set a scale factor for how quickly the MSU can travel.
+with st.sidebar:
+    scale_msu_travel_times = st.number_input(
+        'Scale factor for MSU travel speed',
+        min_value=1.0,
+        max_value=5.0,
+    )
+    input_dict['scale_msu_travel_times'] = scale_msu_travel_times
+    time_not_msu = 20.0
+    time_msu = 20.0 * scale_msu_travel_times
+    st.markdown(''.join([
+        f'For example, a journey that takes {time_not_msu:.0f} minutes ',
+        f'in a normal ambulance would take {time_msu:.0f} minutes ',
+        'in a Mobile Stroke Unit vehicle.'
+        ]))
 
 # Set up stroke unit services (IVT, MT, MSU).
 from stroke_maps.catchment import Catchment

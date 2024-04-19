@@ -265,29 +265,33 @@ class Model(object):
         self.full_results['msu_ivt_time'] = (
             self.scenario.process_time_call_ambulance +
             self.scenario.process_msu_dispatch +
-            self.full_results['nearest_msu_time'] +
-            self.scenario.process_msu_thrombolysis)
+            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
+            self.scenario.process_msu_thrombolysis
+            )
 
         self.full_results['msu_mt_time'] = (
             self.scenario.process_time_call_ambulance +
             self.scenario.process_msu_dispatch +
-            self.full_results['nearest_msu_time'] +
+            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
             self.scenario.process_msu_thrombolysis +
             self.scenario.process_msu_on_scene_post_thrombolysis +
-            self.full_results['nearest_mt_time'] +
-            self.scenario.process_time_msu_arrival_to_puncture)
+            (self.full_results['nearest_mt_time']  * self.scenario.scale_msu_travel_times) +
+            self.scenario.process_time_msu_arrival_to_puncture
+            )
 
         self.full_results['msu_occupied_treatment'] = (
             self.scenario.process_msu_dispatch +
-            self.full_results['nearest_msu_time'] +
+            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
             self.scenario.process_msu_thrombolysis +
             self.scenario.process_msu_on_scene_post_thrombolysis +
-            self.full_results['nearest_mt_time'])
+            (self.full_results['nearest_mt_time']  * self.scenario.scale_msu_travel_times)
+            )
 
         self.full_results['msu_occupied_no_treatment'] = (
             self.scenario.process_msu_dispatch +
-            self.full_results['nearest_msu_time'] +
-            self.scenario.process_msu_on_scene_no_thrombolysis)
+            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
+            self.scenario.process_msu_on_scene_no_thrombolysis
+            )
         
         # Add clinical benefit for nLVO outcome (stroke type = 1)
         # Set up input table for stroke outcome package

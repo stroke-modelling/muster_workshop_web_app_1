@@ -52,6 +52,9 @@ class Scenario(object):
         self.process_time_transfer_arrival_to_puncture = 45
         self.process_time_msu_arrival_to_puncture = 25
 
+        # MSU slowness factor:
+        self.scale_msu_travel_times = 1.0
+
         # Save options
         self.save_lsoa_results = False
 
