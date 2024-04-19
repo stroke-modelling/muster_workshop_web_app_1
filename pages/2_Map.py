@@ -101,12 +101,12 @@ def main_calculations(input_dict, df_unit_services):
 
     with results_tabs[0]:
         st.markdown('### Results by ISDN')
-        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.markdown('Results are the mean values of all LSOA in each ISDN.')
         st.write(df_isdn)
 
     with results_tabs[1]:
         st.markdown('### Results by ICB')
-        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.markdown('Results are the mean values of all LSOA in each ICB.')
         st.write(df_icb)
 
     return gdf_boundaries_msoa
