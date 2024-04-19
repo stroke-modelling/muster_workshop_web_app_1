@@ -60,8 +60,13 @@ def main_calculations(input_dict, df_unit_services):
     df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
     df_lsoa = pd.merge(df_lsoa, df_regions, left_on='region_code', right_on='region_code', how='left')
 
-    st.markdown('### Results by LSOA')
-    st.write(df_lsoa)
+    # TO DO - please please please sort out this function that's collecting everything.
+    # st calls should be in the main body.
+    results_tabs = st.tabs(['Results by ISDN', 'Results by ICB', 'Full results by LSOA'])
+
+    with results_tabs[2]:
+        st.markdown('### Results by LSOA')
+        st.write(df_lsoa)
 
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
@@ -90,11 +95,15 @@ def main_calculations(input_dict, df_unit_services):
     # Average:
     df_isdn = df_isdn.groupby('isdn').mean()
 
-    st.markdown('### Results by ISDN')
-    st.write(df_isdn)
+    with results_tabs[0]:
+        st.markdown('### Results by ISDN')
+        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.write(df_isdn)
 
-    st.markdown('### Results by ICB')
-    st.write(df_icb)
+    with results_tabs[1]:
+        st.markdown('### Results by ICB')
+        st.warning('Numbers are currently averaged across all captured LSOA so values are misleading. e.g. transfer time is zero for units that do not require transfer, so they drag down the average transfer time.', icon='⚠️')
+        st.write(df_icb)
 
     return gdf_boundaries_msoa
 
@@ -122,6 +131,7 @@ st.set_page_config(
 # |  container_outcomes   |
 # +-----------------------+
 container_intro = st.container()
+container_unit_services = st.container()
 container_map_inputs = st.container()
 container_map = st.empty()
 container_shared_data = st.container()
@@ -159,8 +169,16 @@ df_unit_services = df_unit_services[cols_to_keep]
 # Change 1/0 columns to bool for formatting:
 cols_use = ['use_ivt', 'use_mt', 'use_msu']
 df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
-# Display and store any changes from the user:
-df_unit_services = st.data_editor(df_unit_services, disabled=['postcode', 'stroke_team', 'isdn'])
+# Sort by ISDN name for nicer display:
+df_unit_services = df_unit_services.sort_values('isdn')
+with container_unit_services:
+    st.markdown('Update which services the stroke units provide:')
+    # Display and store any changes from the user:
+    df_unit_services = st.data_editor(
+        df_unit_services,
+        disabled=['postcode', 'stroke_team', 'isdn'],
+        height=180  # limit height to show fewer rows
+        )
 
 # Restore dtypes:
 df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
