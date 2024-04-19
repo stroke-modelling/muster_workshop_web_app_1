@@ -369,9 +369,7 @@ def plotly_many_maps(
     col_mt = ('use_mt', 'scenario')
     col_msu = ('use_msu', 'scenario')
     mask_ivt = (
-        (gdf_points_units[col_ivt] == 1) &
-        (gdf_points_units[col_mt] == 0) &
-        (gdf_points_units[col_msu] == 0)
+        (gdf_points_units[col_ivt] == 1)
     )
     mask_mt = (
         (gdf_points_units[col_mt] == 1)
