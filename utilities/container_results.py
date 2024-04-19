@@ -81,7 +81,7 @@ def make_column_style_dict(cols, format='%.3f'):
 
 
 # @st.cache_data
-def make_outcomes(input_dict):
+def make_outcomes(input_dict, df_unit_services):
     # Feed input parameters into Scenario:
     scenario = Scenario({
         'name': 1,
@@ -90,7 +90,9 @@ def make_outcomes(input_dict):
     })
 
     # Process and save geographic data (only needed when hospital data changes)
-    geo = Geoprocessing()
+    geo = Geoprocessing(
+        df_unit_services=df_unit_services
+        )
     geo.run()
 
     # Reset index because Model expects a column named 'msoa':

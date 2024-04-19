@@ -167,7 +167,8 @@ def plotly_many_maps(
         colour_map,
         subplot_titles=[],  # plot titles
         legend_title='Outcome',
-        container_map=None
+        container_map=None,
+        df_units=None
         ):
 
     if len(subplot_titles) == 0:
@@ -338,10 +339,13 @@ def plotly_many_maps(
     ))
 
     # Add stroke team markers.
-    from stroke_maps.catchment import Catchment
     from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
-    catchment = Catchment()
-    df_units = catchment.get_unit_services()
+    if df_units is None:
+        from stroke_maps.catchment import Catchment
+        catchment = Catchment()
+        df_units = catchment.get_unit_services()
+    else:
+        pass
     # Build geometry:
     df_units = check_scenario_level(df_units)
     gdf_points_units = _load_geometry_stroke_units(df_units)

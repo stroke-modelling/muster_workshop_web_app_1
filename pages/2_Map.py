@@ -22,9 +22,9 @@ import utilities.container_results as results
 
 
 # @st.cache_data
-def main_calculations(input_dict):
+def main_calculations(input_dict, df_unit_services):
     # Run the outcomes with the selected pathway:
-    df_lsoa = results.make_outcomes(input_dict)
+    df_lsoa = results.make_outcomes(input_dict, df_unit_services)
 
     # TO DO - the results df contains a mix of scenarios
     # (drip and ship, mothership, msu) in the column names.
@@ -137,6 +137,51 @@ with st.sidebar:
     st.header('Pathway inputs')
     input_dict = inputs.select_parameters()
 
+# Set up stroke unit services (IVT, MT, MSU).
+from stroke_maps.catchment import Catchment
+catchment = Catchment()
+df_unit_services = catchment.get_unit_services()
+# Remove Wales:
+df_unit_services = df_unit_services.loc[df_unit_services['region_type'] != 'LHB'].copy()
+df_unit_services_full = df_unit_services.copy()
+# Limit which columns to show:
+cols_to_keep = [
+    'stroke_team',
+    'use_ivt',
+    'use_mt',
+    'use_msu',
+    # 'transfer_unit_postcode',  # to add back in later if stroke-maps replaces geography_processing class
+    # 'region',
+    # 'icb',
+    'isdn'
+]
+df_unit_services = df_unit_services[cols_to_keep]
+# Change 1/0 columns to bool for formatting:
+cols_use = ['use_ivt', 'use_mt', 'use_msu']
+df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
+# Display and store any changes from the user:
+df_unit_services = st.data_editor(df_unit_services, disabled=['postcode', 'stroke_team', 'isdn'])
+
+# Restore dtypes:
+df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
+
+# Update the full data (for maps) with the changes:
+cols_to_merge = cols_use  # + ['transfer_unit_postcode']
+df_unit_services_full = df_unit_services_full.drop(cols_to_merge, axis='columns')
+df_unit_services_full = pd.merge(
+    df_unit_services_full,
+    df_unit_services[cols_to_merge].copy(),
+    left_index=True, right_index=True, how='left'
+    )
+
+# Rename columns to match what the rest of the model here wants.
+df_unit_services.index.name = 'Postcode'
+df_unit_services = df_unit_services.rename(columns={
+    'use_ivt': 'Use_IVT',
+    'use_mt': 'Use_MT',
+    'use_msu': 'Use_MSU',
+})
+
 with container_map_inputs:
     cols = st.columns(6)  # make more columns than needed to space closer
     scenario_dict = inputs.select_scenario(cols)
@@ -158,7 +203,7 @@ with container_map:
 
 colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
 
-gdf_boundaries_msoa = main_calculations(input_dict)
+gdf_boundaries_msoa = main_calculations(input_dict, df_unit_services)
 
 # Find geometry column for plot function:
 col_geo = utils.find_multiindex_column_names(
@@ -184,7 +229,8 @@ maps.plotly_many_maps(
     colour_map=colour_dict['colour_map'],
     subplot_titles=scenario_types,
     legend_title=f'v: {scenario_dict["outcome_type_str"]}',
-    container_map=container_map
+    container_map=container_map,
+    df_units=df_unit_services_full
 )
 
 st.stop()
