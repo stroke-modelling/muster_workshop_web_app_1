@@ -21,7 +21,7 @@ import utilities.container_inputs as inputs
 import utilities.container_results as results
 
 
-# @st.cache_data
+@st.cache_data
 def main_calculations(input_dict, df_unit_services):
     # Run the outcomes with the selected pathway:
     df_lsoa = results.make_outcomes(input_dict, df_unit_services)
@@ -258,13 +258,14 @@ if stop_bool:
     st.warning('No data for nLVO with MT.')
     st.stop()
 
-scenario_types = ['drip_ship', 'msu']
+scenario_types = ['drip_ship', 'diff_msu_minus_drip_ship']
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
     maps.plotly_blank_maps(scenario_types, n_blank=2)
 
 colour_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'not diff'})
+colour_diff_dict = inputs.set_up_colours(scenario_dict | {'scenario_type': 'diff'}, v_name='d')
 
 gdf_boundaries_msoa = main_calculations(input_dict, df_unit_services)
 
@@ -280,18 +281,17 @@ columns_colours = [
         scenario_dict['treatment_type'],
         scenario_dict['outcome_type']
     ])
-    for scenario_type in ['drip_ship', 'msu']
+    for scenario_type in scenario_types
     ]
+colour_dict['column'] = columns_colours[0]
+colour_diff_dict['column'] = columns_colours[1]
 
 maps.plotly_many_maps(
     gdf_boundaries_msoa,
-    columns_colours,
     column_geometry=col_geo,
-    v_bands=colour_dict['v_bands'],
-    v_bands_str=colour_dict['v_bands_str'],
-    colour_map=colour_dict['colour_map'],
-    subplot_titles=['drip_ship', 'msu'],
-    legend_title=f'v: {scenario_dict["outcome_type_str"]}',
+    colour_dicts=[colour_dict, colour_diff_dict],
+    subplot_titles=scenario_types,
+    legend_title=f'v: {scenario_dict["outcome_type_str"]};<br>d: Benefit of MSU over drip-and-ship',
     container_map=container_map,
     df_units=df_unit_services_full
 )

@@ -234,7 +234,7 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     return df_msoa
 
 
-def set_up_colours(scenario_dict):
+def set_up_colours(scenario_dict, v_name='v'):
     """
     max ever displayed:
 
@@ -325,7 +325,7 @@ def set_up_colours(scenario_dict):
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
-    v_bands_str = make_v_bands_str(v_bands, v_name='v')
+    v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
     colour_dict = {

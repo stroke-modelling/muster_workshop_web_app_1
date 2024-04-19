@@ -110,4 +110,5 @@ def make_outcomes(input_dict, df_unit_services):
     df_lsoa = model.full_results.copy()
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
+
     return df_lsoa

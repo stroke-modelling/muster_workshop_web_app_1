@@ -141,8 +141,8 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
         )
 
     fig.update_layout(
-        width=900,
-        height=500
+        width=1200,
+        height=700
         )
     fig.update_layout(margin_t=20)
     fig.update_layout(margin_b=0)
@@ -160,26 +160,67 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
 
 def plotly_many_maps(
         gdf_all,
-        columns_colour,
         column_geometry,
-        v_bands,
-        v_bands_str,
-        colour_map,
+        colour_dicts,
         subplot_titles=[],  # plot titles
         legend_title='Outcome',
         container_map=None,
         df_units=None
         ):
 
+    combo_colour_maps = [cd['colour_map'] for cd in colour_dicts]
+    combo_colour_map = combo_colour_maps[0]
+    for i in range(1, len(combo_colour_maps)):
+        combo_colour_map = combo_colour_map | combo_colour_maps[i]
+    combo_colour_map[''] = 'rgba(0, 0, 0, 0)'
+
     if len(subplot_titles) == 0:
-        subplot_titles = columns_colour
+        subplot_titles = [cd['column'] for cd in colour_dicts]
 
     # Make a new gdf containing all combined polygons
     # for all plots:
     # gdf_polys
     gdfs_to_combine = []
 
-    for i, col_col in enumerate(columns_colour):
+    for i, colour_dict in enumerate(colour_dicts):
+
+        col_col = colour_dict['column']
+        v_bands = colour_dict['v_bands']
+        v_bands_str = colour_dict['v_bands_str']
+        v_bands_str = np.append(v_bands_str, '')
+
+        # Make a bonus gdf of the world's tiniest polygons, one of
+        # each colour, so that the legend has all of the colour entries
+        # and is always in increasing order.
+        gdf_bonus = pd.DataFrame()
+        gdf_bonus[legend_title] = v_bands_str
+        gdf_bonus['inds'] = i*100 + np.arange(len(v_bands_str))
+        gdf_bonus['scenario'] = subplot_titles[0]
+        # Make a tiny polygon around these coordinates on the Isle of Man
+        # (coordinates should be included on our England & Wales map
+        # but not expecting anyone to closely look at this area).
+        # Coords: 54.147729, -4.471397
+        bonus_long = 54.147729
+        bonus_lat = -4.471397
+        poly = Polygon([
+            [bonus_lat, bonus_long],
+            [bonus_lat+1e-5, bonus_long],
+            [bonus_lat+1e-5, bonus_long+1e-5],
+            [bonus_lat, bonus_long+1e-5],
+            ])
+        gdf_bonus['geometry'] = poly
+        gdf_bonus['inds'] = gdf_bonus['inds'].astype(int)
+        gdf_bonus = geopandas.GeoDataFrame(
+            gdf_bonus, geometry='geometry', crs='EPSG:4326')
+
+        gdfs_to_combine.append(gdf_bonus)
+
+    for i, colour_dict in enumerate(colour_dicts):
+
+        col_col = colour_dict['column']
+        v_bands = colour_dict['v_bands']
+        v_bands_str = colour_dict['v_bands_str']
+
         gdf = gdf_all.copy()
         crs = gdf.crs
         gdf = gdf.reset_index()
@@ -247,31 +288,6 @@ def plotly_many_maps(
 
         gdfs_to_combine.append(gdf)
 
-    # Make a bonus gdf of the world's tiniest polygons, one of
-    # each colour, so that the legend has all of the colour entries
-    # and is always in increasing order.
-    gdf_bonus = pd.DataFrame()
-    gdf_bonus[legend_title] = v_bands_str
-    gdf_bonus['inds'] = range(len(v_bands_str))
-    gdf_bonus['scenario'] = subplot_titles[0]
-    # Make a tiny polygon around these coordinates on the Isle of Man
-    # (coordinates should be included on our England & Wales map
-    # but not expecting anyone to closely look at this area).
-    # Coords: 54.147729, -4.471397
-    bonus_long = 54.147729
-    bonus_lat = -4.471397
-    poly = Polygon([
-        [bonus_lat, bonus_long],
-        [bonus_lat+1e-5, bonus_long],
-        [bonus_lat+1e-5, bonus_long+1e-5],
-        [bonus_lat, bonus_long+1e-5],
-        ])
-    gdf_bonus['geometry'] = poly
-    gdf_bonus['inds'] = gdf_bonus['inds'].astype(int)
-    gdf_bonus = geopandas.GeoDataFrame(
-        gdf_bonus, geometry='geometry', crs='EPSG:4326')
-
-    gdfs_to_combine.append(gdf_bonus)
 
     gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
     # Make a new index column:
@@ -288,8 +304,9 @@ def plotly_many_maps(
     # None seems to happen when there are very few (only one? or zero?)
     # polygons in that outcome band. Maybe a rounding error?
 
-    # Sort the dataframe for the sake of the legend order:
-    gdf_polys = gdf_polys.sort_values(by=['inds'])
+    # # Sort the dataframe for the sake of the legend order:
+    # don't need this now that we add the tiny dummy polygons first.
+    # gdf_polys = gdf_polys.sort_values(by=['inds'])
 
     # Begin plotting.
     fig = px.choropleth(
@@ -297,7 +314,7 @@ def plotly_many_maps(
         locations=gdf_polys.index,
         geojson=gdf_polys.geometry.__geo_interface__,
         color=gdf_polys[legend_title],
-        color_discrete_map=colour_map,
+        color_discrete_map=combo_colour_map,
         facet_col='scenario',
         # Which order the plots should appear in:
         category_orders={'scenario': subplot_titles},
@@ -319,8 +336,8 @@ def plotly_many_maps(
         bgcolor='rgba(0,0,0,0)'  # transparent background
         )
     fig.update_layout(
-        width=900,
-        height=500
+        width=1200,
+        height=700
         )
 
     fig.update_layout(margin_t=20)
@@ -335,7 +352,7 @@ def plotly_many_maps(
     # Add a blank trace to put a gap in the legend.
     # Stupid? Yes. Works? Also yes.
     fig.add_trace(go.Scattergeo(
-        lat=[None], lon=[None], marker={'color': 'rgba(0,0,0,0)'}, name=''
+        lat=[None], lon=[None], marker={'color': 'rgba(0,0,0,0)'}, name=' '
     ))
 
     # Add stroke team markers.
