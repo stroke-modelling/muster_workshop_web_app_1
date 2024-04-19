@@ -264,9 +264,9 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
-                'step_size': 0.05,
+                'vmin': -0.05,
+                'vmax': 0.05,
+                'step_size': 0.01,
                 'cmap_name': 'RdBu'
             },
         },
@@ -278,9 +278,9 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
-                'step_size': 0.05,
+                'vmin': -0.1,
+                'vmax': 0.1,
+                'step_size': 0.025,
                 'cmap_name': 'RdBu'
             },
         },
@@ -292,8 +292,8 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'cmap_name': 'inferno_r'  # lower numbers are better
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
+                'vmin': -0.2,
+                'vmax': 0.2,
                 'step_size': 0.05,
                 'cmap_name': 'RdBu'
             },
@@ -306,8 +306,8 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.3,
-                'vmax': 0.3,
+                'vmin': -0.15,
+                'vmax': 0.15,
                 'step_size': 0.05,
                 'cmap_name': 'RdBu'
             },
