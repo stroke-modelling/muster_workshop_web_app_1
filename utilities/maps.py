@@ -430,7 +430,7 @@ def plotly_many_maps(
     fig.add_trace(traces[2], row=1, col=2)
     # IVT units:
     fig.add_trace(traces[0], row=1, col=1)
-    fig.add_trace(traces[0], row=1, col=2)
+    # fig.add_trace(traces[0], row=1, col=2)
     # MT units:
     fig.add_trace(traces[1], row=1, col=1)
     fig.add_trace(traces[1], row=1, col=2)

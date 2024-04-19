@@ -174,7 +174,7 @@ container_outcomes = st.container()
 # Draw the input selection boxes in this function:
 with st.sidebar:
     st.header('Pathway inputs')
-    input_dict = inputs.select_parameters()
+    input_dict = inputs.select_parameters_map()
 
 # Set a scale factor for how quickly the MSU can travel.
 with st.sidebar:
