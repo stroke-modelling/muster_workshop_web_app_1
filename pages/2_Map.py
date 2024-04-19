@@ -62,20 +62,20 @@ def main_calculations(input_dict, df_unit_services):
 
     # TO DO - please please please sort out this function that's collecting everything.
     # st calls should be in the main body.
-    results_tabs = st.tabs(['Results by ISDN', 'Results by ICB', 'Full results by LSOA'])
+    results_tabs = st.tabs(['Results by IVT unit catchment', 'Results by ISDN', 'Results by ICB', 'Full results by LSOA'])
 
     # Replace some zeros with NaN:
     mask = df_lsoa['transfer_required']
     df_lsoa.loc[~mask, 'transfer_time'] = pd.NA
 
-    with results_tabs[2]:
+    with results_tabs[3]:
         st.markdown('### Results by LSOA')
         st.write(df_lsoa)
 
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
     df_lsoa = df_lsoa.drop([
-        'lsoa', 'lsoa_code', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
+        'lsoa', 'lsoa_code', 'nearest_mt_unit', 'transfer_unit',
         'nearest_msu_unit', 'short_code', 'country'
         ], axis='columns')
 
@@ -84,7 +84,7 @@ def main_calculations(input_dict, df_unit_services):
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
     df_icb = df_icb.drop([
-        'region', 'region_type', 'region_code', 'icb_code', 'isdn'
+        'nearest_ivt_unit', 'region', 'region_type', 'region_code', 'icb_code', 'isdn'
         ], axis='columns')
     # Average:
     df_icb = df_icb.groupby('icb').mean()
@@ -94,17 +94,42 @@ def main_calculations(input_dict, df_unit_services):
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
     df_isdn = df_isdn.drop([
-        'region', 'region_type', 'region_code', 'icb', 'icb_code'
+        'nearest_ivt_unit', 'region', 'region_type', 'region_code', 'icb', 'icb_code'
         ], axis='columns')
     # Average:
     df_isdn = df_isdn.groupby('isdn').mean()
 
+    # Glob results by nearest IVT unit:
+    df_nearest_ivt = df_lsoa.copy()
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with some object columns)
+    df_nearest_ivt = df_nearest_ivt.drop([
+        'region', 'region_type', 'region_code', 'icb', 'icb_code', 'isdn'
+        ], axis='columns')
+    # Average:
+    df_nearest_ivt = df_nearest_ivt.groupby('nearest_ivt_unit').mean()
+    # Merge back in the unit names:
+    df_nearest_ivt = pd.merge(
+        df_unit_services['stroke_team'],
+        df_nearest_ivt, how='right', left_on='Postcode', right_index=True)
+
+    # Set some columns to bool for nicer display:
+    cols_bool = ['transfer_required', 'England']
+    for col in cols_bool:
+        for df in [df_icb, df_isdn, df_nearest_ivt, df_lsoa]:
+            df[col] = df[col].astype(bool)
+
     with results_tabs[0]:
+        st.markdown('### Results by nearest IVT unit')
+        st.markdown('Results are the mean values of all LSOA in each IVT unit catchment area.')
+        st.write(df_nearest_ivt)
+
+    with results_tabs[1]:
         st.markdown('### Results by ISDN')
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
         st.write(df_isdn)
 
-    with results_tabs[1]:
+    with results_tabs[2]:
         st.markdown('### Results by ICB')
         st.markdown('Results are the mean values of all LSOA in each ICB.')
         st.write(df_icb)
