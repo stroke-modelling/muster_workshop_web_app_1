@@ -129,6 +129,9 @@ def make_outline_england_wales():
         'MSOA11NM',
         path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
         )
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
     # Make geometry valid:
     gdf['geometry'] = [
         make_valid(g) if g is not None else g
@@ -143,4 +146,4 @@ def make_outline_england_wales():
     gdf.geometry = shapely.set_precision(gdf.geometry, grid_size=0.001)
 
     # Save:
-    gdf.to_file('data/outline_england_wales.geojson')
+    gdf.to_file('data/outline_england.geojson')

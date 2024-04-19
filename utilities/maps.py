@@ -105,7 +105,7 @@ def plotly_blank_maps(subplot_titles=[]):
     """
     Show some blank England & Wales outlines while real map loads.
     """
-    path_to_file = os.path.join('data', 'outline_england_wales.geojson')
+    path_to_file = os.path.join('data', 'outline_england.geojson')
     gdf = geopandas.read_file(path_to_file)
     # Has to be this CRS to prevent Picasso drawing:
     gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
