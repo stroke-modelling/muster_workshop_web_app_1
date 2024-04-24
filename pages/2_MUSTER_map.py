@@ -72,11 +72,14 @@ with container_map_inputs:
 with container_select_outcome:
     st.markdown('### Alternative outcome measure for map')
     st.markdown('Try these if you dare.')
-    scenario_dict = inputs.select_scenario([container_select_outcome] + cols)
+    scenario_dict = inputs.select_scenario(containers=[container_select_outcome] + cols)
 
 # If the requested data is nLVO + MT, stop now.
-stop_bool = ((scenario_dict['stroke_type'] == 'nlvo') &
-             ('mt' in scenario_dict['treatment_type']))
+try:
+    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo', 'combo']) &
+                 ('mt' in scenario_dict['treatment_type']))
+except KeyError:
+    stop_bool = False
 if stop_bool:
     st.warning('No data for nLVO with MT.')
     st.stop()
