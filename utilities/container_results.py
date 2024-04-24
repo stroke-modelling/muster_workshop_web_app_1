@@ -4,11 +4,6 @@ All of the content for the Results section.
 import numpy as np
 import streamlit as st
 
-# For running outcomes:
-from classes.geography_processing import Geoprocessing
-from classes.model import Model
-from classes.scenario import Scenario
-
 
 def split_results_dict_by_pathway(results_dict):
     # Split results by pathway:
@@ -78,37 +73,3 @@ def make_column_style_dict(cols, format='%.3f'):
         for col in cols]
         )
     return style_dict
-
-
-# @st.cache_data
-def make_outcomes(input_dict, df_unit_services):
-    # Feed input parameters into Scenario:
-    scenario = Scenario({
-        'name': 1,
-        'limit_to_england': True,
-        **input_dict
-    })
-
-    # Process and save geographic data (only needed when hospital data changes)
-    geo = Geoprocessing(
-        df_unit_services=df_unit_services
-        )
-    geo.run()
-
-    # Reset index because Model expects a column named 'msoa':
-    geo.combined_data = geo.combined_data.reset_index()
-
-    # Set up model
-    model = Model(
-        scenario=scenario,
-        geodata=geo.combined_data
-        )
-
-    # Run model
-    model.run()
-
-    df_lsoa = model.full_results.copy()
-    df_lsoa.index.names = ['lsoa']
-    df_lsoa.columns.names = ['property']
-
-    return df_lsoa
