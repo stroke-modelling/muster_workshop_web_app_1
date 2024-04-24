@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt  # for colour maps
 
+from stroke_maps.catchment import Catchment  # for unit services
+
 
 def select_parameters():
     # Set up scenarios
@@ -81,73 +83,107 @@ def select_parameters():
 
 
 def select_parameters_map():
+    """
+
+    TO DO another day - set these reference values up in fixed_params.
+    Default values from median onset to arrival times document
+    (Mike Allen, 23rd April 2024):
+    onset_to_call: 79,
+    call_to_ambulance_arrival_time: 18,
+    ambulance_on_scene_time: 29,
+    """
     # Set up scenarios
-    scenarios = {
+    inputs_shared = {
+        # Shared
         'process_time_call_ambulance': {
-            'values': [0, 60, 120, 180],
             'name': 'Time to call ambulance',
-            'default': 60  # 1  # index for 60
+            'default': 79  # 1  # index for 60
         },
+    }
+    inputs_standard = {
+        # Standard ambulance pathway
         'process_time_ambulance_response': {
-            'values': [15, 30, 45],
             'name': 'Ambulance response time',
-            'default': 30  # 1  # index for 30
+            'default': 18  # 1  # index for 30
         },
         'process_ambulance_on_scene_duration': {
-            'values': [20, 30, 40],
             'name': 'Time ambulance is on scene',
-            'default': 20  # 0  # index for 20
+            'default': 29  # 0  # index for 20
         },
+        'process_time_arrival_to_needle': {
+            'name': 'Hospital arrival to IVT time',
+            'default': 30  # 0  # index for 30
+        },
+        'process_time_arrival_to_puncture': {
+            'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
+            'default': 60  # 2  # index for 60
+        },
+    }
+    inputs_transfer = {
+        # Transfer required
+        'transfer_time_delay': {
+            'name': 'Door-in to door-out (for transfer to MT)',
+            'default': 60  # 1  # index for 60
+        },
+        'process_time_transfer_arrival_to_puncture': {
+            'name': 'Hospital arrival to MT time (for transfers)',
+            'default': 60  # 2  # index for 60
+        },
+    }
+    inputs_msu = {
+        # MSU
         'process_msu_dispatch': {
-            'values': [0, 15, 30],
             'name': 'MSU dispatch time',
             'default': 15  # 1  # index for 15
         },
         'process_msu_thrombolysis': {
-            'values': [15, 30, 45],
             'name': 'MSU IVT time',
             'default': 30  # 1  # index for 30
         },
         'process_msu_on_scene_post_thrombolysis': {
-            'values': [15, 30],
             'name': 'MSU on scene post IVT time',
             'default': 15  # 0  # index for 15
         },
-        'process_time_arrival_to_needle': {
-            'values': [30, 45],
-            'name': 'Hospital arrival to IVT time',
-            'default': 30  # 0  # index for 30
-        },
-        'transfer_time_delay': {
-            'values': [30, 60, 90],
-            'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 60  # 1  # index for 60
-        },
-        'process_time_arrival_to_puncture': {
-            'values': [30, 45, 60],
-            'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 60  # 2  # index for 60
-        },
-        'process_time_transfer_arrival_to_puncture': {
-            'values': [30, 45, 60],
-            'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 60  # 2  # index for 60
-        },
         'process_time_msu_arrival_to_puncture': {
-            'values': [30, 45, 60],
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
             'default': 60  # 2  # index for 60
         },
+        'scale_msu_travel_times': {
+            'name': 'Scale factor for MSU travel speed',
+            'default': 1.0
+        },
     }
 
+    dicts = {
+        'Shared': inputs_shared,
+        'Standard pathway': inputs_standard,
+        'Transfer required': inputs_transfer,
+        'Mobile Stroke Unit': inputs_msu
+        }
+
     input_dict = {}
-    for key, s_dict in scenarios.items():
-        input_dict[key] = st.number_input(
-            s_dict['name'],
-            value=s_dict['default'],
-            help=f"Reference value: {s_dict['default']}",  # temp
-            key=key
-            )
+    for heading, i_dict in dicts.items():
+        st.markdown(f'## {heading}')
+        for key, s_dict in i_dict.items():
+            input_dict[key] = st.number_input(
+                s_dict['name'],
+                value=s_dict['default'],
+                help=f"Reference value: {s_dict['default']}",
+                key=key
+                )
+
+    # Write an example for how the MSU speed affects the timings.
+    time_not_msu = 20.0
+    time_msu = 20.0 * input_dict['scale_msu_travel_times']
+
+    example_str = ''.join([
+        'For example, with a scale factor of ',
+        f'{input_dict["scale_msu_travel_times"]}, '
+        f'a journey that takes {time_not_msu:.0f} minutes ',
+        f'in a normal ambulance would take {time_msu:.0f} minutes ',
+        'in a Mobile Stroke Unit vehicle.'
+        ])
+    st.markdown(example_str)
 
     return input_dict
 
@@ -195,6 +231,77 @@ def find_scenario_results(id):
     row = row.to_dict(orient='records')[0]
 
     return row
+
+
+def select_stroke_unit_services():
+    df_unit_services, df_unit_services_full, cols_use = (
+        import_stroke_unit_services())
+
+    # Display and store any changes from the user:
+    df_unit_services = st.data_editor(
+        df_unit_services,
+        disabled=['postcode', 'stroke_team', 'isdn'],
+        height=180  # limit height to show fewer rows
+        )
+
+    df_unit_services, df_unit_services_full = update_stroke_unit_services(
+        df_unit_services, df_unit_services_full, cols_use)
+    return df_unit_services, df_unit_services_full
+
+
+def import_stroke_unit_services():
+    # Set up stroke unit services (IVT, MT, MSU).
+    catchment = Catchment()
+    df_unit_services = catchment.get_unit_services()
+    # Remove Wales:
+    df_unit_services = df_unit_services.loc[df_unit_services['region_type'] != 'LHB'].copy()
+    df_unit_services_full = df_unit_services.copy()
+    # Limit which columns to show:
+    cols_to_keep = [
+        'stroke_team',
+        'use_ivt',
+        'use_mt',
+        'use_msu',
+        # 'transfer_unit_postcode',  # to add back in later if stroke-maps replaces geography_processing class
+        # 'region',
+        # 'icb',
+        'isdn'
+    ]
+    df_unit_services = df_unit_services[cols_to_keep]
+    # Change 1/0 columns to bool for formatting:
+    cols_use = ['use_ivt', 'use_mt', 'use_msu']
+    df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
+    # Sort by ISDN name for nicer display:
+    df_unit_services = df_unit_services.sort_values('isdn')
+    return df_unit_services, df_unit_services_full, cols_use
+
+
+def update_stroke_unit_services(
+        df_unit_services,
+        df_unit_services_full,
+        cols_use
+        ):
+    # Restore dtypes:
+    df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
+
+    # Update the full data (for maps) with the changes:
+    cols_to_merge = cols_use  # + ['transfer_unit_postcode']
+    df_unit_services_full = df_unit_services_full.drop(
+        cols_to_merge, axis='columns')
+    df_unit_services_full = pd.merge(
+        df_unit_services_full,
+        df_unit_services[cols_to_merge].copy(),
+        left_index=True, right_index=True, how='left'
+        )
+
+    # Rename columns to match what the rest of the model here wants.
+    df_unit_services.index.name = 'Postcode'
+    df_unit_services = df_unit_services.rename(columns={
+        'use_ivt': 'Use_IVT',
+        'use_mt': 'Use_MT',
+        'use_msu': 'Use_MSU',
+    })
+    return df_unit_services, df_unit_services_full
 
 
 def select_scenario(containers=[]):
@@ -275,38 +382,6 @@ def select_scenario(containers=[]):
     scenario_dict['stroke_type_str'] = stroke_type_str
     scenario_dict['stroke_type'] = stroke_type
     return scenario_dict
-
-
-def convert_lsoa_to_msoa_results(df_lsoa):
-    # Convert LSOA to MSOA:
-    df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
-    df_lsoa = df_lsoa.reset_index()
-    df_msoa = pd.merge(
-        df_lsoa,
-        df_lsoa_to_msoa[['lsoa11nm', 'msoa11cd', 'msoa11nm']],
-        left_on='lsoa', right_on='lsoa11nm', how='left'
-        )
-    # Remove string columns:
-    # (temporary - I don't know how else to groupby a df with some object columns)
-    df_msoa = df_msoa.drop([
-        'lsoa', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
-        'nearest_msu_unit', 'lsoa11nm', 'msoa11nm'
-        ], axis='columns')
-    # Aggregate by MSOA:
-    df_msoa = df_msoa.groupby('msoa11cd').mean()
-    # df_msoa = df_msoa.set_index('msoa11cd')
-    # Merge the MSOA names back in and set the index to (msoa_code, msoa):
-    df_msoa = df_msoa.reset_index()
-    df_msoa = pd.merge(
-        df_msoa, df_lsoa_to_msoa[['msoa11cd', 'msoa11nm']],
-        left_on='msoa11cd', right_on='msoa11cd', how='left'
-        )
-    # Remove duplicate rows:
-    df_msoa = df_msoa.drop_duplicates()
-    df_msoa = df_msoa.rename(columns={'msoa11cd': 'msoa_code', 'msoa11nm': 'msoa'})
-    df_msoa = df_msoa.set_index(['msoa', 'msoa_code'])
-
-    return df_msoa
 
 
 def set_up_colours(scenario_dict, v_name='v'):
