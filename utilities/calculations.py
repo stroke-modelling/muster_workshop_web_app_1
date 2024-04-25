@@ -48,6 +48,16 @@ def calculate_outcomes(input_dict, df_unit_services):
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
 
+    # Make a copy of nLVO IVT results for nLVO IVT+MT results:
+    cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
+    for col in cols_ivt_mt:
+        # Find the equivalent column for nLVO:
+        col_nlvo = col.replace('lvo', 'nlvo')
+        # Find the equivalent column for ivt-only:
+        col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
+        # Copy over the data:
+        df_lsoa[col_nlvo] = df_lsoa[col_ivt]
+
     # TO DO - the results df contains a mix of scenarios
     # (drip and ship, mothership, msu) in the column names.
     # Pull them out and put them into 'scenario' header.
@@ -88,7 +98,7 @@ def group_results_by_region(df_lsoa, df_unit_services):
 
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
-    df_lsoa = df_lsoa.drop([
+    cols_to_drop = [
         'lsoa',
         'lsoa_code',
         'nearest_mt_unit',
@@ -96,7 +106,10 @@ def group_results_by_region(df_lsoa, df_unit_services):
         'nearest_msu_unit',
         'short_code',
         'country'
-        ], axis='columns')
+        ]
+    # Only keep cols that exist (sometimes have MSU, sometimes not):
+    cols_to_drop = [c for c in cols_to_drop if c in df_lsoa.columns]
+    df_lsoa = df_lsoa.drop(cols_to_drop, axis='columns')
 
     df_nearest_ivt = group_results_by_nearest_ivt(df_lsoa, df_unit_services)
     df_icb = group_results_by_icb(df_lsoa)
@@ -174,10 +187,13 @@ def convert_lsoa_to_msoa_results(df_lsoa):
         )
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
-    df_msoa = df_msoa.drop([
+    cols_to_drop = [
         'lsoa', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
         'nearest_msu_unit', 'lsoa11nm', 'msoa11nm'
-        ], axis='columns')
+        ]
+    # Only keep cols that exist (sometimes have MSU, sometimes not):
+    cols_to_drop = [c for c in cols_to_drop if c in df_msoa.columns]
+    df_msoa = df_msoa.drop(cols_to_drop, axis='columns')
     # Aggregate by MSOA:
     df_msoa = df_msoa.groupby('msoa11cd').mean()
     # df_msoa = df_msoa.set_index('msoa11cd')
@@ -193,3 +209,118 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     df_msoa = df_msoa.set_index(['msoa', 'msoa_code'])
 
     return df_msoa
+
+
+def combine_results_by_occlusion_type(df_lsoa, prop_dict):
+    # Simple addition: x% of column 1 plus y% of column 2.
+
+    # Don't combine treatment types for now
+    # (no nLVO with MT data).
+    scenario_list = ['drip_ship', 'mothership', 'redirect']
+    treatment_list = ['ivt', 'mt', 'ivt_mt']
+    outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+    for s in scenario_list:
+        for t in treatment_list:
+            for o in outcome_list:
+                # if t == 'mt':
+                #     if o in ['mrs_shift', 'utility_shift']:
+                #         data_nlvo = 0.0
+                #         data_exists = True
+                #     else:
+                #         col_nlvo = f'nlvo_no_treatment_{o}'
+                #         data_nlvo = df_lsoa[col_nlvo]
+                #         data_exists = True
+                # else:
+                # col_nlvo = f'nlvo_{s}_ivt_{o}'
+                col_nlvo = f'nlvo_{s}_{t}_{o}'
+                try:
+                    data_nlvo = df_lsoa[col_nlvo]
+                    data_exists = True
+                except KeyError:
+                    data_exists = False
+                col_lvo = f'lvo_{s}_{t}_{o}'
+                col_combo = f'combo_{s}_{t}_{o}'
+
+                if data_exists:
+                    combo_data = (
+                        data_nlvo * prop_dict['nlvo'] +
+                        df_lsoa[col_lvo] * prop_dict['lvo']
+                    )
+                    df_lsoa[col_combo] = combo_data
+    return df_lsoa
+
+
+def combine_results_by_redirection(df_lsoa, redirect_dict):
+    # Simple addition: x% of column 1 plus y% of column 2.
+
+    prop_lvo_redirected = redirect_dict['sensitivity']
+    prop_nlvo_redirected = (1.0 - redirect_dict['specificity'])
+
+    prop_dict = {
+        'nlvo': prop_nlvo_redirected,
+        'lvo': prop_lvo_redirected,
+    }
+
+    # Don't combine treatment types for now
+    # (no nLVO with MT data).
+    occlusion_list = ['nlvo', 'lvo']
+    treatment_list = ['ivt', 'mt', 'ivt_mt']
+    outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+    for v in occlusion_list:
+        prop = prop_dict[v]
+        for t in treatment_list:
+            for o in outcome_list:
+                col_drip_ship = f'{v}_drip_ship_{t}_{o}'
+                col_mothership = f'{v}_mothership_{t}_{o}'
+                col_redirect = f'{v}_redirect_{t}_{o}'
+                try:
+                    df_lsoa[col_drip_ship]
+                    data_exists = True
+                except KeyError:
+                    data_exists = False
+
+                if data_exists:
+                    combo_data = (
+                        df_lsoa[col_mothership] * prop +
+                        df_lsoa[col_drip_ship] * (1.0 - prop)
+                    )
+                    df_lsoa[col_redirect] = combo_data
+    return df_lsoa
+
+
+def combine_results_by_diff(df_lsoa):
+
+    scenario_types = ['redirect', 'drip_ship']
+    occlusion_types = ['nlvo', 'lvo', 'combo']
+    treatment_types = ['ivt', 'mt', 'ivt_mt']
+    outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+    for occ in occlusion_types:
+        for tre in treatment_types:
+            for out in outcome_types:
+                # Existing column names:
+                col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
+                col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
+                # New column name for the diff data:
+                col_diff = ''.join([
+                    f'{occ}_',
+                    f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
+                    f'_{tre}_{out}'
+                ])
+                try:
+                    data_scen1 = df_lsoa[col_scen1]
+                    data_scen2 = df_lsoa[col_scen2]
+                    data_exists = True
+                except KeyError:
+                    # This combination doesn't exist
+                    # (e.g. nLVO with MT).
+                    data_exists = False
+
+                if data_exists:
+                    data_diff = data_scen1 - data_scen2
+                    df_lsoa[col_diff] = data_diff
+                else:
+                    pass
+    return df_lsoa

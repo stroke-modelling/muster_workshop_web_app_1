@@ -1,5 +1,5 @@
 """
-MUSTER results display app.
+OPTIMIST results display app.
 
 Because a long app quickly gets out of hand,
 try to keep this document to mostly direct calls to streamlit to write
@@ -22,7 +22,7 @@ import utilities.container_inputs as inputs
 # ###########################
 # page_setup()
 st.set_page_config(
-    page_title='MUSTER',
+    page_title='OPTIMIST',
     page_icon=':ambulance:',
     layout='wide'
     )
@@ -53,18 +53,18 @@ container_select_outcome = st.container()
 # ###########################
 
 with container_intro:
-    st.markdown('# Benefit in outcomes from Mobile Stroke Units')
+    st.markdown('# Benefit in outcomes from redirection')
 
 # ----- User inputs -----
 with container_inputs:
     with st.form('Model setup'):
         st.header('Pathway inputs')
-        input_dict = inputs.select_parameters_map()
+        input_dict = inputs.select_parameters_optimist()
 
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
         df_unit_services, df_unit_services_full = (
-            inputs.select_stroke_unit_services())
+            inputs.select_stroke_unit_services(use_msu=False))
         submitted = st.form_submit_button('Submit')
 
 with container_map_inputs:
@@ -72,24 +72,21 @@ with container_map_inputs:
 with container_select_outcome:
     st.markdown('### Alternative outcome measure for map')
     st.markdown('Try these if you dare.')
-    scenario_dict = inputs.select_scenario([container_select_outcome] + cols)
+    scenario_dict = inputs.select_scenario(
+        containers=[container_select_outcome] + cols,
+        use_combo_stroke_types=True
+        )
 
-# If the requested data is nLVO + MT, stop now.
-stop_bool = ((scenario_dict['stroke_type'] == 'nlvo') &
-             ('mt' in scenario_dict['treatment_type']))
-if stop_bool:
-    st.warning('No data for nLVO with MT.')
-    st.stop()
 
 
 # ----- Setup for plots -----
 # Which scenarios will be shown in the maps:
 # (in this order)
-scenario_types = ['drip_ship', 'diff_msu_minus_drip_ship']
+scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
 
 legend_title = ''.join([
     f'v: {scenario_dict["outcome_type_str"]};<br>',
-    'd: Benefit of MSU over drip-and-ship'
+    'd: Benefit of redirection over drip-and-ship'
     ])
 
 # Which subplots to draw which units on:
@@ -98,9 +95,8 @@ legend_title = ''.join([
 # The order in which they are drawn (and so which markers appear
 # on top) is the order of this dictionary.
 unit_subplot_dict = {
-    'msu': [[1, 2]],        # second map only
-    'ivt': [[1, 1]],        # first map only
-    'mt': [[1, 1], [1, 2]]  # both maps
+    'ivt': [[1, 1], [1, 2]],  # both maps
+    'mt': [[1, 1], [1, 2]]    # both maps
 }
 
 # Draw a blank map in a container and then replace the contents with
@@ -108,10 +104,45 @@ unit_subplot_dict = {
 with container_map:
     maps.plotly_blank_maps(scenario_types, n_blank=2)
 
+# If the requested data is nLVO + MT, stop now.
+try:
+    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo']) &
+                 (scenario_dict['treatment_type'] == 'mt'))
+except KeyError:
+    stop_bool = False
+if stop_bool:
+    with container_map_inputs:
+        st.warning('No data for nLVO with MT.')
+        st.stop()
 
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
 df_lsoa = calc.calculate_outcomes(input_dict, df_unit_services)
+
+# Remove the MSU data:
+cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
+df_lsoa = df_lsoa.drop(cols_to_remove, axis='columns')
+# Current setup means that MSU data is calculated with default
+# values even if we don't explicitly give it any parameters.
+
+# Extra calculations for redirection:
+# Combine drip-and-ship and mothership results in proportions given:
+redirect_dict = {
+    'sensitivity': input_dict['sensitivity'],
+    'specificity': input_dict['specificity'],
+}
+df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
+
+# Make combined nLVO + LVO data in the proportions given:
+prop_dict = {
+    'nlvo': input_dict['prop_nlvo'],
+    'lvo': input_dict['prop_lvo']
+}
+df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
+
+# Calculate diff - redirect minus drip-ship:
+df_lsoa = calc.combine_results_by_diff(df_lsoa)
+
 gdf_boundaries_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)

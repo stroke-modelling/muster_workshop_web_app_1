@@ -97,56 +97,56 @@ def select_parameters_map():
         # Shared
         'process_time_call_ambulance': {
             'name': 'Time to call ambulance',
-            'default': 79  # 1  # index for 60
+            'default': 79
         },
     }
     inputs_standard = {
         # Standard ambulance pathway
         'process_time_ambulance_response': {
             'name': 'Ambulance response time',
-            'default': 18  # 1  # index for 30
+            'default': 18
         },
         'process_ambulance_on_scene_duration': {
             'name': 'Time ambulance is on scene',
-            'default': 29  # 0  # index for 20
+            'default': 29
         },
         'process_time_arrival_to_needle': {
             'name': 'Hospital arrival to IVT time',
-            'default': 30  # 0  # index for 30
+            'default': 30
         },
         'process_time_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
     }
     inputs_transfer = {
         # Transfer required
         'transfer_time_delay': {
             'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 60  # 1  # index for 60
+            'default': 60
         },
         'process_time_transfer_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
     }
     inputs_msu = {
         # MSU
         'process_msu_dispatch': {
             'name': 'MSU dispatch time',
-            'default': 15  # 1  # index for 15
+            'default': 15
         },
         'process_msu_thrombolysis': {
             'name': 'MSU IVT time',
-            'default': 30  # 1  # index for 30
+            'default': 30
         },
         'process_msu_on_scene_post_thrombolysis': {
             'name': 'MSU on scene post IVT time',
-            'default': 15  # 0  # index for 15
+            'default': 15
         },
         'process_time_msu_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
         'scale_msu_travel_times': {
             'name': 'Scale factor for MSU travel speed',
@@ -184,6 +184,140 @@ def select_parameters_map():
         'in a Mobile Stroke Unit vehicle.'
         ])
     st.markdown(example_str)
+
+    return input_dict
+
+
+def select_parameters_optimist():
+    """
+
+    TO DO another day - set these reference values up in fixed_params.
+    Default values from median onset to arrival times document
+    (Mike Allen, 23rd April 2024):
+    onset_to_call: 79,
+    call_to_ambulance_arrival_time: 18,
+    ambulance_on_scene_time: 29,
+    """
+    # Set up scenarios
+    inputs_shared = {
+        # Shared
+        'process_time_call_ambulance': {
+            'name': 'Time to call ambulance',
+            'default': 79,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+    }
+    inputs_standard = {
+        # Standard ambulance pathway
+        'process_time_ambulance_response': {
+            'name': 'Ambulance response time',
+            'default': 18,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+        'process_ambulance_on_scene_duration': {
+            'name': 'Time ambulance is on scene',
+            'default': 29,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+        'process_ambulance_on_scene_diagnostic_duration': {
+            'name': 'Extra time on scene for diagnostic',
+            'default': 10,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+        'process_time_arrival_to_needle': {
+            'name': 'Hospital arrival to IVT time',
+            'default': 30,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+        'process_time_arrival_to_puncture': {
+            'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
+            'default': 60,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+    }
+    inputs_transfer = {
+        # Transfer required
+        'transfer_time_delay': {
+            'name': 'Door-in to door-out (for transfer to MT)',
+            'default': 60,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+        'process_time_transfer_arrival_to_puncture': {
+            'name': 'Hospital arrival to MT time (for transfers)',
+            'default': 60,
+            'min_value': 0,
+            'max_value': 1440,
+            'step': 1,
+        },
+    }
+    inputs_occlusion = {
+        'prop_nlvo': {
+            'name': 'Proportion of population with nLVO',
+            'default': 0.65,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        },
+        'prop_lvo': {
+            'name': 'Proportion of population with LVO',
+            'default': 0.35,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        }
+    }
+    inputs_redirection = {
+        'sensitivity': {
+            'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
+            'default': 0.66,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        },
+        'specificity': {
+            'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
+            'default': 0.87,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        },
+    }
+
+    dicts = {
+        'Shared': inputs_shared,
+        'Standard pathway': inputs_standard,
+        'Transfer required': inputs_transfer,
+        'Occlusion types': inputs_occlusion,
+        'Redirection': inputs_redirection
+        }
+
+    input_dict = {}
+    for heading, i_dict in dicts.items():
+        st.markdown(f'## {heading}')
+        for key, s_dict in i_dict.items():
+            input_dict[key] = st.number_input(
+                s_dict['name'],
+                value=s_dict['default'],
+                help=f"Reference value: {s_dict['default']}",
+                min_value=s_dict['min_value'],
+                max_value=s_dict['max_value'],
+                step=s_dict['step'],
+                key=key
+                )
 
     return input_dict
 
@@ -233,9 +367,9 @@ def find_scenario_results(id):
     return row
 
 
-def select_stroke_unit_services():
+def select_stroke_unit_services(use_msu=True):
     df_unit_services, df_unit_services_full, cols_use = (
-        import_stroke_unit_services())
+        import_stroke_unit_services(use_msu))
 
     # Display and store any changes from the user:
     df_unit_services = st.data_editor(
@@ -249,7 +383,7 @@ def select_stroke_unit_services():
     return df_unit_services, df_unit_services_full
 
 
-def import_stroke_unit_services():
+def import_stroke_unit_services(use_msu=True):
     # Set up stroke unit services (IVT, MT, MSU).
     catchment = Catchment()
     df_unit_services = catchment.get_unit_services()
@@ -261,15 +395,19 @@ def import_stroke_unit_services():
         'stroke_team',
         'use_ivt',
         'use_mt',
-        'use_msu',
+        # 'use_msu',
         # 'transfer_unit_postcode',  # to add back in later if stroke-maps replaces geography_processing class
         # 'region',
         # 'icb',
         'isdn'
     ]
+    if use_msu:
+        cols_to_keep.append('use_msu')
     df_unit_services = df_unit_services[cols_to_keep]
     # Change 1/0 columns to bool for formatting:
-    cols_use = ['use_ivt', 'use_mt', 'use_msu']
+    cols_use = ['use_ivt', 'use_mt']
+    if use_msu:
+        cols_use.append('use_msu')
     df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values('isdn')
@@ -304,14 +442,43 @@ def update_stroke_unit_services(
     return df_unit_services, df_unit_services_full
 
 
-def select_scenario(containers=[]):
-    """
-    """
+def select_scenario(
+        scenarios=['outcome', 'treatment', 'stroke'],
+        containers=[],
+        use_combo_stroke_types=False
+        ):
     if len(containers) == 0:
-        containers = [st.container() for i in range(4)]
+        containers = [st.container() for i in range(3)]
+
+    # Store results in here:
+    scenario_dict = {}
+    if 'outcome' in scenarios:
+        outcome_type, outcome_type_str = select_outcome_type(containers[0])
+        scenario_dict['outcome_type_str'] = outcome_type_str
+        scenario_dict['outcome_type'] = outcome_type
+    if 'treatment' in scenarios:
+        treatment_type, treatment_type_str = select_treatment_type(containers[1])
+        scenario_dict['treatment_type_str'] = treatment_type_str
+        scenario_dict['treatment_type'] = treatment_type
+    if 'stroke' in scenarios:
+        stroke_type, stroke_type_str = select_stroke_type(
+            containers[2], use_combo_stroke_types)
+        scenario_dict['stroke_type_str'] = stroke_type_str
+        scenario_dict['stroke_type'] = stroke_type
+
+    # scenario_dict['scenario_type_str'] = scenario_type_str
+    # scenario_dict['scenario_type'] = scenario_type
+    return scenario_dict
+
+
+def select_outcome_type(container=None):
+    """
+    """
+    if container is None:
+        container = st.container()
 
     # Outcome type input:
-    with containers[0]:
+    with container:
         outcome_type_str = st.radio(
             'Outcome measure',
             ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
@@ -326,6 +493,8 @@ def select_scenario(containers=[]):
         'mRS <= 2': 'mrs_0-2'
     }
     outcome_type = outcome_type_dict[outcome_type_str]
+    return outcome_type, outcome_type_str
+
 
     # # Scenario input:
     # with containers[1]:    
@@ -342,8 +511,13 @@ def select_scenario(containers=[]):
     # }
     # scenario_type = scenario_type_dict[scenario_type_str]
 
+
+def select_treatment_type(container=None):
+    if container is None:
+        container = st.container()
+
     # Treatment type:
-    with containers[1]:
+    with container:
         treatment_type_str = st.radio(
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT'],
@@ -357,31 +531,32 @@ def select_scenario(containers=[]):
         'IVT & MT': 'ivt_mt'
     }
     treatment_type = treatment_type_dict[treatment_type_str]
+    return treatment_type, treatment_type_str
+
+
+def select_stroke_type(container=None, use_combo_stroke_types=False):
+    if container is None:
+        container = st.container()
+
+    options = ['LVO', 'nLVO']
+    if use_combo_stroke_types:
+        options += ['Combined']
 
     # Stroke type:
-    with containers[2]:
+    with container:
         stroke_type_str = st.radio(
             'Stroke type',
-            ['LVO', 'nLVO'],
+            options,
             horizontal=True
             )
     # Match the input string to the file name string:
     stroke_type_dict = {
         'LVO': 'lvo',
         'nLVO': 'nlvo',
+        'Combined': 'combo'
     }
     stroke_type = stroke_type_dict[stroke_type_str]
-
-    scenario_dict = {}
-    scenario_dict['outcome_type_str'] = outcome_type_str
-    scenario_dict['outcome_type'] = outcome_type
-    # scenario_dict['scenario_type_str'] = scenario_type_str
-    # scenario_dict['scenario_type'] = scenario_type
-    scenario_dict['treatment_type_str'] = treatment_type_str
-    scenario_dict['treatment_type'] = treatment_type
-    scenario_dict['stroke_type_str'] = stroke_type_str
-    scenario_dict['stroke_type'] = stroke_type
-    return scenario_dict
+    return stroke_type, stroke_type_str
 
 
 def set_up_colours(scenario_dict, v_name='v'):
@@ -423,7 +598,7 @@ def set_up_colours(scenario_dict, v_name='v'):
         'utility_shift': {
             'scenario': {
                 'vmin': 0.0,
-                'vmax': 0.25,
+                'vmax': 0.20,
                 'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
