@@ -97,56 +97,56 @@ def select_parameters_map():
         # Shared
         'process_time_call_ambulance': {
             'name': 'Time to call ambulance',
-            'default': 79  # 1  # index for 60
+            'default': 79
         },
     }
     inputs_standard = {
         # Standard ambulance pathway
         'process_time_ambulance_response': {
             'name': 'Ambulance response time',
-            'default': 18  # 1  # index for 30
+            'default': 18
         },
         'process_ambulance_on_scene_duration': {
             'name': 'Time ambulance is on scene',
-            'default': 29  # 0  # index for 20
+            'default': 29
         },
         'process_time_arrival_to_needle': {
             'name': 'Hospital arrival to IVT time',
-            'default': 30  # 0  # index for 30
+            'default': 30
         },
         'process_time_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
     }
     inputs_transfer = {
         # Transfer required
         'transfer_time_delay': {
             'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 60  # 1  # index for 60
+            'default': 60
         },
         'process_time_transfer_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
     }
     inputs_msu = {
         # MSU
         'process_msu_dispatch': {
             'name': 'MSU dispatch time',
-            'default': 15  # 1  # index for 15
+            'default': 15
         },
         'process_msu_thrombolysis': {
             'name': 'MSU IVT time',
-            'default': 30  # 1  # index for 30
+            'default': 30
         },
         'process_msu_on_scene_post_thrombolysis': {
             'name': 'MSU on scene post IVT time',
-            'default': 15  # 0  # index for 15
+            'default': 15
         },
         'process_time_msu_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
-            'default': 60  # 2  # index for 60
+            'default': 60
         },
         'scale_msu_travel_times': {
             'name': 'Scale factor for MSU travel speed',
@@ -203,7 +203,7 @@ def select_parameters_optimist():
         # Shared
         'process_time_call_ambulance': {
             'name': 'Time to call ambulance',
-            'default': 79,  # 1  # index for 60
+            'default': 79,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
@@ -213,35 +213,35 @@ def select_parameters_optimist():
         # Standard ambulance pathway
         'process_time_ambulance_response': {
             'name': 'Ambulance response time',
-            'default': 18,  # 1  # index for 30
+            'default': 18,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
         },
         'process_ambulance_on_scene_duration': {
             'name': 'Time ambulance is on scene',
-            'default': 29,  # 0  # index for 20
+            'default': 29,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
         },
         'process_ambulance_on_scene_diagnostic_duration': {
             'name': 'Extra time on scene for diagnostic',
-            'default': 20,  # 0  # index for 20
+            'default': 10,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
         },
         'process_time_arrival_to_needle': {
             'name': 'Hospital arrival to IVT time',
-            'default': 30,  # 0  # index for 30
+            'default': 30,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
         },
         'process_time_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 60,  # 2  # index for 60
+            'default': 60,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
@@ -251,14 +251,14 @@ def select_parameters_optimist():
         # Transfer required
         'transfer_time_delay': {
             'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 60,  # 1  # index for 60
+            'default': 60,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
         },
         'process_time_transfer_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 60,  # 2  # index for 60
+            'default': 60,
             'min_value': 0,
             'max_value': 1440,
             'step': 1,
@@ -283,14 +283,14 @@ def select_parameters_optimist():
     inputs_redirection = {
         'sensitivity': {
             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
-            'default': 0.85,
+            'default': 0.66,
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
         },
         'specificity': {
             'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
-            'default': 0.68,
+            'default': 0.87,
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
@@ -598,7 +598,7 @@ def set_up_colours(scenario_dict, v_name='v'):
         'utility_shift': {
             'scenario': {
                 'vmin': 0.0,
-                'vmax': 0.25,
+                'vmax': 0.20,
                 'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
