@@ -22,7 +22,7 @@ import utilities.container_inputs as inputs
 # ###########################
 # page_setup()
 st.set_page_config(
-    page_title='MUSTER',
+    page_title='OPTIMIST',
     page_icon=':ambulance:',
     layout='wide'
     )
@@ -64,7 +64,7 @@ with container_inputs:
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
         df_unit_services, df_unit_services_full = (
-            inputs.select_stroke_unit_services())
+            inputs.select_stroke_unit_services(use_msu=False))
         submitted = st.form_submit_button('Submit')
 
 with container_map_inputs:
@@ -73,18 +73,10 @@ with container_select_outcome:
     st.markdown('### Alternative outcome measure for map')
     st.markdown('Try these if you dare.')
     scenario_dict = inputs.select_scenario(
-        containers=[container_select_outcome] + cols
+        containers=[container_select_outcome] + cols,
+        use_combo_stroke_types=True
         )
 
-# If the requested data is nLVO + MT, stop now.
-try:
-    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo', 'combo']) &
-                 ('mt' in scenario_dict['treatment_type']))
-except KeyError:
-    stop_bool = False
-if stop_bool:
-    st.warning('No data for nLVO with MT.')
-    st.stop()
 
 
 # ----- Setup for plots -----
@@ -111,6 +103,17 @@ unit_subplot_dict = {
 # this intended map once it's finished being drawn
 with container_map:
     maps.plotly_blank_maps(scenario_types, n_blank=2)
+
+# If the requested data is nLVO + MT, stop now.
+try:
+    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo']) &
+                 (scenario_dict['treatment_type'] == 'mt'))
+except KeyError:
+    stop_bool = False
+if stop_bool:
+    with container_map_inputs:
+        st.warning('No data for nLVO with MT.')
+        st.stop()
 
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:

@@ -367,9 +367,9 @@ def find_scenario_results(id):
     return row
 
 
-def select_stroke_unit_services():
+def select_stroke_unit_services(use_msu=True):
     df_unit_services, df_unit_services_full, cols_use = (
-        import_stroke_unit_services())
+        import_stroke_unit_services(use_msu))
 
     # Display and store any changes from the user:
     df_unit_services = st.data_editor(
@@ -383,7 +383,7 @@ def select_stroke_unit_services():
     return df_unit_services, df_unit_services_full
 
 
-def import_stroke_unit_services():
+def import_stroke_unit_services(use_msu=True):
     # Set up stroke unit services (IVT, MT, MSU).
     catchment = Catchment()
     df_unit_services = catchment.get_unit_services()
@@ -395,15 +395,19 @@ def import_stroke_unit_services():
         'stroke_team',
         'use_ivt',
         'use_mt',
-        'use_msu',
+        # 'use_msu',
         # 'transfer_unit_postcode',  # to add back in later if stroke-maps replaces geography_processing class
         # 'region',
         # 'icb',
         'isdn'
     ]
+    if use_msu:
+        cols_to_keep.append('use_msu')
     df_unit_services = df_unit_services[cols_to_keep]
     # Change 1/0 columns to bool for formatting:
-    cols_use = ['use_ivt', 'use_mt', 'use_msu']
+    cols_use = ['use_ivt', 'use_mt']
+    if use_msu:
+        cols_use.append('use_msu')
     df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values('isdn')
@@ -441,7 +445,7 @@ def update_stroke_unit_services(
 def select_scenario(
         scenarios=['outcome', 'treatment', 'stroke'],
         containers=[],
-        use_combo_stroke_types=True
+        use_combo_stroke_types=False
         ):
     if len(containers) == 0:
         containers = [st.container() for i in range(3)]

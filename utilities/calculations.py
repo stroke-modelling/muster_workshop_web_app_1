@@ -48,6 +48,16 @@ def calculate_outcomes(input_dict, df_unit_services):
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
 
+    # Make a copy of nLVO IVT results for nLVO IVT+MT results:
+    cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
+    for col in cols_ivt_mt:
+        # Find the equivalent column for nLVO:
+        col_nlvo = col.replace('lvo', 'nlvo')
+        # Find the equivalent column for ivt-only:
+        col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
+        # Copy over the data:
+        df_lsoa[col_nlvo] = df_lsoa[col_ivt]
+
     # TO DO - the results df contains a mix of scenarios
     # (drip and ship, mothership, msu) in the column names.
     # Pull them out and put them into 'scenario' header.
@@ -213,18 +223,28 @@ def combine_results_by_occlusion_type(df_lsoa, prop_dict):
     for s in scenario_list:
         for t in treatment_list:
             for o in outcome_list:
+                # if t == 'mt':
+                #     if o in ['mrs_shift', 'utility_shift']:
+                #         data_nlvo = 0.0
+                #         data_exists = True
+                #     else:
+                #         col_nlvo = f'nlvo_no_treatment_{o}'
+                #         data_nlvo = df_lsoa[col_nlvo]
+                #         data_exists = True
+                # else:
+                # col_nlvo = f'nlvo_{s}_ivt_{o}'
                 col_nlvo = f'nlvo_{s}_{t}_{o}'
-                col_lvo = f'lvo_{s}_{t}_{o}'
-                col_combo = f'combo_{s}_{t}_{o}'
                 try:
-                    df_lsoa[col_nlvo]
+                    data_nlvo = df_lsoa[col_nlvo]
                     data_exists = True
                 except KeyError:
                     data_exists = False
+                col_lvo = f'lvo_{s}_{t}_{o}'
+                col_combo = f'combo_{s}_{t}_{o}'
 
                 if data_exists:
                     combo_data = (
-                        df_lsoa[col_nlvo] * prop_dict['nlvo'] +
+                        data_nlvo * prop_dict['nlvo'] +
                         df_lsoa[col_lvo] * prop_dict['lvo']
                     )
                     df_lsoa[col_combo] = combo_data
