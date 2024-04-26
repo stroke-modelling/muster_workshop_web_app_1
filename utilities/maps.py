@@ -475,7 +475,29 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
 
-    st.plotly_chart(fig)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    # Write to streamlit:
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
 
 
 def plotly_many_maps(
@@ -628,7 +650,29 @@ def plotly_many_maps(
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
 
-    st.plotly_chart(fig)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    # Write to streamlit:
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
 
 
 @st.cache_data
