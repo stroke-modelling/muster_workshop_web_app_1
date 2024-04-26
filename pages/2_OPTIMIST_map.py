@@ -202,41 +202,215 @@ columns_colours = [
 colour_dict['column'] = columns_colours[0]
 colour_diff_dict['column'] = columns_colours[1]
 
-# Create hospital catchment areas from this MSOA geography data.
-cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
-import pandas as pd
-gdf_catchment = maps.find_geometry_ivt_catchment(pd.DataFrame(gdf_boundaries_msoa[cols]))
-# Save:
-gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
+# # Create hospital catchment areas from this MSOA geography data.
+# cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
+# import pandas as pd
+# gdf_catchment = maps.find_geometry_ivt_catchment(pd.DataFrame(gdf_boundaries_msoa[cols]))
+# # Save:
+# gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
 
-# # Load in another gdf:
-# import geopandas
-# from shapely.validation import make_valid  # for fixing dodgy polygons
-# gdf_catchment = geopandas.read_file('./data/outline_isdns.geojson')
-# # Make geometry valid:
-# gdf_catchment['geometry'] = [
-#     make_valid(g) if g is not None else g
-#     for g in gdf_catchment['geometry'].values
-#     ]
 
-st.write(gdf_catchment)
 
-# Make one combined GeoDataFrame of all of the separate maps
-# that will be used across all subplots.
-gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
+# Make dummy polygons:
+gdf_dummy, combo_colour_map = maps.create_dummy_colour_gdf(
+    [colour_dict, colour_diff_dict])
+
+# Left-hand subplot colours:
+# For each colour scale and data column combo,
+# merge polygons that fall into the same colour band.
+gdf_lhs = maps.dissolve_polygons_by_colour(
     gdf_boundaries_msoa,
-    colour_dicts=[colour_dict, colour_diff_dict],
-    subplot_titles=scenario_types,
-    legend_title=legend_title,
-    gdf_catchment=gdf_catchment
-)
+    colour_dict['column'],
+    colour_dict['v_bands'],
+    colour_dict['v_bands_str'],
+    combo_colour_map
+    )
 
-maps.plotly_many_maps(
-    gdf_polys,
-    combo_colour_map,
-    subplot_titles=scenario_types,
-    legend_title=legend_title,
-    container_map=container_map,
-    df_units=df_unit_services_full,
-    unit_subplot_dict=unit_subplot_dict
-)
+# Right-hand subplot colours:
+gdf_rhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    colour_diff_dict['column'],
+    colour_diff_dict['v_bands'],
+    colour_diff_dict['v_bands_str'],
+    combo_colour_map
+    )
+
+# Region outlines:
+# Load in another gdf:
+import geopandas
+from shapely.validation import make_valid  # for fixing dodgy polygons
+gdf_catchment = geopandas.read_file('./data/outline_isdns.geojson')
+# Make geometry valid:
+gdf_catchment['geometry'] = [
+    make_valid(g) if g is not None else g
+    for g in gdf_catchment['geometry'].values
+    ]
+# st.write(gdf_catchment)
+# Make colour transparent:
+gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
+gdf_catchment['outline_type'] = 'ISDN'
+
+# Stroke unit scatter markers:
+# traces_units = maps.create_stroke_team_markers(df_unit_services_full)
+
+# Convert gdf polygons to xy cartesian coordinates:
+for gdf in [gdf_dummy, gdf_lhs, gdf_rhs, gdf_catchment]:
+    x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
+    gdf['x'] = x_list
+    gdf['y'] = y_list
+
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+# ----- Plotting -----
+fig = make_subplots(rows=1, cols=2)
+
+# Add each row of the dataframe separately.
+# Scatter the edges of the polygons and use "fill" to colour
+# within the lines.
+gdf = gdf_dummy
+for i in gdf.index:
+    fig.add_trace(go.Scatter(
+        x=gdf.loc[i, 'x'],
+        y=gdf.loc[i, 'y'],
+        mode='lines',
+        fill="toself",
+        fillcolor=gdf.loc[i, 'colour'],
+        line_width=0,
+        hoverinfo='skip',
+        name=gdf.loc[i, 'colour_str'],
+        ), row='all', col='all'
+        )
+    
+gdf = gdf_lhs
+for i in gdf.index:
+    fig.add_trace(go.Scatter(
+        x=gdf.loc[i, 'x'],
+        y=gdf.loc[i, 'y'],
+        mode='lines',
+        fill="toself",
+        fillcolor=gdf.loc[i, 'colour'],
+        line_width=0,
+        hoverinfo='skip',
+        name=gdf.loc[i, 'colour_str'],
+        showlegend=False
+        ), row='all', col=1
+        )    
+
+gdf = gdf_rhs
+for i in gdf.index:
+    fig.add_trace(go.Scatter(
+        x=gdf.loc[i, 'x'],
+        y=gdf.loc[i, 'y'],
+        mode='lines',
+        fill="toself",
+        fillcolor=gdf.loc[i, 'colour'],
+        line_width=0,
+        hoverinfo='skip',
+        name=gdf.loc[i, 'colour_str'],
+        showlegend=False
+        ), row='all', col=2
+        )
+
+gdf = gdf_catchment
+# I can't for the life of me get hovertemplate working here
+# for mysterious reasons, so just stick to "text" for hover info.
+for i in gdf.index:
+    fig.add_trace(go.Scatter(
+        x=gdf.loc[i, 'x'],
+        y=gdf.loc[i, 'y'],
+        mode='lines',
+        fill="toself",
+        fillcolor=gdf.loc[i, 'colour'],
+        line_color='black',
+        name=gdf.loc[i, 'outline_type'],
+        text=gdf.loc[i, 'isdn'],
+        hoverinfo="text",
+        ), row='all', col='all'
+        )
+
+# Equivalent to pyplot set_aspect='equal':
+fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
+
+# Shared pan and zoom settings:
+fig.update_xaxes(matches='x')
+fig.update_yaxes(matches='y')
+
+# Remove axis ticks:
+fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
+fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
+
+# --- Stroke unit scatter markers ---
+if len(unit_subplot_dict) > 0:
+    # # Add a blank trace to put a gap in the legend.
+    # Stupid? Yes. Works? Also yes.
+    # Make sure the name isn't the same as any other blank name
+    # already set, e.g. in combo_colour_dict, or this repeat
+    # entry will be deleted later.
+    fig.add_trace(go.Scatter(
+        x=[None],
+        y=[None],
+        marker={'color': 'rgba(0,0,0,0)'},
+        name=' ' * 10
+    ))
+
+    # Create the scatter traces for the stroke units...
+    traces = maps.create_stroke_team_markers(df_unit_services_full)
+
+    # ... and THEN add traces to the subplots.
+    for service, grid_lists in unit_subplot_dict.items():
+        for grid_list in grid_lists:
+            row = grid_list[0]
+            col = grid_list[1]
+            fig.add_trace(traces[service], row=row, col=col)
+
+# Remove repeat legend names:
+# from https://stackoverflow.com/a/62162555
+names = set()
+fig.for_each_trace(
+    lambda trace:
+        trace.update(showlegend=False)
+        if (trace.name in names) else names.add(trace.name))
+# This makes sure that if multiple maps use the exact same
+# colours and labels, the labels only appear once in the legend.
+
+# Figure setup.
+fig.update_layout(
+    width=1200,
+    height=700,
+    margin_t=40,
+    margin_b=0
+    )
+
+# Disable clicking legend to remove trace:
+fig.update_layout(legend_itemclick=False)
+fig.update_layout(legend_itemdoubleclick=False)
+
+if container_map is None:
+    container_map = st.container()
+with container_map:
+    st.plotly_chart(fig)
+
+# st.plotly_chart(fig)
+
+
+# # Make one combined GeoDataFrame of all of the separate maps
+# # that will be used across all subplots.
+# gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
+#     gdf_boundaries_msoa,
+#     colour_dicts=[colour_dict, colour_diff_dict],
+#     subplot_titles=scenario_types,
+#     legend_title=legend_title,
+#     gdf_catchment=gdf_catchment
+# )
+
+# maps.plotly_many_maps(
+#     gdf_polys,
+#     combo_colour_map,
+#     subplot_titles=scenario_types,
+#     legend_title=legend_title,
+#     container_map=container_map,
+#     df_units=df_unit_services_full,
+#     unit_subplot_dict=unit_subplot_dict
+# )
