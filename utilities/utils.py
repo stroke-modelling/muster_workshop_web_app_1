@@ -1,6 +1,7 @@
 import numpy as np
 from itertools import product
 import pandas as pd
+from importlib_resources import files
 
 
 def find_multiindex_column_names(gdf, **kwargs):
@@ -147,3 +148,52 @@ def make_outline_england_wales():
 
     # Save:
     gdf.to_file('data/outline_england.geojson')
+
+
+def make_outline_icbs():
+    """Similar to stroke-maps."""
+    from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+
+    # All msoa shapes:
+    gdf = import_geojson(
+        'MSOA11NM',
+        path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        )
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Load region info for each LSOA:
+    # Relative import from package files:
+    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
+    df_lsoa_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+
+    # Load further region data linking SICBL to other regions:
+    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
+    df_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    # Drop columns already in df_lsoa:
+    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+    df_lsoa = pd.merge(
+        df_lsoa_regions, df_regions,
+        left_on='region_code', right_on='region_code', how='left'
+        )
+    # Link LSOA to MSOA:
+    df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+    df_lsoa = pd.merge(
+        df_lsoa_to_msoa, df_lsoa, left_on='lsoa11cd', right_on='lsoa_code', how='right'
+    )
+    gdf = pd.merge(gdf, df_lsoa, left_on='MSOA11NM', right_on='msoa11nm', how='left')
+
+    # Combine:
+    col = 'isdn'
+    gdf = gdf.dissolve(by=col)
+
+    # Save:
+    gdf.to_file(f'data/outline_{col}s.geojson')

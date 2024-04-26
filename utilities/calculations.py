@@ -185,6 +185,12 @@ def convert_lsoa_to_msoa_results(df_lsoa):
         df_lsoa_to_msoa[['lsoa11nm', 'msoa11cd', 'msoa11nm']],
         left_on='lsoa', right_on='lsoa11nm', how='left'
         )
+
+    # Keep a copy of the nearest IVT units:
+    df_nearest_unit = df_msoa[['msoa11cd', 'nearest_ivt_unit']].copy()
+    # Remove duplicate rows:
+    df_nearest_unit = df_nearest_unit.drop_duplicates()
+
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
     cols_to_drop = [
@@ -197,7 +203,7 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     # Aggregate by MSOA:
     df_msoa = df_msoa.groupby('msoa11cd').mean()
     # df_msoa = df_msoa.set_index('msoa11cd')
-    # Merge the MSOA names back in and set the index to (msoa_code, msoa):
+    # Merge the MSOA names back in:
     df_msoa = df_msoa.reset_index()
     df_msoa = pd.merge(
         df_msoa, df_lsoa_to_msoa[['msoa11cd', 'msoa11nm']],
@@ -205,6 +211,12 @@ def convert_lsoa_to_msoa_results(df_lsoa):
         )
     # Remove duplicate rows:
     df_msoa = df_msoa.drop_duplicates()
+    # Merge the nearest IVT unit back in.
+    df_msoa = pd.merge(
+        df_msoa, df_nearest_unit,
+        left_on='msoa11cd', right_on='msoa11cd', how='left'
+        )
+    # Set the index to (msoa_code, msoa)
     df_msoa = df_msoa.rename(columns={'msoa11cd': 'msoa_code', 'msoa11nm': 'msoa'})
     df_msoa = df_msoa.set_index(['msoa', 'msoa_code'])
 

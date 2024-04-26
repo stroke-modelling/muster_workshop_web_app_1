@@ -202,6 +202,25 @@ columns_colours = [
 colour_dict['column'] = columns_colours[0]
 colour_diff_dict['column'] = columns_colours[1]
 
+# Create hospital catchment areas from this MSOA geography data.
+cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
+import pandas as pd
+gdf_catchment = maps.find_geometry_ivt_catchment(pd.DataFrame(gdf_boundaries_msoa[cols]))
+# Save:
+gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
+
+# # Load in another gdf:
+# import geopandas
+# from shapely.validation import make_valid  # for fixing dodgy polygons
+# gdf_catchment = geopandas.read_file('./data/outline_isdns.geojson')
+# # Make geometry valid:
+# gdf_catchment['geometry'] = [
+#     make_valid(g) if g is not None else g
+#     for g in gdf_catchment['geometry'].values
+#     ]
+
+st.write(gdf_catchment)
+
 # Make one combined GeoDataFrame of all of the separate maps
 # that will be used across all subplots.
 gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
@@ -209,6 +228,7 @@ gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
     colour_dicts=[colour_dict, colour_diff_dict],
     subplot_titles=scenario_types,
     legend_title=legend_title,
+    gdf_catchment=gdf_catchment
 )
 
 maps.plotly_many_maps(

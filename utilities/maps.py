@@ -40,7 +40,7 @@ def _load_geometry_msoa(df_msoa):
     # All msoa shapes:
     gdf_boundaries_msoa = _import_geojson(
         'MSOA11NM',
-        path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
         )
     crs = gdf_boundaries_msoa.crs
     # Index column: msoa11CD.
@@ -276,7 +276,8 @@ def create_combo_gdf_for_plotting(
         gdf_all,
         colour_dicts,
         legend_title,
-        subplot_titles=[]
+        subplot_titles=[],
+        gdf_catchment=None
         ):
     """
     write me
@@ -312,13 +313,13 @@ def create_combo_gdf_for_plotting(
 
         v_bands_str = colour_dict['v_bands_str']
         if add_gap_after_legend:
-            name_for_gap = ' ' * i
+            name_for_gap = ' ' * (i+1)
             # Add a string that appears blank...
             v_bands_str = np.append(v_bands_str, name_for_gap)
             # ... and assign it a transparent colour:
             combo_colour_map[name_for_gap] = 'rgba(0, 0, 0, 0)'
             # This is pretty stupid but it works.
-            add_gap_after_legend = False
+            # add_gap_after_legend = False
 
         gdf_bonus = make_dummy_gdf_for_legend(
             v_bands_str,
@@ -340,6 +341,21 @@ def create_combo_gdf_for_plotting(
             subplot_title=subplot_titles[i]
             )
         gdfs_to_combine.append(gdf)
+
+
+    # Optional region boundaries:
+    if gdf_catchment is None:
+        pass
+    else:
+        # Has to be this CRS to prevent Picasso drawing:
+        gdf_catchment = gdf_catchment.to_crs(pyproj.CRS.from_epsg(4326))
+        gdf_catchment = gdf_catchment.reset_index()
+        gdf_catchment[legend_title] = '  '
+
+        for i in range(len(subplot_titles)):
+            gdf_here = gdf_catchment.copy()
+            gdf_here['scenario'] = subplot_titles[i]
+            gdfs_to_combine.append(gdf_here)
 
     # Combine the separate GeoDataFrames into one
     # so that we can later use plotly express's facet columns.
@@ -463,6 +479,11 @@ def plotly_many_maps(
     """
     write me
     """
+    # gdf_polys['line_width'] = 0
+    # gdf_polys.loc[gdf_polys[legend_title] == ' ', 'line_width'] = 5
+
+    # gdf_polys = gdf_polys.loc[gdf_polys[legend_title] == '  ']
+
     # Draw all colour maps:
     fig = px.choropleth(
         gdf_polys,
@@ -481,8 +502,40 @@ def plotly_many_maps(
         hovertemplate=None,
         hoverinfo='skip'
         )
+
+    # line_widths = []
+    # check_val = ((0.0, 'rgba(0, 0, 0, 0)'), (1.0, 'rgba(0, 0, 0, 0)'))
+    # sub_fig = fig.select_traces(row=1, col=1)
+    # for s in sub_fig:
+    #     # How many values are in here?
+    #     n = len(s['z'])
+    #     if s['colorscale'] == check_val:
+    #         lw = 5
+    #     else:
+    #         lw = 0
+    #     line_widths += [lw] * n
+
+    # sub_fig = fig.select_traces(row=1, col=2)
+    # for s in sub_fig:
+    #     # How many values are in here?
+    #     n = len(s['z'])
+    #     if s['colorscale'] == check_val:
+    #         lw = 5
+    #     else:
+    #         lw = 0
+    #     line_widths += [lw] * n
+
+    # st.write(sub_fig)
     # Remove outlines of contours:
+    # line_widths = np.full(len(gdf_polys), 0)
+    # polys_to_outline = gdf_polys[legend_title] == '  '
+    # line_widths[np.where(polys_to_outline)] = 5
+    # st.write(line_widths)
+    # line_widths = gdf_polys['line_width'].values
+    # fig.update_traces(marker_line_width=line_widths)
+
     fig.update_traces(marker_line_width=0)
+    fig.update_traces(marker_line_width=2, selector=({'name':'  '}))
 
     # Update projection so that the map starts zoomed-in on England.
     fig.update_geos(
@@ -495,17 +548,17 @@ def plotly_many_maps(
 
     # --- Stroke unit scatter markers ---
     if len(unit_subplot_dict) > 0:
-        # Add a blank trace to put a gap in the legend.
-        # Stupid? Yes. Works? Also yes.
-        # Make sure the name isn't the same as any other blank name
-        # already set, e.g. in combo_colour_dict, or this repeat
-        # entry will be deleted later.
-        fig.add_trace(go.Scattergeo(
-            lat=[None],
-            lon=[None],
-            marker={'color': 'rgba(0,0,0,0)'},
-            name=' '
-        ))
+        # # Add a blank trace to put a gap in the legend.
+        # # Stupid? Yes. Works? Also yes.
+        # # Make sure the name isn't the same as any other blank name
+        # # already set, e.g. in combo_colour_dict, or this repeat
+        # # entry will be deleted later.
+        # fig.add_trace(go.Scattergeo(
+        #     lat=[None],
+        #     lon=[None],
+        #     marker={'color': 'rgba(0,0,0,0)'},
+        #     name=' ' * 10
+        # ))
 
         # Create the scatter traces for the stroke units...
         traces = create_stroke_team_markers(df_units)
@@ -542,3 +595,14 @@ def plotly_many_maps(
         container_map = st.container()
     with container_map:
         st.plotly_chart(fig)
+
+
+@st.cache_data
+def find_geometry_ivt_catchment(gdf_boundaries_msoa):
+    gdf_catchment = pd.DataFrame()
+    gdf_catchment['nearest_ivt_unit'] = gdf_boundaries_msoa[
+        (('nearest_ivt_unit', 'scenario'))]
+    gdf_catchment['geometry'] = gdf_boundaries_msoa[(('geometry', 'any'))]
+    gdf_catchment = geopandas.GeoDataFrame(gdf_catchment, geometry='geometry')
+    gdf_catchment = gdf_catchment.dissolve(by='nearest_ivt_unit')
+    return gdf_catchment
