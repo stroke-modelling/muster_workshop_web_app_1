@@ -27,6 +27,13 @@ st.set_page_config(
     layout='wide'
     )
 
+# import utilities.utils as utils
+# utils.make_outline_msoa_from_lsoa()
+# utils.make_outline_icbs('icb')
+# utils.make_outline_icbs('isdn')
+# utils.make_outline_england_wales()
+# st.stop()
+
 # Make containers:
 # +-----------------------------+
 # |       container_intro       |
@@ -84,6 +91,11 @@ with container_select_outcome:
 # (in this order)
 scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
 
+subplot_titles = [
+    'Drip-and-ship',
+    'Benefit of redirection over drip-and-ship'
+]
+
 legend_title = ''.join([
     f'v: {scenario_dict["outcome_type_str"]};<br>',
     'd: Benefit of redirection over drip-and-ship'
@@ -102,7 +114,7 @@ unit_subplot_dict = {
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
-    maps.plotly_blank_maps(scenario_types, n_blank=2)
+    maps.plotly_blank_maps(subplot_titles, n_blank=2)
 
 # If the requested data is nLVO + MT, stop now.
 try:
@@ -239,178 +251,67 @@ gdf_rhs = maps.dissolve_polygons_by_colour(
 # Load in another gdf:
 import geopandas
 from shapely.validation import make_valid  # for fixing dodgy polygons
-gdf_catchment = geopandas.read_file('./data/outline_isdns.geojson')
-# Make geometry valid:
-gdf_catchment['geometry'] = [
-    make_valid(g) if g is not None else g
-    for g in gdf_catchment['geometry'].values
-    ]
-# st.write(gdf_catchment)
-# Make colour transparent:
-gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
-gdf_catchment['outline_type'] = 'ISDN'
+
+# Name of the column in the geojson that labels the shapes:
+with container_map_inputs:
+    outline_name = st.radio(
+        'Shapes for outlines',
+        ['None', 'ISDN', 'ICB']
+    )
+
+load_gdf_catchment = True
+if outline_name == 'ISDN':
+    outline_file = './data/outline_isdns.geojson'
+    outline_names_col = 'isdn'
+    outline_name = 'ISDN'  # to display
+elif outline_name == 'ICB':
+    outline_file = './data/outline_icbs.geojson'
+    outline_names_col = 'icb'  # to display
+else:
+    load_gdf_catchment = False
+    gdf_catchment = None
+    outline_name = None
+    outline_names_col = None
+
+if load_gdf_catchment:
+    gdf_catchment = geopandas.read_file(outline_file)
+    # Convert to British National Grid:
+    gdf_catchment = gdf_catchment.to_crs('EPSG:27700')
+    # st.write(gdf_catchment['geometry'])
+    # # Make geometry valid:
+    # gdf_catchment['geometry'] = [
+    #     make_valid(g) if g is not None else g
+    #     for g in gdf_catchment['geometry'].values
+    #     ]
+    # Make colour transparent:
+    gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_catchment['outline_type'] = outline_name
+    # st.write(gdf_catchment['geometry'])
 
 # Stroke unit scatter markers:
-# traces_units = maps.create_stroke_team_markers(df_unit_services_full)
+traces_units = maps.create_stroke_team_markers(df_unit_services_full)
 
 # Convert gdf polygons to xy cartesian coordinates:
-for gdf in [gdf_dummy, gdf_lhs, gdf_rhs, gdf_catchment]:
+gdfs_to_convert = [gdf_dummy, gdf_lhs, gdf_rhs]
+if gdf_catchment is not None:
+    gdfs_to_convert.append(gdf_catchment)
+for gdf in gdfs_to_convert:
     x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
     gdf['x'] = x_list
     gdf['y'] = y_list
 
+# st.write(gdf_catchment)
 
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-# ----- Plotting -----
-fig = make_subplots(rows=1, cols=2)
-
-# Add each row of the dataframe separately.
-# Scatter the edges of the polygons and use "fill" to colour
-# within the lines.
-gdf = gdf_dummy
-for i in gdf.index:
-    fig.add_trace(go.Scatter(
-        x=gdf.loc[i, 'x'],
-        y=gdf.loc[i, 'y'],
-        mode='lines',
-        fill="toself",
-        fillcolor=gdf.loc[i, 'colour'],
-        line_width=0,
-        hoverinfo='skip',
-        name=gdf.loc[i, 'colour_str'],
-        ), row='all', col='all'
-        )
-    
-gdf = gdf_lhs
-for i in gdf.index:
-    fig.add_trace(go.Scatter(
-        x=gdf.loc[i, 'x'],
-        y=gdf.loc[i, 'y'],
-        mode='lines',
-        fill="toself",
-        fillcolor=gdf.loc[i, 'colour'],
-        line_width=0,
-        hoverinfo='skip',
-        name=gdf.loc[i, 'colour_str'],
-        showlegend=False
-        ), row='all', col=1
-        )    
-
-gdf = gdf_rhs
-for i in gdf.index:
-    fig.add_trace(go.Scatter(
-        x=gdf.loc[i, 'x'],
-        y=gdf.loc[i, 'y'],
-        mode='lines',
-        fill="toself",
-        fillcolor=gdf.loc[i, 'colour'],
-        line_width=0,
-        hoverinfo='skip',
-        name=gdf.loc[i, 'colour_str'],
-        showlegend=False
-        ), row='all', col=2
-        )
-
-gdf = gdf_catchment
-# I can't for the life of me get hovertemplate working here
-# for mysterious reasons, so just stick to "text" for hover info.
-for i in gdf.index:
-    fig.add_trace(go.Scatter(
-        x=gdf.loc[i, 'x'],
-        y=gdf.loc[i, 'y'],
-        mode='lines',
-        fill="toself",
-        fillcolor=gdf.loc[i, 'colour'],
-        line_color='black',
-        name=gdf.loc[i, 'outline_type'],
-        text=gdf.loc[i, 'isdn'],
-        hoverinfo="text",
-        ), row='all', col='all'
-        )
-
-# Equivalent to pyplot set_aspect='equal':
-fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
-
-# Shared pan and zoom settings:
-fig.update_xaxes(matches='x')
-fig.update_yaxes(matches='y')
-
-# Remove axis ticks:
-fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
-
-# --- Stroke unit scatter markers ---
-if len(unit_subplot_dict) > 0:
-    # # Add a blank trace to put a gap in the legend.
-    # Stupid? Yes. Works? Also yes.
-    # Make sure the name isn't the same as any other blank name
-    # already set, e.g. in combo_colour_dict, or this repeat
-    # entry will be deleted later.
-    fig.add_trace(go.Scatter(
-        x=[None],
-        y=[None],
-        marker={'color': 'rgba(0,0,0,0)'},
-        name=' ' * 10
-    ))
-
-    # Create the scatter traces for the stroke units...
-    traces = maps.create_stroke_team_markers(df_unit_services_full)
-
-    # ... and THEN add traces to the subplots.
-    for service, grid_lists in unit_subplot_dict.items():
-        for grid_list in grid_lists:
-            row = grid_list[0]
-            col = grid_list[1]
-            fig.add_trace(traces[service], row=row, col=col)
-
-# Remove repeat legend names:
-# from https://stackoverflow.com/a/62162555
-names = set()
-fig.for_each_trace(
-    lambda trace:
-        trace.update(showlegend=False)
-        if (trace.name in names) else names.add(trace.name))
-# This makes sure that if multiple maps use the exact same
-# colours and labels, the labels only appear once in the legend.
-
-# Figure setup.
-fig.update_layout(
-    width=1200,
-    height=700,
-    margin_t=40,
-    margin_b=0
-    )
-
-# Disable clicking legend to remove trace:
-fig.update_layout(legend_itemclick=False)
-fig.update_layout(legend_itemdoubleclick=False)
-
-if container_map is None:
-    container_map = st.container()
 with container_map:
-    st.plotly_chart(fig)
-
-# st.plotly_chart(fig)
-
-
-# # Make one combined GeoDataFrame of all of the separate maps
-# # that will be used across all subplots.
-# gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
-#     gdf_boundaries_msoa,
-#     colour_dicts=[colour_dict, colour_diff_dict],
-#     subplot_titles=scenario_types,
-#     legend_title=legend_title,
-#     gdf_catchment=gdf_catchment
-# )
-
-# maps.plotly_many_maps(
-#     gdf_polys,
-#     combo_colour_map,
-#     subplot_titles=scenario_types,
-#     legend_title=legend_title,
-#     container_map=container_map,
-#     df_units=df_unit_services_full,
-#     unit_subplot_dict=unit_subplot_dict
-# )
+    maps.plotly_many_maps(
+        gdf_dummy,
+        gdf_lhs,
+        gdf_rhs,
+        gdf_catchment,
+        outline_names_col,
+        outline_name,
+        traces_units,
+        unit_subplot_dict,
+        subplot_titles=subplot_titles,
+        legend_title=legend_title
+        )
