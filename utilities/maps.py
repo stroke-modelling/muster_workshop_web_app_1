@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objs as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import os
 import geopandas
 import pyproj  # for crs conversion
@@ -40,7 +41,9 @@ def _load_geometry_msoa(df_msoa):
     # All msoa shapes:
     gdf_boundaries_msoa = _import_geojson(
         'MSOA11NM',
-        path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
+        # path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')
         )
     crs = gdf_boundaries_msoa.crs
     # Index column: msoa11CD.
@@ -50,13 +53,16 @@ def _load_geometry_msoa(df_msoa):
     #     columns={'msoa11NM': 'msoa', 'msoa11CD': 'msoa_code'})
     gdf_boundaries_msoa = gdf_boundaries_msoa.rename(
         columns={'MSOA11NM': 'msoa', 'MSOA11CD': 'msoa_code'})
-    gdf_boundaries_msoa = gdf_boundaries_msoa.set_index(['msoa', 'msoa_code'])
+    gdf_boundaries_msoa = gdf_boundaries_msoa.set_index(['msoa_code'])
+    gdf_boundaries_msoa = gdf_boundaries_msoa.drop('msoa', axis='columns')
 
     # ----- Prepare separate data -----
     # Set up column level info for the merged DataFrame.
     # Everything needs at least two levels: scenario and property.
     # Sometimes also a 'subtype' level.
     # Add another column level to the coordinates.
+    df_msoa = df_msoa.reset_index()
+    df_msoa = df_msoa.set_index('msoa_code')
     col_level_names = df_msoa.columns.names
     cols_gdf_boundaries_msoa = [
         gdf_boundaries_msoa.columns,                 # property
@@ -91,6 +97,18 @@ def _load_geometry_msoa(df_msoa):
     # Convert to GeoDataFrame:
     col_geo = utils.find_multiindex_column_names(
         gdf_boundaries_msoa, property=['geometry'])
+
+    # for i in gdf_boundaries_msoa.index:
+    #     st.write(gdf_boundaries_msoa.loc[i, col_geo])
+
+    # for i, g in enumerate(gdf_boundaries_msoa[col_geo].values):
+    #     try:
+    #         if g.geom_type not in ['Polygon', 'MultiPolygon']:
+    #             st.write(g.geom_type)
+    #     except AttributeError:
+    #         st.write(g)
+    #         st.write(gdf_boundaries_msoa.iloc[i])
+
     # Make geometry valid:
     gdf_boundaries_msoa[col_geo] = [
         make_valid(g) if g is not None else g
@@ -119,67 +137,10 @@ def combine_geography_with_outcomes(df_lsoa):
     return gdf_boundaries_msoa
 
 
-def plotly_blank_maps(subplot_titles=[], n_blank=2):
-    """
-    Show some blank England & Wales outlines while real map loads.
-    """
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf = geopandas.read_file(path_to_file)
-    # Has to be this CRS to prevent Picasso drawing:
-    gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
-
-    # Blank name to make nothing show up in the legend:
-    label = '.' + ' '*40 + '.'
-    gdf[' '] = label
-
-    # Make a new gdf containing all combined polygons
-    # for all plots:
-    # gdf_polys
-    gdfs_to_combine = []
-
-    if len(subplot_titles) == 0:
-        subplot_titles = range(n_blank)
-
-    for i in range(n_blank):
-        gdf_here = gdf.copy()
-        gdf_here['scenario'] = subplot_titles[i]
-        gdfs_to_combine.append(gdf_here)
-
-    gdf = pd.concat(gdfs_to_combine, axis='rows')
-
-    # Begin plotting.
-    fig = px.choropleth(
-        gdf,
-        locations=gdf.index,
-        geojson=gdf.geometry.__geo_interface__,
-        color=gdf[' '],
-        color_discrete_map={label: 'rgba(0, 0, 0, 0)'},
-        facet_col='scenario',
-        category_orders={'scenario': subplot_titles}
-        )
-
-    fig.update_layout(
-        width=1200,
-        height=700
-        )
-    fig.update_layout(margin_t=20)
-    fig.update_layout(margin_b=0)
-    fig.update_geos(
-        scope='world',
-        projection=go.layout.geo.Projection(type='airy'),
-        fitbounds='locations',
-        visible=False,
-        bgcolor='rgba(0,0,0,0)'  # transparent background
-        )
-    fig.update_traces(marker_line_color='grey')
-
-    st.plotly_chart(fig)
-
-
 def make_dummy_gdf_for_legend(
         v_bands_str,
         legend_title,
-        subplot_title
+        # subplot_title
         ):
     """
     Make a bonus gdf of the world's tiniest polygons, one of
@@ -189,7 +150,7 @@ def make_dummy_gdf_for_legend(
     gdf_bonus = pd.DataFrame()
     gdf_bonus[legend_title] = v_bands_str
     # gdf_bonus['inds'] = i*100 + np.arange(len(v_bands_str))
-    gdf_bonus['scenario'] = subplot_title
+    # gdf_bonus['scenario'] = subplot_title
     # Make a tiny polygon around these coordinates on the Isle of Man
     # (coordinates should be included on our England & Wales map
     # but not expecting anyone to closely look at this area).
@@ -205,6 +166,7 @@ def make_dummy_gdf_for_legend(
     gdf_bonus['geometry'] = poly
     gdf_bonus = geopandas.GeoDataFrame(
         gdf_bonus, geometry='geometry', crs='EPSG:4326')
+    gdf_bonus = gdf_bonus.to_crs('EPSG:27700')
     return gdf_bonus
 
 
@@ -213,8 +175,9 @@ def dissolve_polygons_by_colour(
         col_col,
         v_bands,
         v_bands_str,
-        legend_title,
-        subplot_title
+        combo_colour_map,
+        legend_title='colour_str',
+        # subplot_title
         ):
 
     gdf = gdf_all.copy()
@@ -243,7 +206,7 @@ def dissolve_polygons_by_colour(
     gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
 
     # Has to be this CRS to prevent Picasso drawing:
-    gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
+    # gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
 
     # Group by outcome band.
     # Only group by non-NaN values:
@@ -261,7 +224,10 @@ def dissolve_polygons_by_colour(
     # Remove the NaN polygon:
     gdf = gdf[gdf[legend_title] != 'rubbish']
 
-    gdf['scenario'] = subplot_title
+    # Map the colours to the string labels:
+    gdf['colour'] = gdf['colour_str'].map(combo_colour_map)
+
+    # gdf['scenario'] = subplot_title
 
     # # # Simplify the polygons:
     # # For Picasso mode.
@@ -272,11 +238,8 @@ def dissolve_polygons_by_colour(
     return gdf
 
 
-def create_combo_gdf_for_plotting(
-        gdf_all,
-        colour_dicts,
-        legend_title,
-        subplot_titles=[]
+def create_dummy_colour_gdf(
+        colour_dicts
         ):
     """
     write me
@@ -292,13 +255,6 @@ def create_combo_gdf_for_plotting(
         # Repeat entries will be set to the latest value.
         combo_colour_map = combo_colour_map | combo_colour_maps[i]
 
-    # Define subplot titles so that the category order is consistent
-    # for the facet column part of plotly express. Otherwise
-    # changing some inputs could cause the subplots to appear in
-    # a different order.
-    if len(subplot_titles) == 0:
-        subplot_titles = [cd['column'] for cd in colour_dicts]
-
     # Make a new gdf containing all combined polygons
     # for all plots:
     gdfs_to_combine = []
@@ -312,37 +268,21 @@ def create_combo_gdf_for_plotting(
 
         v_bands_str = colour_dict['v_bands_str']
         if add_gap_after_legend:
-            name_for_gap = ' ' * i
+            name_for_gap = ' ' * (i+1)
             # Add a string that appears blank...
             v_bands_str = np.append(v_bands_str, name_for_gap)
             # ... and assign it a transparent colour:
             combo_colour_map[name_for_gap] = 'rgba(0, 0, 0, 0)'
             # This is pretty stupid but it works.
-            add_gap_after_legend = False
+            # add_gap_after_legend = False
 
         gdf_bonus = make_dummy_gdf_for_legend(
             v_bands_str,
-            legend_title=legend_title,
-            subplot_title=subplot_titles[i]
+            legend_title='colour_str'
         )
         gdfs_to_combine.append(gdf_bonus)
 
-    # Now create the actual map data.
-    for i, colour_dict in enumerate(colour_dicts):
-        # For each colour scale and data column combo,
-        # merge polygons that fall into the same colour band.
-        gdf = dissolve_polygons_by_colour(
-            gdf_all,
-            colour_dict['column'],
-            colour_dict['v_bands'],
-            colour_dict['v_bands_str'],
-            legend_title=legend_title,
-            subplot_title=subplot_titles[i]
-            )
-        gdfs_to_combine.append(gdf)
-
-    # Combine the separate GeoDataFrames into one
-    # so that we can later use plotly express's facet columns.
+    # Combine the separate GeoDataFrames into one.
     gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
 
     # Make a new index column:
@@ -359,10 +299,15 @@ def create_combo_gdf_for_plotting(
     # None seems to happen when there are very few (only one? or zero?)
     # polygons in that outcome band. Maybe a rounding error?
 
+    # Map the colours to the string labels:
+    gdf_polys['colour'] = gdf_polys['colour_str'].map(combo_colour_map)
+
     return gdf_polys, combo_colour_map
 
 
 def create_stroke_team_markers(df_units=None):
+    from stroke_maps.utils import find_multiindex_column_names
+
     # Add stroke team markers.
     from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
     if df_units is None:
@@ -375,11 +320,21 @@ def create_stroke_team_markers(df_units=None):
     df_units = check_scenario_level(df_units)
     gdf_points_units = _load_geometry_stroke_units(df_units)
 
+    # # Convert to British National Grid.
+    # The geometry column should be BNG on import, so just overwrite
+    # the longitude and latitude columns that are by default long/lat.
+    col_geo = find_multiindex_column_names(gdf_points_units, property=['geometry'])
+    # gdf_points_units = gdf_points_units.set_crs('EPSG:27700', allow_override=True)
+
+    # Overwrite long and lat:
+    gdf_points_units[('Longitude', 'any')] = gdf_points_units[col_geo].x
+    gdf_points_units[('Latitude', 'any')] = gdf_points_units[col_geo].y
+
+
     # Set up markers using a new column in DataFrame.
     # Set everything to the IVT marker:
     markers = np.full(len(gdf_points_units), 'circle', dtype=object)
     # Update MT units:
-    from stroke_maps.utils import find_multiindex_column_names
     col_use_mt = find_multiindex_column_names(
         gdf_points_units, property=['use_mt'])
     mask_mt = (gdf_points_units[col_use_mt] == 1)
@@ -426,9 +381,10 @@ def create_stroke_team_markers(df_units=None):
     for service, s_dict in format_dict.items():
         mask = s_dict['mask']
 
-        trace = go.Scattergeo(
-            lon=gdf_points_units.loc[mask, ('Longitude', 'any')],
-            lat=gdf_points_units.loc[mask, ('Latitude', 'any')],
+        trace = go.Scatter(
+            x=gdf_points_units.loc[mask, ('Longitude', 'any')],
+            y=gdf_points_units.loc[mask, ('Latitude', 'any')],
+            mode='markers',
             marker={
                 'symbol': s_dict['marker'],
                 'color': s_dict['colour'],
@@ -451,70 +407,224 @@ def create_stroke_team_markers(df_units=None):
     return traces
 
 
+def plotly_blank_maps(subplot_titles=[], n_blank=2):
+    """
+    write me
+    """
+    path_to_file = os.path.join('data', 'outline_england.geojson')
+    gdf_ew = geopandas.read_file(path_to_file)
+
+    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
+    gdf_ew['x'] = x_list
+    gdf_ew['y'] = y_list
+
+    # ----- Plotting -----
+    fig = make_subplots(
+        rows=1, cols=n_blank,
+        horizontal_spacing=0.02,
+        subplot_titles=subplot_titles
+        )
+
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    for i in gdf_ew.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_ew.loc[i, 'x'],
+            y=gdf_ew.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='grey',
+            showlegend=False,
+            hoverinfo='skip',
+            ), row='all', col='all'
+            )
+
+    # Add a blank trace to create space for a legend.
+    # Stupid? Yes. Works? Also yes.
+    fig.add_trace(go.Scatter(
+        x=[None],
+        y=[None],
+        mode='markers',
+        marker={'color': 'rgba(0,0,0,0)'},
+        name=' ' * 70
+    ))
+
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
+
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    # Remove axis ticks:
+    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
+    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
+
+    # Figure setup.
+    fig.update_layout(
+        width=1200,
+        height=700,
+        margin_t=40,
+        margin_b=0
+        )
+
+    # Disable clicking legend to remove trace:
+    fig.update_layout(legend_itemclick=False)
+    fig.update_layout(legend_itemdoubleclick=False)
+
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    # Write to streamlit:
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+
+
 def plotly_many_maps(
-        gdf_polys,
-        combo_colour_map,
-        subplot_titles=[],  # plot titles
-        legend_title='Outcome',
-        container_map=None,
-        df_units=None,
-        unit_subplot_dict={}
+        gdf_dummy,
+        gdf_lhs,
+        gdf_rhs,
+        gdf_catchment=None,
+        outline_names_col='',
+        outline_name='',
+        traces_units=None,
+        unit_subplot_dict={},
+        subplot_titles=[],
+        legend_title=''
         ):
     """
     write me
     """
-    # Draw all colour maps:
-    fig = px.choropleth(
-        gdf_polys,
-        locations=gdf_polys.index,
-        geojson=gdf_polys.geometry.__geo_interface__,
-        color=gdf_polys[legend_title],
-        color_discrete_map=combo_colour_map,
-        facet_col='scenario',
-        # Which order the plots should appear in:
-        category_orders={'scenario': subplot_titles},
-        # facet_col_wrap=3  # How many subplots to get on a single row
+    # ----- Plotting -----
+    fig = make_subplots(
+        rows=1, cols=2,
+        horizontal_spacing=0.02,
+        subplot_titles=subplot_titles
         )
 
-    # Remove hover labels for choropleth:
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    for i in gdf_dummy.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_dummy.loc[i, 'x'],
+            y=gdf_dummy.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor=gdf_dummy.loc[i, 'colour'],
+            line_width=0,
+            hoverinfo='skip',
+            name=gdf_dummy.loc[i, 'colour_str'],
+            ), row='all', col='all'
+            )
+
+    for i in gdf_lhs.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_lhs.loc[i, 'x'],
+            y=gdf_lhs.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor=gdf_lhs.loc[i, 'colour'],
+            line_width=0,
+            hoverinfo='skip',
+            name=gdf_lhs.loc[i, 'colour_str'],
+            showlegend=False
+            ), row='all', col=1
+            )    
+
+    for i in gdf_rhs.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_rhs.loc[i, 'x'],
+            y=gdf_rhs.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor=gdf_rhs.loc[i, 'colour'],
+            line_width=0,
+            hoverinfo='skip',
+            name=gdf_rhs.loc[i, 'colour_str'],
+            showlegend=False
+            ), row='all', col=2
+            )
+
+    if gdf_catchment is None:
+        pass
+    else:
+        # I can't for the life of me get hovertemplate working here
+        # for mysterious reasons, so just stick to "text" for hover info.
+        for i in gdf_catchment.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_catchment.loc[i, 'x'],
+                y=gdf_catchment.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor=gdf_catchment.loc[i, 'colour'],
+                line_color='grey',
+                name=gdf_catchment.loc[i, 'outline_type'],
+                text=gdf_catchment.loc[i, outline_names_col],
+                hoverinfo="text",
+                hoverlabel=dict(bgcolor='red'),
+                ), row='all', col='all'
+                )
+
     fig.update_traces(
-        hovertemplate=None,
-        hoverinfo='skip'
-        )
-    # Remove outlines of contours:
-    fig.update_traces(marker_line_width=0)
+        hoverlabel=dict(
+            bgcolor='grey',
+            font_color='white'),
+        selector={'name': outline_name}
+    )
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
 
-    # Update projection so that the map starts zoomed-in on England.
-    fig.update_geos(
-        scope='world',
-        projection=go.layout.geo.Projection(type='airy'),
-        fitbounds='locations',
-        visible=False,           # default background image
-        bgcolor='rgba(0,0,0,0)'  # transparent background colour
-        )
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    # Remove axis ticks:
+    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
+    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
 
     # --- Stroke unit scatter markers ---
     if len(unit_subplot_dict) > 0:
-        # Add a blank trace to put a gap in the legend.
+        # # Add a blank trace to put a gap in the legend.
         # Stupid? Yes. Works? Also yes.
         # Make sure the name isn't the same as any other blank name
         # already set, e.g. in combo_colour_dict, or this repeat
         # entry will be deleted later.
-        fig.add_trace(go.Scattergeo(
-            lat=[None],
-            lon=[None],
+        fig.add_trace(go.Scatter(
+            x=[None],
+            y=[None],
             marker={'color': 'rgba(0,0,0,0)'},
-            name=' '
+            name=' ' * 10
         ))
 
-        # Create the scatter traces for the stroke units...
-        traces = create_stroke_team_markers(df_units)
-        # ... and THEN add traces to the subplots.
+        # Create the scatter traces for the stroke units in advance
+        # and then add traces to the subplots.
         for service, grid_lists in unit_subplot_dict.items():
             for grid_list in grid_lists:
                 row = grid_list[0]
                 col = grid_list[1]
-                fig.add_trace(traces[service], row=row, col=col)
+                fig.add_trace(traces_units[service], row=row, col=col)
 
     # Remove repeat legend names:
     # from https://stackoverflow.com/a/62162555
@@ -526,11 +636,13 @@ def plotly_many_maps(
     # This makes sure that if multiple maps use the exact same
     # colours and labels, the labels only appear once in the legend.
 
+    fig.update_layout(legend_title_text=legend_title)
+
     # Figure setup.
     fig.update_layout(
         width=1200,
         height=700,
-        margin_t=20,
+        margin_t=40,
         margin_b=0
         )
 
@@ -538,7 +650,68 @@ def plotly_many_maps(
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
 
-    if container_map is None:
-        container_map = st.container()
-    with container_map:
-        st.plotly_chart(fig)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    # Write to streamlit:
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+
+
+@st.cache_data
+def find_geometry_ivt_catchment(gdf_boundaries_msoa):
+    gdf_catchment = pd.DataFrame()
+    gdf_catchment['nearest_ivt_unit'] = gdf_boundaries_msoa[
+        (('nearest_ivt_unit', 'scenario'))]
+    gdf_catchment['geometry'] = gdf_boundaries_msoa[(('geometry', 'any'))]
+    gdf_catchment = geopandas.GeoDataFrame(gdf_catchment, geometry='geometry')
+    gdf_catchment = gdf_catchment.dissolve(by='nearest_ivt_unit')
+    return gdf_catchment
+
+
+def convert_shapely_polys_into_xy(gdf):
+    x_list = []
+    y_list = []
+    for i in gdf.index:
+        geo = gdf.loc[i, 'geometry']
+        try:
+            geo.geom_type
+            if geo.geom_type == 'Polygon':
+                # Can use the data pretty much as it is.
+                x, y = geo.exterior.coords.xy
+                x_list.append(list(x))
+                y_list.append(list(y))
+            elif geo.geom_type == 'MultiPolygon':
+                # Put None values between polygons.
+                x_combo = []
+                y_combo = []
+                for poly in geo.geoms:
+                    x, y = poly.exterior.coords.xy
+                    x_combo += list(x) + [None]
+                    y_combo += list(y) + [None]
+                x_list.append(np.array(x_combo))
+                y_list.append(np.array(y_combo))
+            else:
+                st.write('help', i)
+        except AttributeError:
+            # This isn't a geometry object. ???
+            x_list.append([]),
+            y_list.append([])
+    return x_list, y_list

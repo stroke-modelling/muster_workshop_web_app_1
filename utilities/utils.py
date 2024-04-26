@@ -1,6 +1,7 @@
 import numpy as np
 from itertools import product
 import pandas as pd
+from importlib_resources import files
 
 
 def find_multiindex_column_names(gdf, **kwargs):
@@ -127,8 +128,9 @@ def make_outline_england_wales():
     # All msoa shapes:
     gdf = import_geojson(
         'MSOA11NM',
-        path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+        path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')#)'MSOA_V3_reduced_simplified.geojson')
         )
+    
     # Limit to England:
     mask = gdf.index.str.startswith('E')
     gdf = gdf.loc[mask].copy()
@@ -147,3 +149,107 @@ def make_outline_england_wales():
 
     # Save:
     gdf.to_file('data/outline_england.geojson')
+
+
+def make_outline_icbs(col='icb'):
+    """Similar to stroke-maps."""
+    import streamlit as st
+    from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+
+    # # All msoa shapes:
+    # gdf = import_geojson(
+    #     'LSOA11NM',
+    #     path_to_file=os.path.join('data', 'LSOA_V3_reduced_simplified.geojson')
+    #     )
+    import geopandas
+    gdf = geopandas.read_file(os.path.join('data', 'LSOA_V3_reduced_simplified.geojson'))
+    # gdf = geopandas.read_file(os.path.join('data', 'LSOA.geojson'))
+    st.write(gdf.crs)
+    gdf = gdf.set_index('LSOA11CD')
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Load region info for each LSOA:
+    # Relative import from package files:
+    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
+    df_lsoa_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+
+    # Load further region data linking SICBL to other regions:
+    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
+    df_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    # Drop columns already in df_lsoa:
+    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+    df_lsoa = pd.merge(
+        df_lsoa_regions, df_regions,
+        left_on='region_code', right_on='region_code', how='left'
+        )
+    # # Link LSOA to MSOA:
+    # df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+    # df_lsoa = pd.merge(
+    #     df_lsoa_to_msoa, df_lsoa, left_on='lsoa11cd', right_on='lsoa_code', how='right'
+    # )
+    gdf = pd.merge(gdf, df_lsoa, left_on='LSOA11NM', right_on='lsoa', how='left')
+
+    # Combine:
+    gdf = gdf.dissolve(by=col)
+
+    # Save:
+    gdf.to_file(f'data/outline_{col}s.geojson')
+
+
+def make_outline_msoa_from_lsoa():
+    """
+    
+    For consistency - ISDN and ICB outlines are best made from LSOA,
+    so make the MSOA outlines from the same LSOA outlines
+    to prevent gaps appearing where there are differences.
+    """
+    import streamlit as st
+    from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+
+    # # All msoa shapes:
+    # gdf = import_geojson(
+    #     'LSOA11NM',
+    #     path_to_file=os.path.join('data', 'LSOA_V3_reduced_simplified.geojson')
+    #     )
+    import geopandas
+    gdf = geopandas.read_file(os.path.join('data', 'LSOA_V3_reduced_simplified.geojson'))
+    # gdf = geopandas.read_file(os.path.join('data', 'LSOA.geojson'))
+    st.write(gdf.crs)
+    gdf = gdf.set_index('LSOA11CD')
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Link LSOA to MSOA:
+    gdf = gdf.reset_index()
+    df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+    gdf = pd.merge(gdf, df_lsoa_to_msoa, left_on='LSOA11CD', right_on='lsoa11cd', how='left')
+
+    # Combine:
+    col = 'msoa11cd'
+    gdf = gdf.dissolve(by=col)
+    gdf = gdf.reset_index()
+
+    # Only keep code and name columns:
+    gdf = gdf[['msoa11cd', 'msoa11nm', 'geometry']]
+    gdf = gdf.rename(columns={'msoa11cd': 'MSOA11CD', 'msoa11nm': 'MSOA11NM'})
+    gdf = gdf.set_index('MSOA11CD')
+
+    # Save:
+    gdf.to_file(f'data/outline_{col}s.geojson')

@@ -27,6 +27,13 @@ st.set_page_config(
     layout='wide'
     )
 
+# import utilities.utils as utils
+# utils.make_outline_msoa_from_lsoa()
+# utils.make_outline_icbs('icb')
+# utils.make_outline_icbs('isdn')
+# utils.make_outline_england_wales()
+# st.stop()
+
 # Make containers:
 # +-----------------------------+
 # |       container_intro       |
@@ -84,6 +91,11 @@ with container_select_outcome:
 # (in this order)
 scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
 
+subplot_titles = [
+    'Drip-and-ship',
+    'Benefit of redirection over drip-and-ship'
+]
+
 legend_title = ''.join([
     f'v: {scenario_dict["outcome_type_str"]};<br>',
     'd: Benefit of redirection over drip-and-ship'
@@ -102,7 +114,7 @@ unit_subplot_dict = {
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
 with container_map:
-    maps.plotly_blank_maps(scenario_types, n_blank=2)
+    maps.plotly_blank_maps(subplot_titles, n_blank=2)
 
 # If the requested data is nLVO + MT, stop now.
 try:
@@ -202,21 +214,104 @@ columns_colours = [
 colour_dict['column'] = columns_colours[0]
 colour_diff_dict['column'] = columns_colours[1]
 
-# Make one combined GeoDataFrame of all of the separate maps
-# that will be used across all subplots.
-gdf_polys, combo_colour_map = maps.create_combo_gdf_for_plotting(
-    gdf_boundaries_msoa,
-    colour_dicts=[colour_dict, colour_diff_dict],
-    subplot_titles=scenario_types,
-    legend_title=legend_title,
-)
+# # Create hospital catchment areas from this MSOA geography data.
+# cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
+# import pandas as pd
+# gdf_catchment = maps.find_geometry_ivt_catchment(pd.DataFrame(gdf_boundaries_msoa[cols]))
+# # Save:
+# gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
 
-maps.plotly_many_maps(
-    gdf_polys,
-    combo_colour_map,
-    subplot_titles=scenario_types,
-    legend_title=legend_title,
-    container_map=container_map,
-    df_units=df_unit_services_full,
-    unit_subplot_dict=unit_subplot_dict
-)
+
+
+# Make dummy polygons:
+gdf_dummy, combo_colour_map = maps.create_dummy_colour_gdf(
+    [colour_dict, colour_diff_dict])
+
+# Left-hand subplot colours:
+# For each colour scale and data column combo,
+# merge polygons that fall into the same colour band.
+gdf_lhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    colour_dict['column'],
+    colour_dict['v_bands'],
+    colour_dict['v_bands_str'],
+    combo_colour_map
+    )
+
+# Right-hand subplot colours:
+gdf_rhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    colour_diff_dict['column'],
+    colour_diff_dict['v_bands'],
+    colour_diff_dict['v_bands_str'],
+    combo_colour_map
+    )
+
+# Region outlines:
+# Load in another gdf:
+import geopandas
+from shapely.validation import make_valid  # for fixing dodgy polygons
+
+# Name of the column in the geojson that labels the shapes:
+with container_map_inputs:
+    outline_name = st.radio(
+        'Shapes for outlines',
+        ['None', 'ISDN', 'ICB']
+    )
+
+load_gdf_catchment = True
+if outline_name == 'ISDN':
+    outline_file = './data/outline_isdns.geojson'
+    outline_names_col = 'isdn'
+    outline_name = 'ISDN'  # to display
+elif outline_name == 'ICB':
+    outline_file = './data/outline_icbs.geojson'
+    outline_names_col = 'icb'  # to display
+else:
+    load_gdf_catchment = False
+    gdf_catchment = None
+    outline_name = None
+    outline_names_col = None
+
+if load_gdf_catchment:
+    gdf_catchment = geopandas.read_file(outline_file)
+    # Convert to British National Grid:
+    gdf_catchment = gdf_catchment.to_crs('EPSG:27700')
+    # st.write(gdf_catchment['geometry'])
+    # # Make geometry valid:
+    # gdf_catchment['geometry'] = [
+    #     make_valid(g) if g is not None else g
+    #     for g in gdf_catchment['geometry'].values
+    #     ]
+    # Make colour transparent:
+    gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_catchment['outline_type'] = outline_name
+    # st.write(gdf_catchment['geometry'])
+
+# Stroke unit scatter markers:
+traces_units = maps.create_stroke_team_markers(df_unit_services_full)
+
+# Convert gdf polygons to xy cartesian coordinates:
+gdfs_to_convert = [gdf_dummy, gdf_lhs, gdf_rhs]
+if gdf_catchment is not None:
+    gdfs_to_convert.append(gdf_catchment)
+for gdf in gdfs_to_convert:
+    x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
+    gdf['x'] = x_list
+    gdf['y'] = y_list
+
+# st.write(gdf_catchment)
+
+with container_map:
+    maps.plotly_many_maps(
+        gdf_dummy,
+        gdf_lhs,
+        gdf_rhs,
+        gdf_catchment,
+        outline_names_col,
+        outline_name,
+        traces_units,
+        unit_subplot_dict,
+        subplot_titles=subplot_titles,
+        legend_title=legend_title
+        )
