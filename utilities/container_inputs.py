@@ -522,7 +522,7 @@ def select_treatment_type(container=None):
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT'],
             index=2,  # IVT & MT as default
-            horizontal=True
+            # horizontal=True
             )
     # Match the input string to the file name string:
     treatment_type_dict = {
@@ -547,7 +547,7 @@ def select_stroke_type(container=None, use_combo_stroke_types=False):
         stroke_type_str = st.radio(
             'Stroke type',
             options,
-            horizontal=True
+            # horizontal=True
             )
     # Match the input string to the file name string:
     stroke_type_dict = {
@@ -653,6 +653,39 @@ def set_up_colours(scenario_dict, v_name='v'):
     v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
+    # Link bands to colours via v_bands_str:
+    colours = []
+    for v in v_bands_str:
+        colours.append(colour_map[v])
+
+    # Add an extra bound at either end (for the "to infinity" bit):
+    v_bands = np.append(v_min - step_size, v_bands)
+    v_bands = np.append(v_bands, v_max + step_size)
+    # Normalise the data bounds:
+    bounds = (
+        (np.array(v_bands) - np.min(v_bands)) /
+        (np.max(v_bands) - np.min(v_bands))
+    )
+    # Add extra bounds so that there's a tiny space at either end
+    # for the under/over colours.
+    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
+    bounds_for_cs = bounds
+
+    # Need separate data values and colourbar values.
+    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
+
+    # Create a colour scale from these colours.
+    # To get the discrete colourmap (i.e. no continuous gradient of
+    # colour made between the defined colours),
+    # double up the bounds so that colour A explicitly ends where
+    # colour B starts.
+    colourscale = []
+    for i in range(len(colours)):
+        colourscale += [
+            [bounds_for_cs[i], colours[i]],
+            [bounds_for_cs[i+1], colours[i]]
+            ]
+
     colour_dict = {
         'v_min': v_min,
         'v_max': v_max,
@@ -661,6 +694,8 @@ def set_up_colours(scenario_dict, v_name='v'):
         'v_bands': v_bands,
         'v_bands_str': v_bands_str,
         'colour_map': colour_map,
+        'colour_scale': colourscale,
+        'bounds_for_colour_scale': bounds_for_cs
     }
     return colour_dict
 

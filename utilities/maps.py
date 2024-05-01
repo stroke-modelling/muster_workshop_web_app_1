@@ -238,73 +238,6 @@ def dissolve_polygons_by_colour(
     return gdf
 
 
-def create_dummy_colour_gdf(
-        colour_dicts
-        ):
-    """
-    write me
-    """
-    # Combine all of the colour dictionaries for the legend
-    # in the order in which they're given.
-    # List of all dicts:
-    combo_colour_maps = [cd['colour_map'] for cd in colour_dicts]
-    # Start with only the first dict...
-    combo_colour_map = combo_colour_maps[0]
-    for i in range(1, len(combo_colour_maps)):
-        # ... then add in later ones.
-        # Repeat entries will be set to the latest value.
-        combo_colour_map = combo_colour_map | combo_colour_maps[i]
-
-    # Make a new gdf containing all combined polygons
-    # for all plots:
-    gdfs_to_combine = []
-
-    # First create a dummy GeoDataFrame containing a tiny polygon
-    # for each colour in the colour map. These will be rendered
-    # first by plotly so that the legend entries are always
-    # displayed in the same order as the v_bands lists.
-    add_gap_after_legend = True
-    for i, colour_dict in enumerate(colour_dicts):
-
-        v_bands_str = colour_dict['v_bands_str']
-        if add_gap_after_legend:
-            name_for_gap = ' ' * (i+1)
-            # Add a string that appears blank...
-            v_bands_str = np.append(v_bands_str, name_for_gap)
-            # ... and assign it a transparent colour:
-            combo_colour_map[name_for_gap] = 'rgba(0, 0, 0, 0)'
-            # This is pretty stupid but it works.
-            # add_gap_after_legend = False
-
-        gdf_bonus = make_dummy_gdf_for_legend(
-            v_bands_str,
-            legend_title='colour_str'
-        )
-        gdfs_to_combine.append(gdf_bonus)
-
-    # Combine the separate GeoDataFrames into one.
-    gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
-
-    # Make a new index column:
-    gdf_polys['index'] = range(len(gdf_polys))
-    gdf_polys = gdf_polys.set_index('index')
-    # Otherwise the px.choropleth line below will only draw
-    # the first polygon with each index value, not the one
-    # that actually belongs to the scenario in facet_col.
-
-    # Drop any 'none' geometry:
-    gdf_polys = gdf_polys.dropna(axis='rows', subset=['geometry'])
-    # If any polygon is None then all polygons in that facet_col
-    # will fail to be displayed.
-    # None seems to happen when there are very few (only one? or zero?)
-    # polygons in that outcome band. Maybe a rounding error?
-
-    # Map the colours to the string labels:
-    gdf_polys['colour'] = gdf_polys['colour_str'].map(combo_colour_map)
-
-    return gdf_polys, combo_colour_map
-
-
 def create_stroke_team_markers(df_units=None):
     from stroke_maps.utils import find_multiindex_column_names
 
@@ -421,7 +354,7 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
     # ----- Plotting -----
     fig = make_subplots(
         rows=1, cols=n_blank,
-        horizontal_spacing=0.02,
+        horizontal_spacing=0.0,
         subplot_titles=subplot_titles
         )
 
@@ -448,7 +381,7 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
         y=[None],
         mode='markers',
         marker={'color': 'rgba(0,0,0,0)'},
-        name=' ' * 70
+        name=' ' * 20
     ))
 
     # Equivalent to pyplot set_aspect='equal':
@@ -465,10 +398,10 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
 
     # Figure setup.
     fig.update_layout(
-        width=1200,
+        # width=1200,
         height=700,
         margin_t=40,
-        margin_b=0
+        margin_b=60  # mimic space taken up by colourbar
         )
 
     # Disable clicking legend to remove trace:
@@ -501,7 +434,6 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
 
 
 def plotly_many_maps(
-        gdf_dummy,
         gdf_lhs,
         gdf_rhs,
         gdf_catchment=None,
@@ -510,7 +442,9 @@ def plotly_many_maps(
         traces_units=None,
         unit_subplot_dict={},
         subplot_titles=[],
-        legend_title=''
+        legend_title='',
+        colour_dict={},
+        colour_diff_dict={}
         ):
     """
     write me
@@ -518,26 +452,87 @@ def plotly_many_maps(
     # ----- Plotting -----
     fig = make_subplots(
         rows=1, cols=2,
-        horizontal_spacing=0.02,
+        horizontal_spacing=0.0,
         subplot_titles=subplot_titles
+        )
+
+
+    # Return a gdf of some x, y coordinates to scatter
+    # in such a tiny size that they'll never be seen,
+    # but that will cause the colourbar of the colour scale to display.
+    # Separate colour scales for the two maps.
+
+    def draw_dummy_scatter(fig, colour_dict, col=1, trace_name=''):
+        # Dummy coordinates:
+        # Isle of Man: 238844, 482858
+        bonus_x = 238844
+        bonus_y = 482858
+        x_dummy = np.array([bonus_x]*2)
+        y_dummy = np.array([bonus_y]*2)
+        z_dummy = np.array([0.0, 1.0])
+
+        # Sometimes the ticks don't show at the very ends of the colour bars.
+        # In that case, cheat with e.g.
+        # tick_locs = [bounds[0] + 1e-2, *bounds[1:-1], bounds[-1] - 1e-3]
+        tick_locs = colour_dict['bounds_for_colour_scale']
+
+        tick_names = [f'{t:.3f}' for t in colour_dict['v_bands'][1:-1]]
+        tick_names = ['←', *tick_names, '→']
+        # Add dummy scatter:
+        fig.add_trace(go.Scatter(
+            x=x_dummy,
+            y=y_dummy,
+            marker=dict(
+                color=z_dummy,
+                colorscale=colour_dict['colour_scale'],
+                colorbar=dict(
+                    thickness=20,
+                    tickmode='array',
+                    tickvals=tick_locs,
+                    ticktext=tick_names,
+                    # ticklabelposition='outside top'
+                    title=colour_dict['title']
+                    ),
+                size=1e-4,
+                ),
+            showlegend=False,
+            mode='markers',
+            hoverinfo='skip',
+            name=trace_name
+        ), row='all', col=col)
+
+        return fig
+
+    fig = draw_dummy_scatter(fig, colour_dict, col=1, trace_name='cbar')
+    fig = draw_dummy_scatter(fig, colour_diff_dict, col=2, trace_name='cbar_diff')
+    fig.update_traces(
+        {'marker': {'colorbar': {
+            'orientation': 'h',
+            'x': 0.0,
+            'y': -0.1,
+            'len': 0.5,
+            'xanchor': 'left',
+            'title_side': 'bottom'
+            # 'xref': 'paper'
+            }}},
+        selector={'name': 'cbar'}
+        )
+    fig.update_traces(
+        {'marker': {'colorbar': {
+            'orientation': 'h',
+            'x': 1.0,
+            'y': -0.1,
+            'len': 0.5,
+            'xanchor': 'right',
+            'title_side': 'bottom'
+            # 'xref': 'paper'
+            }}},
+        selector={'name': 'cbar_diff'}
         )
 
     # Add each row of the dataframe separately.
     # Scatter the edges of the polygons and use "fill" to colour
     # within the lines.
-    for i in gdf_dummy.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_dummy.loc[i, 'x'],
-            y=gdf_dummy.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor=gdf_dummy.loc[i, 'colour'],
-            line_width=0,
-            hoverinfo='skip',
-            name=gdf_dummy.loc[i, 'colour_str'],
-            ), row='all', col='all'
-            )
-
     for i in gdf_lhs.index:
         fig.add_trace(go.Scatter(
             x=gdf_lhs.loc[i, 'x'],
@@ -606,17 +601,19 @@ def plotly_many_maps(
 
     # --- Stroke unit scatter markers ---
     if len(unit_subplot_dict) > 0:
-        # # Add a blank trace to put a gap in the legend.
-        # Stupid? Yes. Works? Also yes.
-        # Make sure the name isn't the same as any other blank name
-        # already set, e.g. in combo_colour_dict, or this repeat
-        # entry will be deleted later.
-        fig.add_trace(go.Scatter(
-            x=[None],
-            y=[None],
-            marker={'color': 'rgba(0,0,0,0)'},
-            name=' ' * 10
-        ))
+        if gdf_catchment is None:
+            pass
+        else:
+            # # Add a blank trace to put a gap in the legend.
+            # Stupid? Yes. Works? Also yes.
+            # Make sure the name isn't the same as any other blank name
+            # already set, e.g. in combo_colour_dict.
+            fig.add_trace(go.Scatter(
+                x=[None],
+                y=[None],
+                marker={'color': 'rgba(0,0,0,0)'},
+                name=' ' * 10
+            ))
 
         # Create the scatter traces for the stroke units in advance
         # and then add traces to the subplots.
@@ -627,6 +624,7 @@ def plotly_many_maps(
                 fig.add_trace(traces_units[service], row=row, col=col)
 
     # Remove repeat legend names:
+    # (e.g. multiple sets of IVT unit, MT unit)
     # from https://stackoverflow.com/a/62162555
     names = set()
     fig.for_each_trace(
@@ -636,11 +634,17 @@ def plotly_many_maps(
     # This makes sure that if multiple maps use the exact same
     # colours and labels, the labels only appear once in the legend.
 
-    fig.update_layout(legend_title_text=legend_title)
+    fig.update_layout(
+        legend=dict(
+            title_text=legend_title,
+            bordercolor='grey',
+            borderwidth=2
+        )
+    )
 
     # Figure setup.
     fig.update_layout(
-        width=1200,
+        # width=1200,
         height=700,
         margin_t=40,
         margin_b=0
@@ -672,7 +676,11 @@ def plotly_many_maps(
         }
 
     # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config=plotly_config
+        )
 
 
 @st.cache_data
