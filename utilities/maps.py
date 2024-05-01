@@ -476,7 +476,7 @@ def plotly_many_maps(
         # tick_locs = [bounds[0] + 1e-2, *bounds[1:-1], bounds[-1] - 1e-3]
         tick_locs = colour_dict['bounds_for_colour_scale']
 
-        tick_names = [f'{t:.3f}' for t in colour_dict['v_bands'][1:-1]]
+        tick_names = [f'{t:.3f}' for t in colour_dict['v_bands']]
         tick_names = ['←', *tick_names, '→']
         # Add dummy scatter:
         fig.add_trace(go.Scatter(
