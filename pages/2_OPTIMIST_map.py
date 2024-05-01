@@ -96,10 +96,16 @@ subplot_titles = [
     'Benefit of redirection over drip-and-ship'
 ]
 
-legend_title = ''.join([
-    f'v: {scenario_dict["outcome_type_str"]};<br>',
-    'd: Benefit of redirection over drip-and-ship'
-    ])
+legend_title = None
+# legend_title = ''.join([
+#     f'v: {scenario_dict["outcome_type_str"]};<br>',
+#     'd: Benefit of redirection over drip-and-ship'
+#     ])
+
+cmap_titles = [
+    f'{scenario_dict["outcome_type_str"]}',
+    f'{scenario_dict["outcome_type_str"]}: Benefit of redirection over drip-and-ship'
+    ]
 
 # Which subplots to draw which units on:
 # Each entry is [row number, column number].
@@ -214,6 +220,9 @@ columns_colours = [
 colour_dict['column'] = columns_colours[0]
 colour_diff_dict['column'] = columns_colours[1]
 
+colour_dict['title'] = cmap_titles[0]
+colour_diff_dict['title'] = cmap_titles[1]
+
 # # Create hospital catchment areas from this MSOA geography data.
 # cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
 # import pandas as pd
@@ -221,11 +230,6 @@ colour_diff_dict['column'] = columns_colours[1]
 # # Save:
 # gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
 
-
-
-# Make dummy polygons:
-gdf_dummy, combo_colour_map = maps.create_dummy_colour_gdf(
-    [colour_dict, colour_diff_dict])
 
 # Left-hand subplot colours:
 # For each colour scale and data column combo,
@@ -235,7 +239,7 @@ gdf_lhs = maps.dissolve_polygons_by_colour(
     colour_dict['column'],
     colour_dict['v_bands'],
     colour_dict['v_bands_str'],
-    combo_colour_map
+    colour_dict['colour_map']
     )
 
 # Right-hand subplot colours:
@@ -244,7 +248,7 @@ gdf_rhs = maps.dissolve_polygons_by_colour(
     colour_diff_dict['column'],
     colour_diff_dict['v_bands'],
     colour_diff_dict['v_bands_str'],
-    combo_colour_map
+    colour_diff_dict['colour_map']
     )
 
 # Region outlines:
@@ -292,7 +296,7 @@ if load_gdf_catchment:
 traces_units = maps.create_stroke_team_markers(df_unit_services_full)
 
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_dummy, gdf_lhs, gdf_rhs]
+gdfs_to_convert = [gdf_lhs, gdf_rhs]
 if gdf_catchment is not None:
     gdfs_to_convert.append(gdf_catchment)
 for gdf in gdfs_to_convert:
@@ -300,11 +304,8 @@ for gdf in gdfs_to_convert:
     gdf['x'] = x_list
     gdf['y'] = y_list
 
-# st.write(gdf_catchment)
-
 with container_map:
     maps.plotly_many_maps(
-        gdf_dummy,
         gdf_lhs,
         gdf_rhs,
         gdf_catchment,
@@ -313,5 +314,7 @@ with container_map:
         traces_units,
         unit_subplot_dict,
         subplot_titles=subplot_titles,
-        legend_title=legend_title
+        legend_title=legend_title,
+        colour_dict=colour_dict,
+        colour_diff_dict=colour_diff_dict
         )
