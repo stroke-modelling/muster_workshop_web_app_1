@@ -598,13 +598,13 @@ def set_up_colours(scenario_dict, v_name='v'):
         'utility_shift': {
             'scenario': {
                 'vmin': 0.0,
-                'vmax': 0.20,
+                'vmax': 0.15,
                 'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.1,
-                'vmax': 0.1,
+                'vmin': -0.05,
+                'vmax': 0.05,
                 'step_size': 0.025,
                 'cmap_name': 'RdBu'
             },
@@ -659,12 +659,12 @@ def set_up_colours(scenario_dict, v_name='v'):
         colours.append(colour_map[v])
 
     # Add an extra bound at either end (for the "to infinity" bit):
-    v_bands = np.append(v_min - step_size, v_bands)
-    v_bands = np.append(v_bands, v_max + step_size)
+    v_bands_for_cs = np.append(v_min - step_size, v_bands)
+    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
     # Normalise the data bounds:
     bounds = (
-        (np.array(v_bands) - np.min(v_bands)) /
-        (np.max(v_bands) - np.min(v_bands))
+        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
+        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
     )
     # Add extra bounds so that there's a tiny space at either end
     # for the under/over colours.
