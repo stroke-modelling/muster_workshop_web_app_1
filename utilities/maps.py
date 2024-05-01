@@ -716,6 +716,28 @@ def convert_shapely_polys_into_xy(gdf):
                     y_combo += list(y) + [None]
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
+            elif geo.geom_type == 'GeometryCollection':
+                # Treat this similarly to MultiPolygon but remove
+                # anything that's not a polygon.
+                polys = [t for t in geo.geoms if t.geom_type in ['Polygon', 'MultiPolygon']]
+                # Put None values between polygons.
+                x_combo = []
+                y_combo = []
+                for t in polys:
+                    if t.geom_type == 'Polygon':
+                        # Can use the data pretty much as it is.
+                        x, y = t.exterior.coords.xy
+                        x_combo += list(x) + [None]
+                        y_combo += list(y) + [None]
+                    else:
+                        # Multipolygon.
+                        # Put None values between polygons.
+                        for poly in t.geoms:
+                            x, y = poly.exterior.coords.xy
+                            x_combo += list(x) + [None]
+                            y_combo += list(y) + [None]
+                x_list.append(np.array(x_combo))
+                y_list.append(np.array(y_combo))
             else:
                 st.write('help', i)
         except AttributeError:
