@@ -522,7 +522,7 @@ def select_treatment_type(container=None):
             'Treatment type',
             ['IVT', 'MT', 'IVT & MT'],
             index=2,  # IVT & MT as default
-            horizontal=True
+            # horizontal=True
             )
     # Match the input string to the file name string:
     treatment_type_dict = {
@@ -547,7 +547,7 @@ def select_stroke_type(container=None, use_combo_stroke_types=False):
         stroke_type_str = st.radio(
             'Stroke type',
             options,
-            horizontal=True
+            # horizontal=True
             )
     # Match the input string to the file name string:
     stroke_type_dict = {

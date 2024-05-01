@@ -238,140 +238,6 @@ def dissolve_polygons_by_colour(
     return gdf
 
 
-def create_dummy_colour_gdf(
-        colour_dicts
-        ):
-    """
-    write me
-    """
-    # Combine all of the colour dictionaries for the legend
-    # in the order in which they're given.
-    # List of all dicts:
-    combo_colour_maps = [cd['colour_map'] for cd in colour_dicts]
-    # Start with only the first dict...
-    combo_colour_map = combo_colour_maps[0]
-    for i in range(1, len(combo_colour_maps)):
-        # ... then add in later ones.
-        # Repeat entries will be set to the latest value.
-        combo_colour_map = combo_colour_map | combo_colour_maps[i]
-
-    # Make a new gdf containing all combined polygons
-    # for all plots:
-    gdfs_to_combine = []
-
-    # First create a dummy GeoDataFrame containing a tiny polygon
-    # for each colour in the colour map. These will be rendered
-    # first by plotly so that the legend entries are always
-    # displayed in the same order as the v_bands lists.
-    add_gap_after_legend = True
-    for i, colour_dict in enumerate(colour_dicts):
-
-        v_bands_str = colour_dict['v_bands_str']
-        if add_gap_after_legend:
-            name_for_gap = ' ' * (i+1)
-            # Add a string that appears blank...
-            v_bands_str = np.append(v_bands_str, name_for_gap)
-            # ... and assign it a transparent colour:
-            combo_colour_map[name_for_gap] = 'rgba(0, 0, 0, 0)'
-            # This is pretty stupid but it works.
-            # add_gap_after_legend = False
-
-        gdf_bonus = make_dummy_gdf_for_legend(
-            v_bands_str,
-            legend_title='colour_str'
-        )
-        gdfs_to_combine.append(gdf_bonus)
-
-    # Combine the separate GeoDataFrames into one.
-    gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
-
-    # Make a new index column:
-    gdf_polys['index'] = range(len(gdf_polys))
-    gdf_polys = gdf_polys.set_index('index')
-    # Otherwise the px.choropleth line below will only draw
-    # the first polygon with each index value, not the one
-    # that actually belongs to the scenario in facet_col.
-
-    # Drop any 'none' geometry:
-    gdf_polys = gdf_polys.dropna(axis='rows', subset=['geometry'])
-    # If any polygon is None then all polygons in that facet_col
-    # will fail to be displayed.
-    # None seems to happen when there are very few (only one? or zero?)
-    # polygons in that outcome band. Maybe a rounding error?
-
-    # Map the colours to the string labels:
-    gdf_polys['colour'] = gdf_polys['colour_str'].map(combo_colour_map)
-
-    return gdf_polys, combo_colour_map
-
-
-def create_dummy_colour_gdf_OLD(
-        colour_dicts
-        ):
-    """
-    write me
-    """
-    # Combine all of the colour dictionaries for the legend
-    # in the order in which they're given.
-    # List of all dicts:
-    combo_colour_maps = [cd['colour_map'] for cd in colour_dicts]
-    # Start with only the first dict...
-    combo_colour_map = combo_colour_maps[0]
-    for i in range(1, len(combo_colour_maps)):
-        # ... then add in later ones.
-        # Repeat entries will be set to the latest value.
-        combo_colour_map = combo_colour_map | combo_colour_maps[i]
-
-    # Make a new gdf containing all combined polygons
-    # for all plots:
-    gdfs_to_combine = []
-
-    # First create a dummy GeoDataFrame containing a tiny polygon
-    # for each colour in the colour map. These will be rendered
-    # first by plotly so that the legend entries are always
-    # displayed in the same order as the v_bands lists.
-    add_gap_after_legend = True
-    for i, colour_dict in enumerate(colour_dicts):
-
-        v_bands_str = colour_dict['v_bands_str']
-        if add_gap_after_legend:
-            name_for_gap = ' ' * (i+1)
-            # Add a string that appears blank...
-            v_bands_str = np.append(v_bands_str, name_for_gap)
-            # ... and assign it a transparent colour:
-            combo_colour_map[name_for_gap] = 'rgba(0, 0, 0, 0)'
-            # This is pretty stupid but it works.
-            # add_gap_after_legend = False
-
-        gdf_bonus = make_dummy_gdf_for_legend(
-            v_bands_str,
-            legend_title='colour_str'
-        )
-        gdfs_to_combine.append(gdf_bonus)
-
-    # Combine the separate GeoDataFrames into one.
-    gdf_polys = pd.concat(gdfs_to_combine, axis='rows')
-
-    # Make a new index column:
-    gdf_polys['index'] = range(len(gdf_polys))
-    gdf_polys = gdf_polys.set_index('index')
-    # Otherwise the px.choropleth line below will only draw
-    # the first polygon with each index value, not the one
-    # that actually belongs to the scenario in facet_col.
-
-    # Drop any 'none' geometry:
-    gdf_polys = gdf_polys.dropna(axis='rows', subset=['geometry'])
-    # If any polygon is None then all polygons in that facet_col
-    # will fail to be displayed.
-    # None seems to happen when there are very few (only one? or zero?)
-    # polygons in that outcome band. Maybe a rounding error?
-
-    # Map the colours to the string labels:
-    gdf_polys['colour'] = gdf_polys['colour_str'].map(combo_colour_map)
-
-    return gdf_polys, combo_colour_map
-
-
 def create_stroke_team_markers(df_units=None):
     from stroke_maps.utils import find_multiindex_column_names
 
@@ -488,7 +354,7 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
     # ----- Plotting -----
     fig = make_subplots(
         rows=1, cols=n_blank,
-        horizontal_spacing=0.02,
+        horizontal_spacing=0.0,
         subplot_titles=subplot_titles
         )
 
@@ -515,7 +381,7 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
         y=[None],
         mode='markers',
         marker={'color': 'rgba(0,0,0,0)'},
-        name=' ' * 70
+        name=' ' * 20
     ))
 
     # Equivalent to pyplot set_aspect='equal':
@@ -532,10 +398,10 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
 
     # Figure setup.
     fig.update_layout(
-        width=1200,
+        # width=1200,
         height=700,
         margin_t=40,
-        margin_b=0
+        margin_b=60  # mimic space taken up by colourbar
         )
 
     # Disable clicking legend to remove trace:
@@ -568,7 +434,6 @@ def plotly_blank_maps(subplot_titles=[], n_blank=2):
 
 
 def plotly_many_maps(
-        # gdf_dummy,
         gdf_lhs,
         gdf_rhs,
         gdf_catchment=None,
@@ -587,7 +452,7 @@ def plotly_many_maps(
     # ----- Plotting -----
     fig = make_subplots(
         rows=1, cols=2,
-        horizontal_spacing=0.2,
+        horizontal_spacing=0.0,
         subplot_titles=subplot_titles
         )
 
@@ -779,7 +644,7 @@ def plotly_many_maps(
 
     # Figure setup.
     fig.update_layout(
-        width=1200,
+        # width=1200,
         height=700,
         margin_t=40,
         margin_b=0
@@ -811,7 +676,11 @@ def plotly_many_maps(
         }
 
     # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config=plotly_config
+        )
 
 
 @st.cache_data

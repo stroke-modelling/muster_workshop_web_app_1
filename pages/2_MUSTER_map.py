@@ -43,8 +43,12 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-container_map = st.empty()
-container_map_inputs = st.container()
+cols = st.columns([1, 9])
+with cols[1]:
+    container_map = st.empty()
+with cols[0]:
+    st.markdown('__Map choices__')
+    container_map_inputs = st.container()
 container_results_tables = st.container()
 container_select_outcome = st.container()
 
@@ -67,13 +71,17 @@ with container_inputs:
             inputs.select_stroke_unit_services())
         submitted = st.form_submit_button('Submit')
 
-with container_map_inputs:
-    cols = st.columns(2)
 with container_select_outcome:
     st.markdown('### Alternative outcome measure for map')
     st.markdown('Try these if you dare.')
-    scenario_dict = inputs.select_scenario(containers=[container_select_outcome] + cols)
+scenario_dict = inputs.select_scenario(containers=[container_select_outcome] + [container_map_inputs]*2)
 
+# Name of the column in the geojson that labels the shapes:
+with container_map_inputs:
+    outline_name = st.radio(
+        'Geographical region type',
+        ['None', 'ISDN', 'ICB']
+    )
 
 
 # ----- Setup for plots -----
@@ -214,12 +222,6 @@ gdf_rhs = maps.dissolve_polygons_by_colour(
 import geopandas
 from shapely.validation import make_valid  # for fixing dodgy polygons
 
-# Name of the column in the geojson that labels the shapes:
-with container_map_inputs:
-    outline_name = st.radio(
-        'Shapes for outlines',
-        ['None', 'ISDN', 'ICB']
-    )
 
 load_gdf_catchment = True
 if outline_name == 'ISDN':
