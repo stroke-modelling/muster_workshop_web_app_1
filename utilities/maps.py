@@ -119,6 +119,7 @@ def _load_geometry_msoa(df_msoa):
         geometry=col_geo,
         crs=crs
         )
+
     return gdf_boundaries_msoa
 
 
@@ -134,7 +135,7 @@ def combine_geography_with_outcomes(df_lsoa):
 
     # Merge outcome and geography:
     gdf_boundaries_msoa = _load_geometry_msoa(df_msoa)
-    return gdf_boundaries_msoa
+    return gdf_boundaries_msoa, df_msoa
 
 
 def make_dummy_gdf_for_legend(
@@ -170,19 +171,112 @@ def make_dummy_gdf_for_legend(
     return gdf_bonus
 
 
-def dissolve_polygons_by_colour(
-        gdf_all,
+def assign_colour_to_areas(
+        df_msoa,
         col_col,
         v_bands,
         v_bands_str,
-        combo_colour_map,
-        legend_title='colour_str',
+        colour_dict,
+        scen=''
         # subplot_title
         ):
 
+    df_msoa = df_msoa.copy()
+    # df_msoa = df_msoa.reset_index()
+
+    # Selected column to use for colour values:
+    column_colour = utils.find_multiindex_column_names(
+        df_msoa,
+        property=[col_col],
+        )
+
+    # # Special case - update polygons that are exactly zero.
+    # if 'diff' in scen:
+    #     col_zero_bool = col_col + '_iszero'
+    #     st.write(col_col, col_zero_bool)
+    #     column_zero_bool = utils.find_multiindex_column_names(
+    #         gdf, property=[col_zero_bool])
+
+
+    #     # Only keep the required columns:
+    #     gdf = gdf[[column_colour, column_geometry, column_zero_bool]]
+    #     # Only keep the 'property' subheading:
+    #     gdf = pd.DataFrame(
+    #         gdf.values,
+    #         columns=['outcome', 'geometry', 'iszero']
+    #     )
+    # else:
+    # Only keep the required columns:
+    df_msoa = df_msoa[[column_colour]]
+    
+    df_msoa_colours = pd.DataFrame(
+        df_msoa.values,
+        columns=['outcome'],
+        index=df_msoa.index
+    )
+
+    # Group by outcome band.
+    # Only group by non-NaN values:
+    mask = ~pd.isna(df_msoa_colours['outcome'])
+    # Pick out only regions with zero exactly for the zero label.
+    inds = np.digitize(df_msoa_colours.loc[mask, 'outcome'], v_bands)
+    labels = v_bands_str[inds]
+    df_msoa_colours.loc[mask, 'colour_str'] = labels
+
+    # # Special case - update polygons that are exactly zero.
+    # if 'diff' in scen:
+    #     mask_z = (gdf['iszero'] == True)
+    #     gdf.loc[mask_z, 'colour_str'] = '0.0'
+    # Flag NaN values:
+    df_msoa_colours.loc[~mask, 'colour_str'] = 'rubbish'
+
+    # Drop outcome column:
+    df_msoa_colours = df_msoa_colours.drop('outcome', axis='columns')
+
+    # Remove the NaN values:
+    df_msoa_colours = df_msoa_colours[df_msoa_colours['colour_str'] != 'rubbish']
+
+    # Map the colours to the string labels:
+    df_msoa_colours['colour'] = df_msoa_colours['colour_str'].map(colour_dict)
+
+    return df_msoa_colours
+
+
+def dissolve_polygons_by_colour(
+        gdf_all,
+        df_msoa,
+        ):
+
+    # Merge in the colour information:
     gdf = gdf_all.copy()
     crs = gdf.crs
     gdf = gdf.reset_index()
+
+    gdf[('msoa_code', 'scenario')] = gdf[('msoa_code', '')]
+    gdf = gdf.drop([('msoa_code', '')], axis='columns')
+
+    df_msoa = df_msoa.reset_index()
+    df_msoa = df_msoa.drop('msoa', axis='columns')
+    # Give an extra column level to df_msoa:
+    # Check whether the input DataFrames have a 'scenario' column level.
+    # This is required for talking to stroke-maps package.
+    # If not, add one now with a placeholder scenario name.
+    df_msoa = check_scenario_level(df_msoa)#, scenario_name='')
+
+    col_msoa_msoa = utils.find_multiindex_column_names(
+        df_msoa, property=['msoa_code'])
+
+    column_msoa = utils.find_multiindex_column_names(
+        gdf, property=['msoa_code'])
+
+    gdf = pd.merge(
+        gdf,
+        df_msoa,
+        left_on=[column_msoa],
+        right_on=[col_msoa_msoa],
+        how='right'
+        )
+
 
     # Find geometry column for plot function:
     column_geometry = utils.find_multiindex_column_names(
@@ -191,43 +285,37 @@ def dissolve_polygons_by_colour(
     # Selected column to use for colour values:
     column_colour = utils.find_multiindex_column_names(
         gdf,
-        property=[col_col],
+        property=['colour'],
+        # scenario=[scenario_type],
+        # subtype=['mean']
+        )
+
+    # Selected column to use for colour values:
+    column_colour_str = utils.find_multiindex_column_names(
+        gdf,
+        property=['colour_str'],
         # scenario=[scenario_type],
         # subtype=['mean']
         )
 
     # Only keep the required columns:
-    gdf = gdf[[column_colour, column_geometry]]
+    gdf = gdf[[column_colour_str, column_colour, column_geometry]]
     # Only keep the 'property' subheading:
     gdf = pd.DataFrame(
         gdf.values,
-        columns=['outcome', 'geometry']
+        columns=['colour_str', 'colour', 'geometry']
     )
+    # gdf['iszero'] = False
     gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
 
     # Has to be this CRS to prevent Picasso drawing:
     # gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
 
-    # Group by outcome band.
-    # Only group by non-NaN values:
-    mask = ~pd.isna(gdf['outcome'])
-    inds = np.digitize(gdf.loc[mask, 'outcome'], v_bands)
-    labels = v_bands_str[inds]
-    # Flag NaN values:
-    gdf.loc[mask, legend_title] = labels
-    gdf.loc[~mask, legend_title] = 'rubbish'
-    # Drop outcome column:
-    gdf = gdf.drop('outcome', axis='columns')
     # Dissolve by shared outcome value:
-    gdf = gdf.dissolve(by=legend_title, sort=False)
+    gdf = gdf.dissolve(by='colour_str', sort=False)
     gdf = gdf.reset_index()
     # Remove the NaN polygon:
-    gdf = gdf[gdf[legend_title] != 'rubbish']
-
-    # Map the colours to the string labels:
-    gdf['colour'] = gdf['colour_str'].map(combo_colour_map)
-
-    # gdf['scenario'] = subplot_title
+    gdf = gdf[gdf['colour_str'] != 'rubbish']
 
     # # # Simplify the polygons:
     # # For Picasso mode.
@@ -478,6 +566,23 @@ def plotly_many_maps(
 
         tick_names = [f'{t:.3f}' for t in colour_dict['v_bands']]
         tick_names = ['←', *tick_names, '→']
+
+        # # Replace zeroish with zero:
+        # # (this is a visual difference only - it combines two near-zero
+        # # ticks and their labels into a single tick.)
+        # if colour_dict['scen'] == 'diff':
+        #     ind_z = np.where(np.sign(colour_dict['v_bands']) >= 0.0)[0][0] + 1
+        #     tick_z = np.mean([tick_locs[ind_z-1], tick_locs[ind_z]])
+        #     name_z = '0'
+
+        #     tick_locs_z = np.append(tick_locs[:ind_z -1], tick_z)
+        #     tick_locs_z = np.append(tick_locs_z, tick_locs[ind_z+1:])
+        #     tick_locs = tick_locs_z
+
+        #     tick_names_z = np.append(tick_names[:ind_z -1], name_z)
+        #     tick_names_z = np.append(tick_names_z, tick_names[ind_z+1:])
+        #     tick_names = tick_names_z
+
         # Add dummy scatter:
         fig.add_trace(go.Scatter(
             x=x_dummy,
