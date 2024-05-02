@@ -70,7 +70,7 @@ def calculate_outcomes(input_dict, df_unit_services):
     cols_float = df_lsoa.select_dtypes([float]).columns
     for col in cols_float:
         df_lsoa[col] = df_lsoa[col].astype(np.float16)
-        
+
     return df_lsoa
 
 
