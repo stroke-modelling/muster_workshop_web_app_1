@@ -129,13 +129,14 @@ try:
 except KeyError:
     stop_bool = False
 if stop_bool:
-    st.warning('No data for nLVO with MT.')
-    st.stop()
+    with container_map_inputs:
+        st.warning('No data for nLVO with MT.')
+        st.stop()
 
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
 df_lsoa = calc.calculate_outcomes(input_dict, df_unit_services)
-gdf_boundaries_msoa = maps.combine_geography_with_outcomes(df_lsoa)
+gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 

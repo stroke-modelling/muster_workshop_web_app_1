@@ -64,6 +64,13 @@ def calculate_outcomes(input_dict, df_unit_services):
     # Also need to do something with separate nlvo, lvo, treatment types
     # because current setup just wants some averaged added utility outcome
     # rather than split by stroke type.
+
+    # Change to float16 to preserve very few significant figures:
+    import numpy as np
+    cols_float = df_lsoa.select_dtypes([float]).columns
+    for col in cols_float:
+        df_lsoa[col] = df_lsoa[col].astype(np.float16)
+        
     return df_lsoa
 
 
@@ -200,9 +207,22 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     # Only keep cols that exist (sometimes have MSU, sometimes not):
     cols_to_drop = [c for c in cols_to_drop if c in df_msoa.columns]
     df_msoa = df_msoa.drop(cols_to_drop, axis='columns')
+
+    # Special cases -
+    # For each column, keep a copy of MSOA codes where all LSOAs
+    # have zero values.
+    # ----
+
     # Aggregate by MSOA:
     df_msoa = df_msoa.groupby('msoa11cd').mean()
     # df_msoa = df_msoa.set_index('msoa11cd')
+
+    # Change to float16 to preserve very few significant figures:
+    import numpy as np
+    cols_float = df_msoa.select_dtypes([float]).columns
+    for col in cols_float:
+        df_msoa[col] = df_msoa[col].astype(np.float16)
+
     # Merge the MSOA names back in:
     df_msoa = df_msoa.reset_index()
     df_msoa = pd.merge(
@@ -321,6 +341,11 @@ def combine_results_by_diff(df_lsoa):
                     f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
                     f'_{tre}_{out}'
                 ])
+                # col_zero_bool = ''.join([
+                #     f'{occ}_',
+                #     f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
+                #     f'_{tre}_{out}_iszero'
+                # ])
                 try:
                     data_scen1 = df_lsoa[col_scen1]
                     data_scen2 = df_lsoa[col_scen2]
@@ -333,6 +358,9 @@ def combine_results_by_diff(df_lsoa):
                 if data_exists:
                     data_diff = data_scen1 - data_scen2
                     df_lsoa[col_diff] = data_diff
+
+                    # zero_bool = (data_scen1 - data_scen2) == 0.0
+                    # df_lsoa[col_zero_bool] = zero_bool
                 else:
                     pass
     return df_lsoa

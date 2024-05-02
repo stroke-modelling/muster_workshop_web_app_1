@@ -69,8 +69,8 @@ with container_intro:
 # ----- User inputs -----
 with container_inputs:
     with st.form('Model setup'):
-        st.header('Pathway inputs')
-        input_dict = inputs.select_parameters_optimist()
+        st.markdown('### Pathway inputs')
+        input_dict = inputs.select_parameters_optimist_OLD()
 
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
@@ -168,7 +168,7 @@ df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
 # Calculate diff - redirect minus drip-ship:
 df_lsoa = calc.combine_results_by_diff(df_lsoa)
 
-gdf_boundaries_msoa = maps.combine_geography_with_outcomes(df_lsoa)
+gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
@@ -239,23 +239,34 @@ colour_diff_dict['title'] = cmap_titles[1]
 
 
 # Left-hand subplot colours:
-# For each colour scale and data column combo,
-# merge polygons that fall into the same colour band.
-gdf_lhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
+# Assign the colours using a pd.DataFrame, NOT the geodataframe,
+# becaues the gdf stores all numbers as Object and so introduces
+# floating point error for the near-zero values.
+df_msoa_colours = maps.assign_colour_to_areas(
+    df_msoa,
     colour_dict['column'],
     colour_dict['v_bands'],
     colour_dict['v_bands_str'],
     colour_dict['colour_map']
     )
+# For each colour scale and data column combo,
+# merge polygons that fall into the same colour band.
+gdf_lhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    df_msoa_colours
+    )
 
 # Right-hand subplot colours:
-gdf_rhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
+df_msoa_diff_colours = maps.assign_colour_to_areas(
+    df_msoa,
     colour_diff_dict['column'],
     colour_diff_dict['v_bands'],
     colour_diff_dict['v_bands_str'],
     colour_diff_dict['colour_map']
+    )
+gdf_rhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    df_msoa_diff_colours
     )
 
 # Region outlines:

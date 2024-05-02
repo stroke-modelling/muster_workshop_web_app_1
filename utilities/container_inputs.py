@@ -198,6 +198,180 @@ def select_parameters_optimist():
     call_to_ambulance_arrival_time: 18,
     ambulance_on_scene_time: 29,
     """
+    cols = st.columns([1, 1, 1, 5, 1])
+
+    with cols[0]:
+        container_shared = st.container(border=True)
+    with cols[1]:
+        container_on_scene = st.container(border=True)
+    with cols[2]:
+        container_diagnostic = st.container(border=True)
+    with cols[3]:
+        container_unit = st.container(border=True)
+    with cols[4]:
+        container_transfer = st.container(border=True)
+
+    container_occ = st.container()
+
+
+    input_dict = {}
+    # Set up scenarios
+    with container_shared:
+        st.markdown('Shared')
+        input_dict['process_time_call_ambulance'] = st.number_input(
+            'Time to call ambulance',
+            value=79,
+            help=f"Reference value: {79}",
+            min_value=0,
+            max_value=1440,
+            step=1
+            )
+
+    with container_on_scene:
+        st.markdown('On scene')
+        input_dict['process_time_ambulance_response'] = st.number_input(
+            'Ambulance response time',
+            value=18,
+            help=f"Reference value: {18}",
+            min_value=0,
+            max_value=1440,
+            step=1
+            )
+        input_dict['process_ambulance_on_scene_duration'] = st.number_input(
+            'Time ambulance is on scene',
+            value=29,
+            help=f"Reference value: {29}",
+            min_value=0,
+            max_value=1440,
+            step=1
+            )
+
+    with container_diagnostic:
+        st.markdown('Diagnostic')
+        input_dict['process_ambulance_on_scene_diagnostic_duration'] = st.number_input(
+            'Extra time on scene for diagnostic',
+            value=10,
+            help=f"Reference value: {10}",
+            min_value=0,
+            max_value=1440,
+            step=1
+            )
+
+    with container_unit:
+        st.markdown('Unit')
+        cols_unit = st.columns(3)
+        with cols_unit[0]:
+            input_dict['process_time_arrival_to_needle'] = st.number_input(
+                'Hospital arrival to IVT time',
+                value=30,
+                help=f"Reference value: {30}",
+                min_value=0,
+                max_value=1440,
+                step=1
+                )
+        with cols_unit[1]:
+            container_unit_with_mt = st.container(border=True)
+        with container_unit_with_mt:
+            input_dict['process_time_arrival_to_puncture'] = st.number_input(
+                'Hospital arrival to MT time (for in-hospital IVT+MT)',
+                value=60,
+                help=f"Reference value: {60}",
+                min_value=0,
+                max_value=1440,
+                step=1
+                )
+        with cols_unit[2]:
+            container_unit_without_mt = st.container(border=True)
+        with container_unit_without_mt:
+            input_dict['transfer_time_delay'] = st.number_input(
+                'Door-in to door-out (for transfer to MT)',
+                value=60,
+                help=f"Reference value: {60}",
+                min_value=0,
+                max_value=1440,
+                step=1
+                )
+
+    with container_transfer:
+        st.markdown('Transfer unit')
+        input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
+            'Hospital arrival to MT time (for transfers)',
+            value=60,
+            help=f"Reference value: {60}",
+            min_value=0,
+            max_value=1440,
+            step=1
+            )
+
+    inputs_occlusion = {
+        'prop_nlvo': {
+            'name': 'Proportion of population with nLVO',
+            'default': 0.65,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+            'container': container_occ
+        },
+        'prop_lvo': {
+            'name': 'Proportion of population with LVO',
+            'default': 0.35,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+            'container': container_occ
+        }
+    }
+    inputs_redirection = {
+        'sensitivity': {
+            'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
+            'default': 0.66,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+            'container': container_occ
+        },
+        'specificity': {
+            'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
+            'default': 0.87,
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+            'container': container_occ
+        },
+    }
+
+    dicts = {
+        'Occlusion types': inputs_occlusion,
+        'Redirection': inputs_redirection
+        }
+
+    with container_occ:
+        for heading, i_dict in dicts.items():
+            st.markdown(f'### {heading}')
+            for key, s_dict in i_dict.items():
+                    input_dict[key] = st.number_input(
+                        s_dict['name'],
+                        value=s_dict['default'],
+                        help=f"Reference value: {s_dict['default']}",
+                        min_value=s_dict['min_value'],
+                        max_value=s_dict['max_value'],
+                        step=s_dict['step'],
+                        key=key
+                        )
+
+    return input_dict
+
+def select_parameters_optimist_OLD():
+    """
+    This version creates a long list of number inputs.
+
+    TO DO another day - set these reference values up in fixed_params.
+    Default values from median onset to arrival times document
+    (Mike Allen, 23rd April 2024):
+    onset_to_call: 79,
+    call_to_ambulance_arrival_time: 18,
+    ambulance_on_scene_time: 29,
+    """
     # Set up scenarios
     inputs_shared = {
         # Shared
@@ -602,13 +776,13 @@ def set_up_colours(scenario_dict, v_name='v'):
         'utility_shift': {
             'scenario': {
                 'vmin': 0.0,
-                'vmax': 0.20,
+                'vmax': 0.15,
                 'step_size': 0.025,
                 'cmap_name': 'inferno'
             },
             'diff': {
-                'vmin': -0.1,
-                'vmax': 0.1,
+                'vmin': -0.05,
+                'vmax': 0.05,
                 'step_size': 0.025,
                 'cmap_name': 'RdBu'
             },
@@ -624,7 +798,7 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'vmin': -0.2,
                 'vmax': 0.2,
                 'step_size': 0.05,
-                'cmap_name': 'RdBu'
+                'cmap_name': 'RdBu_r'  # lower numbers are better
             },
         },
         'mrs_0-2': {
@@ -654,7 +828,25 @@ def set_up_colours(scenario_dict, v_name='v'):
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
+    # if 'diff' in scen:
+    #     # Remove existing zero:
+    #     ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
+    #     if len(ind_z) > 0:
+    #         ind_z = ind_z[0]
+    #         v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
+    #     # Add a zero-ish band.
+    #     ind = np.where(v_bands >= -0.0)[0][0]
+    #     zero_size = step_size * 0.01
+    #     v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
+    #     v_bands_z = np.append(v_bands_z, v_bands[ind:])
+    #     v_bands = v_bands_z
+    #     v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
+    #     # Update zeroish name:
+    #     v_bands_str[ind+1] = '0.0'
+    # else:
     v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
     # Link bands to colours via v_bands_str:
@@ -663,12 +855,12 @@ def set_up_colours(scenario_dict, v_name='v'):
         colours.append(colour_map[v])
 
     # Add an extra bound at either end (for the "to infinity" bit):
-    v_bands = np.append(v_min - step_size, v_bands)
-    v_bands = np.append(v_bands, v_max + step_size)
+    v_bands_for_cs = np.append(v_min - step_size, v_bands)
+    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
     # Normalise the data bounds:
     bounds = (
-        (np.array(v_bands) - np.min(v_bands)) /
-        (np.max(v_bands) - np.min(v_bands))
+        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
+        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
     )
     # Add extra bounds so that there's a tiny space at either end
     # for the under/over colours.
@@ -691,6 +883,7 @@ def set_up_colours(scenario_dict, v_name='v'):
             ]
 
     colour_dict = {
+        'scen': scen,
         'v_min': v_min,
         'v_max': v_max,
         'step_size': step_size,
@@ -699,7 +892,9 @@ def set_up_colours(scenario_dict, v_name='v'):
         'v_bands_str': v_bands_str,
         'colour_map': colour_map,
         'colour_scale': colourscale,
-        'bounds_for_colour_scale': bounds_for_cs
+        'bounds_for_colour_scale': bounds_for_cs,
+        # 'zero_label': '0.0',
+        # 'zero_colour': 
     }
     return colour_dict
 
