@@ -239,9 +239,6 @@ colour_diff_dict['title'] = cmap_titles[1]
 
 
 # Left-hand subplot colours:
-# Assign the colours using a pd.DataFrame, NOT the geodataframe,
-# becaues the gdf stores all numbers as Object and so introduces
-# floating point error for the near-zero values.
 df_msoa_colours = maps.assign_colour_to_areas(
     df_msoa,
     colour_dict['column'],

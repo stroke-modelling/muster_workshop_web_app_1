@@ -199,23 +199,31 @@ colour_dict['title'] = cmap_titles[0]
 colour_diff_dict['title'] = cmap_titles[1]
 
 # Left-hand subplot colours:
-# For each colour scale and data column combo,
-# merge polygons that fall into the same colour band.
-gdf_lhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
+df_msoa_colours = maps.assign_colour_to_areas(
+    df_msoa,
     colour_dict['column'],
     colour_dict['v_bands'],
     colour_dict['v_bands_str'],
     colour_dict['colour_map']
     )
+# For each colour scale and data column combo,
+# merge polygons that fall into the same colour band.
+gdf_lhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    df_msoa_colours
+    )
 
 # Right-hand subplot colours:
-gdf_rhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
+df_msoa_diff_colours = maps.assign_colour_to_areas(
+    df_msoa,
     colour_diff_dict['column'],
     colour_diff_dict['v_bands'],
     colour_diff_dict['v_bands_str'],
     colour_diff_dict['colour_map']
+    )
+gdf_rhs = maps.dissolve_polygons_by_colour(
+    gdf_boundaries_msoa,
+    df_msoa_diff_colours
     )
 
 # Region outlines:

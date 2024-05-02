@@ -824,24 +824,24 @@ def set_up_colours(scenario_dict, v_name='v'):
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
-    # if 'diff' in scen:
-    #     # Remove existing zero:
-    #     ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
-    #     if len(ind_z) > 0:
-    #         ind_z = ind_z[0]
-    #         v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
-    #     # Add a zero-ish band.
-    #     ind = np.where(v_bands >= -0.0)[0][0]
-    #     zero_size = step_size * 0.01
-    #     v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
-    #     v_bands_z = np.append(v_bands_z, v_bands[ind:])
-    #     v_bands = v_bands_z
-    #     v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+    if 'diff' in scen:
+        # Remove existing zero:
+        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
+        if len(ind_z) > 0:
+            ind_z = ind_z[0]
+            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
+        # Add a zero-ish band.
+        ind = np.where(v_bands >= -0.0)[0][0]
+        zero_size = step_size * 0.01
+        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
+        v_bands_z = np.append(v_bands_z, v_bands[ind:])
+        v_bands = v_bands_z
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
 
-    #     # Update zeroish name:
-    #     v_bands_str[ind+1] = '0.0'
-    # else:
-    v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+        # Update zeroish name:
+        v_bands_str[ind+1] = '0.0'
+    else:
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
 
     colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 

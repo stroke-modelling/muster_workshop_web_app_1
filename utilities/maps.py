@@ -230,8 +230,8 @@ def assign_colour_to_areas(
     # Flag NaN values:
     df_msoa_colours.loc[~mask, 'colour_str'] = 'rubbish'
 
-    # Drop outcome column:
-    df_msoa_colours = df_msoa_colours.drop('outcome', axis='columns')
+    # # Drop outcome column:
+    # df_msoa_colours = df_msoa_colours.drop('outcome', axis='columns')
 
     # Remove the NaN values:
     df_msoa_colours = df_msoa_colours[df_msoa_colours['colour_str'] != 'rubbish']
@@ -277,7 +277,6 @@ def dissolve_polygons_by_colour(
         how='right'
         )
 
-
     # Find geometry column for plot function:
     column_geometry = utils.find_multiindex_column_names(
         gdf, property=['geometry'])
@@ -312,7 +311,11 @@ def dissolve_polygons_by_colour(
     # gdf = gdf.to_crs(pyproj.CRS.from_epsg(4326))
 
     # Dissolve by shared outcome value:
-    gdf = gdf.dissolve(by='colour_str', sort=False)
+    # I have no idea why, but using sort=False in the following line
+    # gives unexpected results in the map. e.g. areas that the data
+    # says should be exactly zero will show up as other colours.
+    # Maybe filling in holes in geometry? Maybe incorrect sorting?
+    gdf = gdf.dissolve(by='colour_str')#, sort=False)
     gdf = gdf.reset_index()
     # Remove the NaN polygon:
     gdf = gdf[gdf['colour_str'] != 'rubbish']
@@ -567,21 +570,21 @@ def plotly_many_maps(
         tick_names = [f'{t:.3f}' for t in colour_dict['v_bands']]
         tick_names = ['←', *tick_names, '→']
 
-        # # Replace zeroish with zero:
-        # # (this is a visual difference only - it combines two near-zero
-        # # ticks and their labels into a single tick.)
-        # if colour_dict['scen'] == 'diff':
-        #     ind_z = np.where(np.sign(colour_dict['v_bands']) >= 0.0)[0][0] + 1
-        #     tick_z = np.mean([tick_locs[ind_z-1], tick_locs[ind_z]])
-        #     name_z = '0'
+        # Replace zeroish with zero:
+        # (this is a visual difference only - it combines two near-zero
+        # ticks and their labels into a single tick.)
+        if colour_dict['scen'] == 'diff':
+            ind_z = np.where(np.sign(colour_dict['v_bands']) >= 0.0)[0][0] + 1
+            tick_z = np.mean([tick_locs[ind_z-1], tick_locs[ind_z]])
+            name_z = '0'
 
-        #     tick_locs_z = np.append(tick_locs[:ind_z -1], tick_z)
-        #     tick_locs_z = np.append(tick_locs_z, tick_locs[ind_z+1:])
-        #     tick_locs = tick_locs_z
+            tick_locs_z = np.append(tick_locs[:ind_z -1], tick_z)
+            tick_locs_z = np.append(tick_locs_z, tick_locs[ind_z+1:])
+            tick_locs = tick_locs_z
 
-        #     tick_names_z = np.append(tick_names[:ind_z -1], name_z)
-        #     tick_names_z = np.append(tick_names_z, tick_names[ind_z+1:])
-        #     tick_names = tick_names_z
+            tick_names_z = np.append(tick_names[:ind_z -1], name_z)
+            tick_names_z = np.append(tick_names_z, tick_names[ind_z+1:])
+            tick_names = tick_names_z
 
         # Add dummy scatter:
         fig.add_trace(go.Scatter(
