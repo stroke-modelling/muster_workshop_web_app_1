@@ -411,6 +411,10 @@ def import_stroke_unit_services(use_msu=True):
     df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values('isdn')
+
+    # Update James Cook University Hospital to have MSU by default:
+    if 'use_msu' in df_unit_services.columns:
+        df_unit_services.at['TS43BW', 'use_msu'] = True
     return df_unit_services, df_unit_services_full, cols_use
 
 
