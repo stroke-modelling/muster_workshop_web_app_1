@@ -244,7 +244,19 @@ def convert_lsoa_to_msoa_results(df_lsoa):
 
 
 def combine_results_by_occlusion_type(df_lsoa, prop_dict):
+    """
+    Make two new dataframes, one with all the column 1 data
+    and one with all the column 2 data, and with the same column
+    names. Then subtract one dataframe from the other
+    and merge the results back into the main one.
+    This is more efficient than calculating and creating
+    each new column individually.
+    """
     # Simple addition: x% of column 1 plus y% of column 2.
+    df1 = pd.DataFrame(index=df_lsoa.index)  # nLVO
+    df2 = pd.DataFrame(index=df_lsoa.index)  # LVO
+    # Column names for these new DataFrames:
+    cols = []
 
     # Don't combine treatment types for now
     # (no nLVO with MT data).
@@ -272,20 +284,25 @@ def combine_results_by_occlusion_type(df_lsoa, prop_dict):
                 except KeyError:
                     data_exists = False
                 col_lvo = f'lvo_{s}_{t}_{o}'
-                col_combo = f'combo_{s}_{t}_{o}'
 
                 if data_exists:
-                    combo_data = (
-                        data_nlvo * prop_dict['nlvo'] +
-                        df_lsoa[col_lvo] * prop_dict['lvo']
-                    )
-                    df_lsoa[col_combo] = combo_data
+                    cols.append(f'{s}_{t}_{o}')
+                    df1[f'{s}_{t}_{o}'] = data_nlvo
+                    df2[f'{s}_{t}_{o}'] = df_lsoa[col_lvo]
+    # Create new dataframe from combining the two separate ones:
+    combo_data = (
+        df1 * prop_dict['nlvo'] +
+        df2 * prop_dict['lvo']
+    )
+    # Update column names to mark them as combined:
+    combo_data.columns = [f'combo_{col}' for col in cols]
+    # Merge this new data into the starting dataframe:
+    df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
     return df_lsoa
 
 
 def combine_results_by_redirection(df_lsoa, redirect_dict):
     # Simple addition: x% of column 1 plus y% of column 2.
-
     prop_lvo_redirected = redirect_dict['sensitivity']
     prop_nlvo_redirected = (1.0 - redirect_dict['specificity'])
 
@@ -300,13 +317,16 @@ def combine_results_by_redirection(df_lsoa, redirect_dict):
     treatment_list = ['ivt', 'mt', 'ivt_mt']
     outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
 
-    for v in occlusion_list:
+    for v in occlusion_list:    
+        df1 = pd.DataFrame(index=df_lsoa.index)  # mothership
+        df2 = pd.DataFrame(index=df_lsoa.index)  # drip-and-ship
+        # Column names for these new DataFrames:
+        cols = []
         prop = prop_dict[v]
         for t in treatment_list:
             for o in outcome_list:
                 col_drip_ship = f'{v}_drip_ship_{t}_{o}'
                 col_mothership = f'{v}_mothership_{t}_{o}'
-                col_redirect = f'{v}_redirect_{t}_{o}'
                 try:
                     df_lsoa[col_drip_ship]
                     data_exists = True
@@ -314,15 +334,28 @@ def combine_results_by_redirection(df_lsoa, redirect_dict):
                     data_exists = False
 
                 if data_exists:
-                    combo_data = (
-                        df_lsoa[col_mothership] * prop +
-                        df_lsoa[col_drip_ship] * (1.0 - prop)
-                    )
-                    df_lsoa[col_redirect] = combo_data
+                    cols.append(f'{t}_{o}')
+                    df1[f'{t}_{o}'] = df_lsoa[col_drip_ship]
+                    df2[f'{t}_{o}'] = df_lsoa[col_mothership]
+        # Create new dataframe from combining the two separate ones:
+        combo_data = (
+            df1 * prop +
+            df2 * (1.0 - prop)
+        )
+        # Update column names to mark them as combined:
+        combo_data.columns = [f'{v}_redirect_{col}' for col in cols]
+
+        # Merge this new data into the starting dataframe:
+        df_lsoa = pd.merge(df_lsoa, combo_data,
+                           left_index=True, right_index=True)
     return df_lsoa
 
 
 def combine_results_by_diff(df_lsoa):
+    df1 = pd.DataFrame(index=df_lsoa.index)
+    df2 = pd.DataFrame(index=df_lsoa.index)
+    # Column names for these new DataFrames:
+    cols = []
 
     scenario_types = ['redirect', 'drip_ship']
     occlusion_types = ['nlvo', 'lvo', 'combo']
@@ -336,11 +369,7 @@ def combine_results_by_diff(df_lsoa):
                 col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
                 col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
                 # New column name for the diff data:
-                col_diff = ''.join([
-                    f'{occ}_',
-                    f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
-                    f'_{tre}_{out}'
-                ])
+                col_diff = f'{occ}_{tre}_{out}'
                 # col_zero_bool = ''.join([
                 #     f'{occ}_',
                 #     f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
@@ -356,11 +385,28 @@ def combine_results_by_diff(df_lsoa):
                     data_exists = False
 
                 if data_exists:
-                    data_diff = data_scen1 - data_scen2
-                    df_lsoa[col_diff] = data_diff
+                    cols.append(col_diff)
+                    df1[col_diff] = data_scen1
+                    df2[col_diff] = data_scen2
 
                     # zero_bool = (data_scen1 - data_scen2) == 0.0
                     # df_lsoa[col_zero_bool] = zero_bool
                 else:
                     pass
+
+    # Create new dataframe from combining the two separate ones:
+    combo_data = df1 - df2
+    # Update column names to mark them as combined:
+    combo_cols = [
+        ''.join([
+            f"{col.split('_')[0]}_",
+            f'diff_{scenario_types[0]}_minus_{scenario_types[1]}_',
+            f"{'_'.join(col.split('_')[1:])}"
+            ])
+        for col in cols]
+    combo_data.columns = combo_cols
+
+    # Merge this new data into the starting dataframe:
+    df_lsoa = pd.merge(df_lsoa, combo_data,
+                       left_index=True, right_index=True)
     return df_lsoa
