@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt  # for colour maps
+import cmasher as cmr  # for additional colour maps
 
 from stroke_maps.catchment import Catchment  # for unit services
 
@@ -737,7 +738,7 @@ def select_stroke_type(container=None, use_combo_stroke_types=False):
     return stroke_type, stroke_type_str
 
 
-def set_up_colours(scenario_dict, v_name='v'):
+def set_up_colours(scenario_dict, v_name='v', cmap_name='inferno', cmap_diff_name='RdBu'):
     """
     max ever displayed:
 
@@ -764,13 +765,13 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'vmin': 0.3,
                 'vmax': 0.6,
                 'step_size': 0.05,
-                'cmap_name': 'inferno'
+                'cmap_name': cmap_name
             },
             'diff': {
                 'vmin': -0.05,
                 'vmax': 0.05,
                 'step_size': 0.01,
-                'cmap_name': 'RdBu'
+                'cmap_name': cmap_diff_name
             },
         },
         'utility_shift': {
@@ -778,13 +779,13 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'vmin': 0.0,
                 'vmax': 0.15,
                 'step_size': 0.025,
-                'cmap_name': 'inferno'
+                'cmap_name': cmap_name
             },
             'diff': {
                 'vmin': -0.05,
                 'vmax': 0.05,
                 'step_size': 0.025,
-                'cmap_name': 'RdBu'
+                'cmap_name': cmap_diff_name
             },
         },
         'mrs_shift': {
@@ -792,13 +793,13 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'vmin': -0.5,
                 'vmax': 0.0,
                 'step_size': 0.1,
-                'cmap_name': 'inferno_r'  # lower numbers are better
+                'cmap_name': f'{cmap_name}_r'  # lower numbers are better
             },
             'diff': {
                 'vmin': -0.2,
                 'vmax': 0.2,
                 'step_size': 0.05,
-                'cmap_name': 'RdBu_r'  # lower numbers are better
+                'cmap_name': f'{cmap_diff_name}_r'  # lower numbers are better
             },
         },
         'mrs_0-2': {
@@ -806,13 +807,13 @@ def set_up_colours(scenario_dict, v_name='v'):
                 'vmin': 0.30,
                 'vmax': 0.70,
                 'step_size': 0.05,
-                'cmap_name': 'inferno'
+                'cmap_name': cmap_name
             },
             'diff': {
                 'vmin': -0.15,
                 'vmax': 0.15,
                 'step_size': 0.05,
-                'cmap_name': 'RdBu'
+                'cmap_name': cmap_diff_name
             },
         }
     }
@@ -825,6 +826,10 @@ def set_up_colours(scenario_dict, v_name='v'):
     v_max = cbar_dict[scenario_dict['outcome_type']][scen]['vmax']
     step_size = cbar_dict[scenario_dict['outcome_type']][scen]['step_size']
     cmap_name = cbar_dict[scenario_dict['outcome_type']][scen]['cmap_name']
+
+    if cmap_name.endswith('_r_r'):
+        # Remove the double reverse reverse.
+        cmap_name = cmap_name[:-2]
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
@@ -901,7 +906,13 @@ def set_up_colours(scenario_dict, v_name='v'):
 
 def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
     # Get colour values:
-    cmap = plt.get_cmap(cmap_name)
+    try:
+        # Matplotlib colourmap:
+        cmap = plt.get_cmap(cmap_name)
+    except ValueError:
+        # CMasher colourmap:
+        cmap = plt.get_cmap(f'cmr.{cmap_name}')
+
     cbands = np.linspace(0.0, 1.0, len(v_bands_str))
     colour_list = cmap(cbands)
     # # Convert tuples to strings:
@@ -932,3 +943,27 @@ def make_v_bands_str(v_bands, v_name='v'):
 
     v_bands_str = np.array(v_bands_str)
     return v_bands_str
+
+
+def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
+    try:
+        # Matplotlib colourmap:
+        cmap = plt.get_cmap(cmap_name)
+    except ValueError:
+        # CMasher colourmap:
+        cmap = plt.get_cmap(f'cmr.{cmap_name}')
+
+    # Get colours:
+    colours = cmap(np.linspace(0.0, 1.0, n_lines))
+    # Convert tuples to strings:
+    colours = (colours * 255).astype(int)
+    # Drop the alpha or the colour won't be right!
+    colours = ['#%02x%02x%02x' % tuple(c[:-1]) for c in colours]
+
+    line_str = '$'
+    for c in colours:
+        # s = f"<font color='{c}'>{char_line}</font>"
+        s = '\\textcolor{' + f'{c}' + '}{' + f'{char_line}' + '}'
+        line_str += s
+    line_str += '$'
+    return line_str

@@ -51,6 +51,7 @@ with cols[0]:
     container_map_inputs = st.container()
 container_results_tables = st.container()
 container_select_outcome = st.container()
+container_select_cmap = st.container()
 
 # ###########################
 # ########## SETUP ##########
@@ -83,6 +84,44 @@ with container_map_inputs:
         ['None', 'ISDN', 'ICB']
     )
 
+# Colourmap selection
+cmap_names = ['viridis', 'inferno', 'cosmic', 'neutral']
+cmap_displays = [
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
+    for cmap_name in cmap_names
+    ]
+cmap_diff_names = ['fusion', 'waterlily', 'iceburn_r', 'seaweed']
+cmap_diff_displays = [
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
+    for cmap_name in cmap_diff_names
+    ]
+
+try:
+    cmap_name = st.session_state['cmap_name']
+    cmap_diff_name = st.session_state['cmap_diff_name']
+except KeyError:
+    cmap_name = cmap_names[0]
+    cmap_diff_name = cmap_diff_names[0]
+cmap_ind = cmap_names.index(cmap_name)
+cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
+
+with container_select_cmap:
+    cmap_name = st.radio(
+        'Colour display for "usual care" map',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_name'
+    )
+
+    cmap_diff_name = st.radio(
+        'Colour display for difference map',
+        cmap_diff_names,
+        captions=cmap_diff_displays,
+        index=cmap_diff_ind,
+        key='cmap_diff_name'
+    )
+
 
 # ----- Setup for plots -----
 # Which scenarios will be shown in the maps:
@@ -90,8 +129,8 @@ with container_map_inputs:
 scenario_types = ['drip_ship', 'diff_msu_minus_drip_ship']
 
 subplot_titles = [
-    'Drip-and-ship',
-    'Benefit of MSU over drip-and-ship'
+    'Usual care',
+    'Benefit of MSU over usual care'
 ]
 # Draw a blank map in a container and then replace the contents with
 # this intended map once it's finished being drawn
@@ -107,7 +146,7 @@ legend_title = None
 
 cmap_titles = [
     f'{scenario_dict["outcome_type_str"]}',
-    f'{scenario_dict["outcome_type_str"]}: Benefit of MSU over drip-and-ship'
+    f'{scenario_dict["outcome_type_str"]}: Benefit of MSU over usual care'
     ]
 
 # Which subplots to draw which units on:
@@ -178,9 +217,11 @@ with container_results_tables:
 # Give the scenario dict a dummy 'scenario_type' entry
 # so that the right colour map and colour limits are picked.
 colour_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'not diff'})
+    scenario_dict | {'scenario_type': 'not diff'},
+    cmap_name=cmap_name, cmap_diff_name=cmap_diff_name)
 colour_diff_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'diff'}, v_name='d')
+    scenario_dict | {'scenario_type': 'diff'}, v_name='d',
+    cmap_name=cmap_name, cmap_diff_name=cmap_diff_name)
 # Find the names of the columns that contain the data
 # that will be shown in the colour maps.
 columns_colours = [
