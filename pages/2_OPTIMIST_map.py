@@ -57,11 +57,9 @@ with cols[0]:
     st.markdown('__Map choices__')
     container_map_inputs = st.container()
 container_results_tables = st.container()
-with st.expander('Accessibility'):
-    cols_access = st.columns([1, 2])
-    with cols_access[0]:
+with st.sidebar:
+    with st.expander('Accessibility & advanced options'):
         container_select_outcome = st.container()
-    with cols_access[1]:
         container_select_cmap = st.container()
 
 # ###########################
@@ -100,12 +98,12 @@ with container_map_inputs:
 # Colourmap selection
 cmap_names = ['cosmic', 'viridis', 'inferno', 'neutral']
 cmap_displays = [
-    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
     for cmap_name in cmap_names
     ]
 cmap_diff_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
 cmap_diff_displays = [
-    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
     for cmap_name in cmap_diff_names
     ]
 
@@ -120,24 +118,21 @@ cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
 
 with container_select_cmap:
     st.markdown('### Colour schemes')
-    cols_cmap = st.columns(2)
-    with cols_cmap[0]:
-        cmap_name = st.radio(
-            'Colour display for "usual care" map',
-            cmap_names,
-            captions=cmap_displays,
-            index=cmap_ind,
-            key='cmap_name'
-        )
+    cmap_name = st.radio(
+        'Colour display for "usual care" map',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_name'
+    )
 
-    with cols_cmap[1]:
-        cmap_diff_name = st.radio(
-            'Colour display for difference map',
-            cmap_diff_names,
-            captions=cmap_diff_displays,
-            index=cmap_diff_ind,
-            key='cmap_diff_name'
-        )
+    cmap_diff_name = st.radio(
+        'Colour display for difference map',
+        cmap_diff_names,
+        captions=cmap_diff_displays,
+        index=cmap_diff_ind,
+        key='cmap_diff_name'
+    )
 
 
 # ----- Setup for plots -----
