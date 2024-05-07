@@ -83,7 +83,11 @@ def calculate_outcomes(input_dict, df_unit_services):
     # for col in cols_float:
     #     df_lsoa[col] = df_lsoa[col].astype(np.float16)
 
-    return df_lsoa
+    df_mrs = model.full_mrs_dists.copy()
+    df_mrs.index.names = ['lsoa']
+    df_mrs.columns.names = ['property']
+
+    return df_lsoa, df_mrs
 
 
 @st.cache_data
@@ -235,6 +239,84 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     for col in cols_time:
         df_nearest_ivt[col] = np.round(df_nearest_ivt[col], 2)
     return df_nearest_ivt
+
+
+# mRS distributions:
+@st.cache_data
+def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units):
+    df_lsoa = df_lsoa.copy()
+
+    cols_mrs_dist = [col for col in df_lsoa.columns if
+                     (('mrs_dist' in col) & (col.endswith('noncum')))]
+
+    # ----- LSOAs for grouping results -----
+    # Merge in other region info.
+
+    # Load region info for each LSOA:
+    # Relative import from package files:
+    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
+    df_lsoa_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    df_lsoa = pd.merge(
+        df_lsoa, df_lsoa_regions,
+        left_on='lsoa', right_on='lsoa', how='left'
+        )
+
+    # Load further region data linking SICBL to other regions:
+    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
+    df_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    # Drop columns already in df_lsoa:
+    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+    df_lsoa = pd.merge(
+        df_lsoa, df_regions,
+        left_on='region_code', right_on='region_code', how='left'
+        )
+
+    # Merge in nearest IVT units:
+    df_lsoa = pd.merge(df_lsoa, nearest_ivt_units, left_on='lsoa', right_index=True)
+
+    # # Replace some zeros with NaN:
+    # mask = df_lsoa['transfer_required']
+    # df_lsoa.loc[~mask, 'transfer_time'] = pd.NA
+
+    # Scale the mRS distributions by admissions:
+    for col in cols_mrs_dist:
+        df_lsoa[f'{col}_by_admissions'] = df_lsoa['Admissions'] * df_lsoa[col].apply(lambda x: np.array(x))
+
+    df_nearest_ivt = group_mrs_dists_by_column(df_lsoa, 'nearest_ivt_unit')
+    df_icb = group_mrs_dists_by_column(df_lsoa, 'icb')
+    df_isdn = group_mrs_dists_by_column(df_lsoa, 'isdn')
+
+    return df_icb, df_isdn, df_nearest_ivt
+
+
+def group_mrs_dists_by_column(df_lsoa, col):
+    # Glob results by column values:
+    df_lsoa = df_lsoa.copy()
+
+    col_vals = sorted(list(set(df_lsoa[col])))
+
+    cols_to_combine = [c for c in df_lsoa.columns if c.endswith('_by_admissions')]
+
+    df_by_region = pd.DataFrame(columns=['Admissions'] + cols_to_combine)
+    for val in col_vals:
+        mask = (df_lsoa[col] == val)
+        df_here = df_lsoa.loc[mask, ['Admissions'] + cols_to_combine].copy()
+        # Add all mRS distributions together...
+        df_here = df_here.sum(axis='rows')
+        # ... and divide by the total number of admissions:
+        df_here[cols_to_combine] = (
+            df_here[cols_to_combine] / df_here['Admissions'].sum())
+        df_by_region.loc[val] = df_here
+
+    # Rename columns:
+    cols_to_rename = ['Admissions'] + [c.split('_by_admissions')[0] for c in cols_to_combine]
+    df_by_region.columns = cols_to_rename
+
+    # Round the values.
+    # Outcomes:
+    for col in cols_to_rename:
+        df_by_region[col] = np.round(df_by_region[col], 3)
+    return df_by_region
 
 
 def convert_lsoa_to_msoa_results(df_lsoa):

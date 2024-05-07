@@ -185,7 +185,35 @@ if stop_bool:
 
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
-df_lsoa = calc.calculate_outcomes(input_dict, df_unit_services)
+df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
+
+col_config = {}
+cols_dists = df_mrs.columns[1:]  # drop Admissions
+
+for col in cols_dists:
+    col_config[col] = st.column_config.BarChartColumn(
+        col,
+        y_min=0,
+        y_max=1,
+    )
+st.dataframe(df_mrs, column_config=col_config)
+
+df_mrs_by_icb, df_mrs_by_isdn, df_mrs_by_nearest_ivt = (
+    calc.group_mrs_dists_by_region(df_mrs, df_lsoa['nearest_ivt_unit']))
+
+cols_dists = [c for c in df_mrs_by_icb if 'dist' in c]
+for col in cols_dists:
+    col_config[col] = st.column_config.BarChartColumn(
+        col,
+        y_min=0,
+        y_max=1,
+    )
+st.dataframe(df_mrs_by_icb, column_config=col_config)
+st.dataframe(df_mrs_by_isdn, column_config=col_config)
+st.dataframe(df_mrs_by_nearest_ivt, column_config=col_config)
+
+
+st.stop()
 
 # Remove the MSU data:
 cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
