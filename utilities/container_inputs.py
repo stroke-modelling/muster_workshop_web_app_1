@@ -666,7 +666,7 @@ def select_outcome_type(container=None):
                 # 'Mean shift in mRS',
                 'mRS <= 2'
                 ],
-            index=1,  # 'added utility' as default
+            index=0,  # 'added utility' as default
             # horizontal=True
         )
     # Match the input string to the file name string:
