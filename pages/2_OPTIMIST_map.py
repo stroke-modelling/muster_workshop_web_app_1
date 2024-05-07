@@ -191,7 +191,6 @@ if stop_bool:
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
 df_lsoa = calc.calculate_outcomes(input_dict, df_unit_services)
-st.write(df_lsoa)
 
 # Remove the MSU data:
 cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
