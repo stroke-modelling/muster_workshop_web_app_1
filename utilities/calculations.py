@@ -3,6 +3,7 @@
 import streamlit as st
 from importlib_resources import files
 import pandas as pd
+import numpy as np
 
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
@@ -66,10 +67,21 @@ def calculate_outcomes(input_dict, df_unit_services):
     # rather than split by stroke type.
 
     # Change to float16 to preserve very few significant figures:
-    import numpy as np
-    cols_float = df_lsoa.select_dtypes([float]).columns
-    for col in cols_float:
-        df_lsoa[col] = df_lsoa[col].astype(np.float16)
+    # cols_float = df_lsoa.select_dtypes([float]).columns
+
+    # Outcome columns and numbers of decimal places:
+    dict_outcomes_dp = {
+        'mrs_0-2': 3,
+        'mrs_shift': 3,
+        'utility': 3,
+        'utility_shift': 3,
+    }
+    for suff, dp in dict_outcomes_dp.items():
+        cols = [c for c in df_lsoa.columns if c.endswith(suff)]
+        for col in cols:
+            df_lsoa[col] = np.round(df_lsoa[col], dp)
+    # for col in cols_float:
+    #     df_lsoa[col] = df_lsoa[col].astype(np.float16)
 
     return df_lsoa
 
@@ -140,6 +152,20 @@ def group_results_by_icb(df_lsoa):
         ], axis='columns')
     # Average:
     df_icb = df_icb.groupby('icb').mean()
+
+    # Round the values.
+    # Outcomes:
+    cols_outcome = [c for c in df_icb.columns if (
+        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
+        )]
+    for col in cols_outcome:
+        df_icb[col] = np.round(df_icb[col], 3)
+
+    # Times:
+    cols_time = [c for c in df_icb.columns if 'time' in c]
+    for col in cols_time:
+        df_icb[col] = np.round(df_icb[col], 2)
     return df_icb
 
 
@@ -158,6 +184,20 @@ def group_results_by_isdn(df_lsoa):
         ], axis='columns')
     # Average:
     df_isdn = df_isdn.groupby('isdn').mean()
+
+    # Round the values.
+    # Outcomes:
+    cols_outcome = [c for c in df_isdn.columns if (
+        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
+        )]
+    for col in cols_outcome:
+        df_isdn[col] = np.round(df_isdn[col], 3)
+
+    # Times:
+    cols_time = [c for c in df_isdn.columns if 'time' in c]
+    for col in cols_time:
+        df_isdn[col] = np.round(df_isdn[col], 2)
     return df_isdn
 
 
@@ -180,6 +220,20 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     df_nearest_ivt = pd.merge(
         df_unit_services['stroke_team'],
         df_nearest_ivt, how='right', left_on='Postcode', right_index=True)
+
+    # Round the values.
+    # Outcomes:
+    cols_outcome = [c for c in df_nearest_ivt.columns if (
+        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
+        )]
+    for col in cols_outcome:
+        df_nearest_ivt[col] = np.round(df_nearest_ivt[col], 3)
+
+    # Times:
+    cols_time = [c for c in df_nearest_ivt.columns if 'time' in c]
+    for col in cols_time:
+        df_nearest_ivt[col] = np.round(df_nearest_ivt[col], 2)
     return df_nearest_ivt
 
 
@@ -298,6 +352,11 @@ def combine_results_by_occlusion_type(df_lsoa, prop_dict):
     combo_data.columns = [f'combo_{col}' for col in cols]
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
+
+    # Round the values:
+    dp = 3
+    for col in combo_data.columns:
+        df_lsoa[col] = np.round(df_lsoa[col], dp)
     return df_lsoa
 
 
@@ -348,6 +407,11 @@ def combine_results_by_redirection(df_lsoa, redirect_dict):
         # Merge this new data into the starting dataframe:
         df_lsoa = pd.merge(df_lsoa, combo_data,
                            left_index=True, right_index=True)
+
+        # Round the values:
+        dp = 3
+        for col in combo_data.columns:
+            df_lsoa[col] = np.round(df_lsoa[col], dp)
     return df_lsoa
 
 
@@ -409,4 +473,9 @@ def combine_results_by_diff(df_lsoa):
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data,
                        left_index=True, right_index=True)
+    
+    # Round the values:
+    dp = 3
+    for col in combo_cols:
+        df_lsoa[col] = np.round(df_lsoa[col], dp)
     return df_lsoa

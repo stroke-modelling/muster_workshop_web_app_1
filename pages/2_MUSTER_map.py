@@ -50,8 +50,12 @@ with cols[0]:
     st.markdown('__Map choices__')
     container_map_inputs = st.container()
 container_results_tables = st.container()
-container_select_outcome = st.container()
-container_select_cmap = st.container()
+with st.expander('Accessibility'):
+    cols_access = st.columns([1, 2])
+    with cols_access[0]:
+        container_select_outcome = st.container()
+    with cols_access[1]:
+        container_select_cmap = st.container()
 
 # ###########################
 # ########## SETUP ##########
@@ -73,8 +77,7 @@ with container_inputs:
         submitted = st.form_submit_button('Submit')
 
 with container_select_outcome:
-    st.markdown('### Alternative outcome measure for map')
-    st.markdown('Try these if you dare.')
+    st.markdown('### Alternative outcome measures')
 scenario_dict = inputs.select_scenario(containers=[container_select_outcome] + [container_map_inputs]*2)
 
 # Name of the column in the geojson that labels the shapes:
@@ -85,12 +88,12 @@ with container_map_inputs:
     )
 
 # Colourmap selection
-cmap_names = ['viridis', 'inferno', 'cosmic', 'neutral']
+cmap_names = ['cosmic', 'viridis', 'inferno', 'neutral']
 cmap_displays = [
     inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
     for cmap_name in cmap_names
     ]
-cmap_diff_names = ['fusion', 'waterlily', 'iceburn_r', 'seaweed']
+cmap_diff_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
 cmap_diff_displays = [
     inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=20)
     for cmap_name in cmap_diff_names
@@ -106,21 +109,25 @@ cmap_ind = cmap_names.index(cmap_name)
 cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
 
 with container_select_cmap:
-    cmap_name = st.radio(
-        'Colour display for "usual care" map',
-        cmap_names,
-        captions=cmap_displays,
-        index=cmap_ind,
-        key='cmap_name'
-    )
+    st.markdown('### Colour schemes')
+    cols_cmap = st.columns(2)
+    with cols_cmap[0]:
+        cmap_name = st.radio(
+            'Colour display for "usual care" map',
+            cmap_names,
+            captions=cmap_displays,
+            index=cmap_ind,
+            key='cmap_name'
+        )
 
-    cmap_diff_name = st.radio(
-        'Colour display for difference map',
-        cmap_diff_names,
-        captions=cmap_diff_displays,
-        index=cmap_diff_ind,
-        key='cmap_diff_name'
-    )
+    with cols_cmap[1]:
+        cmap_diff_name = st.radio(
+            'Colour display for difference map',
+            cmap_diff_names,
+            captions=cmap_diff_displays,
+            index=cmap_diff_ind,
+            key='cmap_diff_name'
+        )
 
 
 # ----- Setup for plots -----

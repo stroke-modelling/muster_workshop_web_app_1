@@ -660,9 +660,14 @@ def select_outcome_type(container=None):
     with container:
         outcome_type_str = st.radio(
             'Outcome measure',
-            ['Utility', 'Added utility', 'Mean shift in mRS', 'mRS <= 2'],
+            [
+                # 'Utility',
+                'Added utility',
+                # 'Mean shift in mRS',
+                'mRS <= 2'
+                ],
             index=1,  # 'added utility' as default
-            horizontal=True
+            # horizontal=True
         )
     # Match the input string to the file name string:
     outcome_type_dict = {
