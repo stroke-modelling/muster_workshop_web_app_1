@@ -73,11 +73,15 @@ class Model(object):
             new_col = f'{c}_noncum'
             new_data = self.full_mrs_dists[c]
             # Make one very long Series with one value per row:
-            new_data = new_data.explode()
+            # Explicitly cast to float so that np.round() doesn't
+            # throw up a TypeError later.
+            new_data = new_data.explode().astype(float)
             # Reshape into one row per LSOA:
             new_data = new_data.values.reshape(len(self.full_mrs_dists[c]), 7)
             # Take the difference between mRS bands:
             new_data = np.diff(new_data, prepend=0.0, axis=1)
+            # Round the values:
+            new_data = np.round(new_data, 3)
             # Return to a single list per row:
             new_data = new_data.tolist()
             # Store:

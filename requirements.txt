@@ -7,6 +7,7 @@ plotly
 pyproj
 pyyaml
 shapely==2.0.1
+statsmodels
 stroke-outcome
 stroke-maps
 # yaml is temporary - should have been included in stroke-maps package

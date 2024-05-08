@@ -4,6 +4,7 @@ import streamlit as st
 from importlib_resources import files
 import pandas as pd
 import numpy as np
+from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
 
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
@@ -49,6 +50,18 @@ def calculate_outcomes(input_dict, df_unit_services):
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
 
+    # Copy stroke unit names over. Currently has only postcodes.
+    for col in ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit', 'nearest_msu_unit']:
+        if col in df_lsoa.columns:
+            df_lsoa = pd.merge(
+                df_lsoa, df_unit_services['stroke_team'],
+                left_on=col, right_index=True, how='left'
+                )
+            df_lsoa = df_lsoa.rename(columns={'stroke_team': f'{col}_name'})
+            # Reorder columns so name appears next to postcode.
+            i = df_lsoa.columns.tolist().index(col)
+            df_lsoa = df_lsoa[[*df_lsoa.columns[:i], f'{col}_name', *df_lsoa.columns[i:-1]]]
+
     # Make a copy of nLVO IVT results for nLVO IVT+MT results:
     cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
     for col in cols_ivt_mt:
@@ -90,6 +103,9 @@ def calculate_outcomes(input_dict, df_unit_services):
     return df_lsoa, df_mrs
 
 
+# ###########################
+# ##### AVERAGE RESULTS #####
+# ###########################
 @st.cache_data
 def group_results_by_region(df_lsoa, df_unit_services):
     df_lsoa = df_lsoa.copy()
@@ -124,9 +140,13 @@ def group_results_by_region(df_lsoa, df_unit_services):
     cols_to_drop = [
         'lsoa',
         'lsoa_code',
+        'nearest_ivt_unit_name',
         'nearest_mt_unit',
         'transfer_unit',
         'nearest_msu_unit',
+        'nearest_mt_unit_name',
+        'transfer_unit_name',
+        'nearest_msu_unit_name',
         'short_code',
         'country'
         ]
@@ -216,7 +236,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
         'region_code',
         'icb',
         'icb_code',
-        'isdn'
+        'isdn',
         ], axis='columns')
     # Average:
     df_nearest_ivt = df_nearest_ivt.groupby('nearest_ivt_unit').mean()
@@ -241,13 +261,15 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     return df_nearest_ivt
 
 
-# mRS distributions:
+# #############################
+# ##### mRS DISTRIBUTIONS #####
+# #############################
 @st.cache_data
 def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units):
     df_lsoa = df_lsoa.copy()
 
-    cols_mrs_dist = [col for col in df_lsoa.columns if
-                     (('mrs_dist' in col) & (col.endswith('noncum')))]
+    # cols_mrs_dist = [col for col in df_lsoa.columns if
+    #                  (('mrs_dist' in col) & (col.endswith('noncum')))]
 
     # ----- LSOAs for grouping results -----
     # Merge in other region info.
@@ -278,43 +300,114 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units):
     # mask = df_lsoa['transfer_required']
     # df_lsoa.loc[~mask, 'transfer_time'] = pd.NA
 
-    # Scale the mRS distributions by admissions:
-    for col in cols_mrs_dist:
-        df_lsoa[f'{col}_by_admissions'] = df_lsoa['Admissions'] * df_lsoa[col].apply(lambda x: np.array(x))
+    # # Scale the mRS distributions by admissions:
+    # for col in cols_mrs_dist:
+    #     df_lsoa[f'{col}_by_admissions'] = df_lsoa['Admissions'] * df_lsoa[col].apply(lambda x: np.array(x))
 
-    df_nearest_ivt = group_mrs_dists_by_column(df_lsoa, 'nearest_ivt_unit')
+    df_national = group_mrs_dists_by_column(df_lsoa)
+    df_nearest_ivt = group_mrs_dists_by_column(df_lsoa, 'nearest_ivt_unit_name')
     df_icb = group_mrs_dists_by_column(df_lsoa, 'icb')
     df_isdn = group_mrs_dists_by_column(df_lsoa, 'isdn')
 
-    return df_icb, df_isdn, df_nearest_ivt
+    return df_national, df_icb, df_isdn, df_nearest_ivt
 
 
-def group_mrs_dists_by_column(df_lsoa, col):
+def group_mrs_dists_by_column(df_lsoa, col_region=''):
     # Glob results by column values:
     df_lsoa = df_lsoa.copy()
 
-    col_vals = sorted(list(set(df_lsoa[col])))
+    if len(col_region) > 0:
+        col_vals = sorted(list(set(df_lsoa[col_region])))
+        use_all = False
+    else:
+        col_vals = ['National']
+        use_all = True
 
-    cols_to_combine = [c for c in df_lsoa.columns if c.endswith('_by_admissions')]
+    cols_to_combine = [c for c in df_lsoa.columns if
+                       (('dist' in c) & (c.endswith('noncum')))]
+    cols_cumulative = [c.split('_noncum')[0] for c in cols_to_combine]
+    cols_std = [f'{c}_std' for c in cols_to_combine]
 
-    df_by_region = pd.DataFrame(columns=['Admissions'] + cols_to_combine)
+    cols_for_df = ['Admissions']
+    for i in range(len(cols_to_combine)):
+        cols_for_df += [cols_to_combine[i], cols_cumulative[i], cols_std[i]]
+
+    df_by_region = pd.DataFrame(columns=cols_for_df)
     for val in col_vals:
-        mask = (df_lsoa[col] == val)
-        df_here = df_lsoa.loc[mask, ['Admissions'] + cols_to_combine].copy()
-        # Add all mRS distributions together...
-        df_here = df_here.sum(axis='rows')
-        # ... and divide by the total number of admissions:
-        df_here[cols_to_combine] = (
-            df_here[cols_to_combine] / df_here['Admissions'].sum())
-        df_by_region.loc[val] = df_here
+        if use_all:
+            mask = [True] * len(df_lsoa)
+        else:
+            mask = (df_lsoa[col_region] == val)
+        df_region = df_lsoa.loc[mask, ['Admissions'] + cols_to_combine].copy()
+
+        # Admissions:
+        df_by_region.at[val, 'Admissions'] = df_region['Admissions'].sum()
+
+        # Stats:
+        for c, col in enumerate(cols_to_combine):
+            # Split list of values into one column per mRS band
+            # and keep one row per LSOA.
+            vals = df_region[col].copy()
+            # Make one long column of all mRS values (no more lists):
+            # Need to explicitly turn them into floats here
+            # otherwise np.std() will throw an error.
+            vals = vals.explode().astype(float)
+            # Reshape into one row per LSOA:
+            vals = vals.values.reshape(len(df_region), 7)
+
+            # Create stats from these data:
+            weighted_stats = DescrStatsW(vals, weights=df_region['Admissions'], ddof=0)
+            # Means (one value per mRS):
+            means = weighted_stats.mean
+            # Standard deviations (one value per mRS):
+            stds = weighted_stats.std
+            # Cumulative probability from the mean bins:
+            cumulatives = np.cumsum(means)
+
+            # Store in results df:
+            df_by_region.at[val, col] = means
+            df_by_region.at[val, cols_cumulative[c]] = cumulatives
+            df_by_region.at[val, cols_std[c]] = stds
+
+            # Sanity check:
+            # st.write(np.sum(means))
+            # These mean values do sum to 1 (+/- floating point error).
+
+
+        # # First calculate means.
+        # # Add all mRS distributions together...
+        # df_here = df_region.copy().sum(axis='rows')
+        # # ... and divide by the total number of admissions:
+        # df_here[cols_to_combine] = (
+        #     df_here[cols_to_combine] / df_here['Admissions'].sum())
+        # df_by_region.loc[val, cols_to_combine] = df_here
+
+
+        # # Now calculate standard deviations.
+        # for c, col in enumerate(cols_to_combine):
+        #     # Only take one column of mRS dists at a time.
+        #     df_here = df_region[col].copy()
+        #     # Make one long column of all mRS values (no more lists):
+        #     # Need to explicitly turn them into floats here
+        #     # otherwise np.std() will throw an error.
+        #     df_here = df_here.explode().astype(float)
+        #     # Reshape into one row per LSOA:
+        #     vals_here = df_here.values.reshape(len(df_region), 7)
+        #     # Take the standard deviations:
+        #     vals_here = np.std(vals_here, axis=0)
+        #     # Recombine into a single column:
+        #     vals_here = vals_here.tolist()
+        #     # Place into the results:
+        #     df_by_region.at[val, cols_std[c]] = vals_here
 
     # Rename columns:
-    cols_to_rename = ['Admissions'] + [c.split('_by_admissions')[0] for c in cols_to_combine]
-    df_by_region.columns = cols_to_rename
+    dict_rename = dict(zip(cols_to_combine, [c.split('_by_admissions')[0] for c in cols_to_combine]))
+    df_by_region = df_by_region.rename(columns=dict_rename)
 
     # Round the values.
     # Outcomes:
-    for col in cols_to_rename:
+    cols_to_round = [c for c in df_by_region.columns if 'dist' in c]
+    for col in cols_to_round:
         df_by_region[col] = np.round(df_by_region[col], 3)
     return df_by_region
 
@@ -332,32 +425,44 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     # Keep a copy of the nearest IVT units:
     df_nearest_unit = df_msoa[['msoa11cd', 'nearest_ivt_unit']].copy()
     # Remove duplicate rows:
+    # TO DO - currently this is causing MSOAs to be assigned to multiple nearest units - sort it out please.
     df_nearest_unit = df_nearest_unit.drop_duplicates()
 
     # Remove string columns:
     # (temporary - I don't know how else to groupby a df with some object columns)
     cols_to_drop = [
-        'lsoa', 'nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
-        'nearest_msu_unit', 'lsoa11nm', 'msoa11nm'
+        'lsoa',
+        'nearest_ivt_unit',
+        'nearest_mt_unit',
+        'transfer_unit',
+        'nearest_msu_unit',
+        'lsoa11nm',
+        'msoa11nm',
+        'nearest_ivt_unit_name',
+        'nearest_mt_unit_name',
+        'transfer_unit_name',
+        'nearest_msu_unit_name',
         ]
     # Only keep cols that exist (sometimes have MSU, sometimes not):
     cols_to_drop = [c for c in cols_to_drop if c in df_msoa.columns]
     df_msoa = df_msoa.drop(cols_to_drop, axis='columns')
 
-    # Special cases -
-    # For each column, keep a copy of MSOA codes where all LSOAs
-    # have zero values.
-    # ----
-
     # Aggregate by MSOA:
     df_msoa = df_msoa.groupby('msoa11cd').mean()
     # df_msoa = df_msoa.set_index('msoa11cd')
 
-    # Change to float16 to preserve very few significant figures:
-    import numpy as np
-    cols_float = df_msoa.select_dtypes([float]).columns
-    for col in cols_float:
-        df_msoa[col] = df_msoa[col].astype(np.float16)
+    # Convert back to float:
+    for col in df_msoa.columns:
+        try:
+            df_msoa[col] = pd.to_numeric(df_msoa[col])
+        except ValueError:
+            pass
+
+    # # Change to float16 to preserve very few significant figures:
+    # import numpy as np
+    # cols_float = df_msoa.select_dtypes([float]).columns
+    # for col in cols_float:
+    #     df_msoa[col] = df_msoa[col].astype(np.float16)
 
     # Merge the MSOA names back in:
     df_msoa = df_msoa.reset_index()
@@ -379,7 +484,10 @@ def convert_lsoa_to_msoa_results(df_lsoa):
     return df_msoa
 
 
-def combine_results_by_occlusion_type(df_lsoa, prop_dict):
+# ###########################
+# ##### AVERAGE RESULTS #####
+# ###########################
+def combine_results_by_occlusion_type(df_lsoa, prop_dict, combine_mrs_dists=False):
     """
     Make two new dataframes, one with all the column 1 data
     and one with all the column 2 data, and with the same column
@@ -398,7 +506,10 @@ def combine_results_by_occlusion_type(df_lsoa, prop_dict):
     # (no nLVO with MT data).
     scenario_list = ['drip_ship', 'mothership', 'redirect']
     treatment_list = ['ivt', 'mt', 'ivt_mt']
-    outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+    if combine_mrs_dists:
+        outcome_list = ['mrs_dists_noncum']  # not cumulative
+    else:
+        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
 
     for s in scenario_list:
         for t in treatment_list:
@@ -432,24 +543,68 @@ def combine_results_by_occlusion_type(df_lsoa, prop_dict):
     # Rename columns so they match:
     df1.columns = cols_combo
     df2.columns = cols_combo
-    # Create new dataframe from combining the two separate ones:
-    combo_data = (
-        df1 * prop_dict['nlvo'] +
-        df2 * prop_dict['lvo']
-    )
+
+    if combine_mrs_dists:
+        combo_data = pd.DataFrame(index=df1.index)
+        cols_cumulative = [c.split('_noncum')[0] for c in cols_combo]
+        for c, col in enumerate(cols_combo):
+            df1_data = df1[col].copy()
+            # Make one very long Series with one value per row:
+            # Explicitly convert to float so that np.round()
+            # doesn't throw TypeError later.
+            df1_data = df1_data.explode().astype(float)
+            # Reshape into one row per LSOA:
+            df1_data = df1_data.values.reshape(len(df1), 7)
+
+            # Same for df2:
+            df2_data = df2[col].copy()
+            # Make one very long Series with one value per row:
+            df2_data = df2_data.explode().astype(float)
+            # Reshape into one row per LSOA:
+            df2_data = df2_data.values.reshape(len(df1), 7)
+
+            # Now combine:
+            df_combo_data = (
+                df1_data * prop_dict['nlvo'] +
+                df2_data * prop_dict['lvo']
+            )
+
+            # Cumulative probability:
+            cumulatives = np.cumsum(df_combo_data, axis=1)
+
+            # Round the values:
+            dp = 3
+            df_combo_data = np.round(df_combo_data, dp)
+            cumulatives = np.round(cumulatives, dp)
+
+            # And return to a single list per row:
+            df_combo_data = df_combo_data.tolist()
+            cumulatives = cumulatives.tolist()
+
+            # Store in results df:
+            combo_data[col] = df_combo_data
+            combo_data[cols_cumulative[c]] = cumulatives
+        # Update column names:
+        cols_combo = cols_combo + cols_cumulative
+    else:
+        # Create new dataframe from combining the two separate ones:
+        combo_data = (
+            df1 * prop_dict['nlvo'] +
+            df2 * prop_dict['lvo']
+        )
+        # Round the values:
+        dp = 3
+        for col in combo_data.columns:
+            combo_data[col] = np.round(combo_data[col], dp)
     # Update column names to mark them as combined:
     combo_data.columns = [f'combo_{col}' for col in cols_combo]
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
 
-    # Round the values:
-    dp = 3
-    for col in combo_data.columns:
-        df_lsoa[col] = np.round(df_lsoa[col], dp)
     return df_lsoa
 
 
-def combine_results_by_redirection(df_lsoa, redirect_dict):
+def combine_results_by_redirection(df_lsoa, redirect_dict, combine_mrs_dists=False):
     # Simple addition: x% of column 1 plus y% of column 2.
 
     prop_lvo_redirected = redirect_dict['sensitivity']
@@ -464,7 +619,10 @@ def combine_results_by_redirection(df_lsoa, redirect_dict):
     # (no nLVO with MT data).
     occlusion_list = ['nlvo', 'lvo']
     treatment_list = ['ivt', 'mt', 'ivt_mt']
-    outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+    if combine_mrs_dists:
+        outcome_list = ['mrs_dists_noncum']  # not cumulative
+    else:
+        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
 
     for v in occlusion_list:
         # Column names for these new DataFrames:
@@ -494,26 +652,70 @@ def combine_results_by_redirection(df_lsoa, redirect_dict):
         df1.columns = cols_combo
         df2.columns = cols_combo
 
-        # Create new dataframe from combining the two separate ones:
-        combo_data = (
-            df1 * prop +
-            df2 * (1.0 - prop)
-        )
+        if combine_mrs_dists:
+            combo_data = pd.DataFrame(index=df1.index)
+            cols_cumulative = [c.split('_noncum')[0] for c in cols_combo]
+            for c, col in enumerate(cols_combo):
+                df1_data = df1[col].copy()
+                # Make one very long Series with one value per row:
+                # Explicitly convert to float so that np.round()
+                # doesn't throw TypeError later.
+                df1_data = df1_data.explode().astype(float)
+                # Reshape into one row per LSOA:
+                df1_data = df1_data.values.reshape(len(df1), 7)
+
+                # Same for df2:
+                df2_data = df2[col].copy()
+                # Make one very long Series with one value per row:
+                df2_data = df2_data.explode().astype(float)
+                # Reshape into one row per LSOA:
+                df2_data = df2_data.values.reshape(len(df1), 7)
+
+                # Now combine:
+                df_combo_data = (
+                    df1_data * prop +
+                    df2_data * (1.0 - prop)
+                )
+
+                # Cumulative probability:
+                cumulatives = np.cumsum(df_combo_data, axis=1)
+
+                # Round the values:
+                dp = 3
+                df_combo_data = np.round(df_combo_data, dp)
+                cumulatives = np.round(cumulatives, dp)
+
+                # And return to a single list per row:
+                df_combo_data = df_combo_data.tolist()
+                cumulatives = cumulatives.tolist()
+
+                # Store in results df:
+                combo_data[col] = df_combo_data
+                combo_data[cols_cumulative[c]] = cumulatives
+            # Update column names:
+            cols_combo = cols_combo + cols_cumulative
+        else:
+            # Create new dataframe from combining the two separate ones:
+            combo_data = (
+                df1 * prop +
+                df2 * (1.0 - prop)
+            )
+            # Round the values:
+            dp = 3
+            for col in combo_data.columns:
+                combo_data[col] = np.round(combo_data[col], dp)
+
         # # Update column names to mark them as combined:
         # combo_data.columns = [f'{v}_redirect_{col}' for col in cols_combo]
 
         # Merge this new data into the starting dataframe:
         df_lsoa = pd.merge(df_lsoa, combo_data,
                            left_index=True, right_index=True)
-        # Round the values:
-        dp = 3
-        for col in combo_data.columns:
-            df_lsoa[col] = np.round(df_lsoa[col], dp)
 
     return df_lsoa
 
 
-def combine_results_by_diff(df_lsoa):
+def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
     df1 = pd.DataFrame(index=df_lsoa.index)
     df2 = pd.DataFrame(index=df_lsoa.index)
     # Column names for these new DataFrames:
@@ -524,7 +726,10 @@ def combine_results_by_diff(df_lsoa):
     scenario_types = ['redirect', 'drip_ship']
     occlusion_types = ['nlvo', 'lvo', 'combo']
     treatment_types = ['ivt', 'mt', 'ivt_mt']
-    outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+    if combine_mrs_dists:
+        outcome_types = ['mrs_dists_noncum']  # not cumulative
+    else:
+        outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
 
     for occ in occlusion_types:
         for tre in treatment_types:
@@ -564,8 +769,55 @@ def combine_results_by_diff(df_lsoa):
     # Rename columns so they match:
     df1.columns = cols_combo
     df2.columns = cols_combo
-    # Create new dataframe from combining the two separate ones:
-    combo_data = df1 - df2
+
+    if combine_mrs_dists:
+        combo_data = pd.DataFrame(index=df1.index)
+        cols_cumulative = [c.split('_noncum')[0] for c in cols_combo]
+        for c, col in enumerate(cols_combo):
+            df1_data = df1[col].copy()
+            # Make one very long Series with one value per row:
+            # Explicitly convert to float so that np.round()
+            # doesn't throw TypeError later.
+            df1_data = df1_data.explode().astype(float)
+            # Reshape into one row per LSOA:
+            df1_data = df1_data.values.reshape(len(df1), 7)
+
+            # Same for df2:
+            df2_data = df2[col].copy()
+            # Make one very long Series with one value per row:
+            df2_data = df2_data.explode().astype(float)
+            # Reshape into one row per LSOA:
+            df2_data = df2_data.values.reshape(len(df1), 7)
+
+            # Now combine:
+            df_combo_data = df1_data - df2_data
+
+            # Cumulative probability:
+            cumulatives = np.cumsum(df_combo_data, axis=1)
+
+            # Round the values:
+            dp = 3
+            df_combo_data = np.round(df_combo_data, dp)
+            cumulatives = np.round(cumulatives, dp)
+
+            # And return to a single list per row:
+            df_combo_data = df_combo_data.tolist()
+            cumulatives = cumulatives.tolist()
+
+            # Store in results df:
+            combo_data[col] = df_combo_data
+            combo_data[cols_cumulative[c]] = cumulatives
+
+        # Update column names:
+        cols_combo = cols_combo + cols_cumulative
+    else:
+        # Create new dataframe from combining the two separate ones:
+        combo_data = df1 - df2
+        # Round the values:
+        dp = 3
+        for col in combo_data.columns:
+            combo_data[col] = np.round(combo_data[col], dp)
+
     # Update column names to mark them as combined:
     combo_cols = [
         ''.join([
@@ -580,8 +832,214 @@ def combine_results_by_diff(df_lsoa):
     df_lsoa = pd.merge(df_lsoa, combo_data,
                        left_index=True, right_index=True)
 
-    # Round the values:
-    dp = 3
-    for col in combo_cols:
-        df_lsoa[col] = np.round(df_lsoa[col], dp)
     return df_lsoa
+
+# # #############################
+# # ##### mRS DISTRIBUTIONS #####
+# # #############################
+# def combine_mrs_dists_by_occlusion_type(df_lsoa, prop_dict):
+#     """
+#     Make two new dataframes, one with all the column 1 data
+#     and one with all the column 2 data, and with the same column
+#     names. Then subtract one dataframe from the other
+#     and merge the results back into the main one.
+#     This is more efficient than calculating and creating
+#     each new column individually.
+#     """
+#     # Simple addition: x% of column 1 plus y% of column 2.
+#     # Column names for these new DataFrames:
+#     cols_combo = []
+#     cols_nlvo = []
+#     cols_lvo = []
+
+#     # Don't combine treatment types for now
+#     # (no nLVO with MT data).
+#     scenario_list = ['drip_ship', 'mothership', 'redirect']
+#     treatment_list = ['ivt', 'mt', 'ivt_mt']
+#     outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+#     for s in scenario_list:
+#         for t in treatment_list:
+#             for o in outcome_list:
+#                 # if t == 'mt':
+#                 #     if o in ['mrs_shift', 'utility_shift']:
+#                 #         data_nlvo = 0.0
+#                 #         data_exists = True
+#                 #     else:
+#                 #         col_nlvo = f'nlvo_no_treatment_{o}'
+#                 #         data_nlvo = df_lsoa[col_nlvo]
+#                 #         data_exists = True
+#                 # else:
+#                 # col_nlvo = f'nlvo_{s}_ivt_{o}'
+#                 col_nlvo = f'nlvo_{s}_{t}_{o}' f'{occ_type}_drip_ship_{treat_type}_mrs_dists'
+#                 try:
+#                     data_nlvo = df_lsoa[col_nlvo]
+#                     data_exists = True
+#                 except KeyError:
+#                     data_exists = False
+#                 col_lvo = f'lvo_{s}_{t}_{o}'
+
+#                 if data_exists:
+#                     cols_combo.append(f'{s}_{t}_{o}')
+#                     cols_nlvo.append(col_nlvo)
+#                     cols_lvo.append(col_lvo)
+
+#     # Pick out the data from the original dataframe:
+#     df1 = df_lsoa[cols_nlvo].copy()
+#     df2 = df_lsoa[cols_lvo].copy()
+#     # Rename columns so they match:
+#     df1.columns = cols_combo
+#     df2.columns = cols_combo
+#     # Create new dataframe from combining the two separate ones:
+#     combo_data = (
+#         df1 * prop_dict['nlvo'] +
+#         df2 * prop_dict['lvo']
+#     )
+#     # Update column names to mark them as combined:
+#     combo_data.columns = [f'combo_{col}' for col in cols_combo]
+#     # Merge this new data into the starting dataframe:
+#     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
+
+#     # Round the values:
+#     dp = 3
+#     for col in combo_data.columns:
+#         df_lsoa[col] = np.round(df_lsoa[col], dp)
+#     return df_lsoa
+
+
+# def combine_mrs_dists_by_redirection(df_lsoa, redirect_dict):
+#     # Simple addition: x% of column 1 plus y% of column 2.
+
+#     prop_lvo_redirected = redirect_dict['sensitivity']
+#     prop_nlvo_redirected = (1.0 - redirect_dict['specificity'])
+
+#     prop_dict = {
+#         'nlvo': prop_nlvo_redirected,
+#         'lvo': prop_lvo_redirected,
+#     }
+
+#     # Don't combine treatment types for now
+#     # (no nLVO with MT data).
+#     occlusion_list = ['nlvo', 'lvo']
+#     treatment_list = ['ivt', 'mt', 'ivt_mt']
+#     outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+#     for v in occlusion_list:
+#         # Column names for these new DataFrames:
+#         cols_combo = []
+#         cols_drip_ship = []
+#         cols_mothership = []
+#         prop = prop_dict[v]
+#         for t in treatment_list:
+#             for o in outcome_list:
+#                 col_drip_ship = f'{v}_drip_ship_{t}_{o}'
+#                 col_mothership = f'{v}_mothership_{t}_{o}'
+#                 try:
+#                     df_lsoa[col_drip_ship]
+#                     data_exists = True
+#                 except KeyError:
+#                     data_exists = False
+
+#                 if data_exists:
+#                     cols_combo.append(f'{v}_redirect_{t}_{o}')
+#                     cols_drip_ship.append(col_drip_ship)
+#                     cols_mothership.append(col_mothership)
+
+#         # Pick out the data from the original dataframe:
+#         df1 = df_lsoa[cols_drip_ship].copy()
+#         df2 = df_lsoa[cols_mothership].copy()
+#         # Rename columns so they match:
+#         df1.columns = cols_combo
+#         df2.columns = cols_combo
+
+#         # Create new dataframe from combining the two separate ones:
+#         combo_data = (
+#             df1 * prop +
+#             df2 * (1.0 - prop)
+#         )
+#         # # Update column names to mark them as combined:
+#         # combo_data.columns = [f'{v}_redirect_{col}' for col in cols_combo]
+
+#         # Merge this new data into the starting dataframe:
+#         df_lsoa = pd.merge(df_lsoa, combo_data,
+#                            left_index=True, right_index=True)
+#         # Round the values:
+#         dp = 3
+#         for col in combo_data.columns:
+#             df_lsoa[col] = np.round(df_lsoa[col], dp)
+
+#     return df_lsoa
+
+
+# def combine_mrs_dists_by_diff(df_lsoa):
+#     df1 = pd.DataFrame(index=df_lsoa.index)
+#     df2 = pd.DataFrame(index=df_lsoa.index)
+#     # Column names for these new DataFrames:
+#     cols_combo = []
+#     cols_scen1 = []
+#     cols_scen2 = []
+
+#     scenario_types = ['redirect', 'drip_ship']
+#     occlusion_types = ['nlvo', 'lvo', 'combo']
+#     treatment_types = ['ivt', 'mt', 'ivt_mt']
+#     outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+
+#     for occ in occlusion_types:
+#         for tre in treatment_types:
+#             for out in outcome_types:
+#                 # Existing column names:
+#                 col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
+#                 col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
+#                 # New column name for the diff data:
+#                 col_diff = f'{occ}_{tre}_{out}'
+#                 # col_zero_bool = ''.join([
+#                 #     f'{occ}_',
+#                 #     f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
+#                 #     f'_{tre}_{out}_iszero'
+#                 # ])
+#                 try:
+#                     data_scen1 = df_lsoa[col_scen1]
+#                     data_scen2 = df_lsoa[col_scen2]
+#                     data_exists = True
+#                 except KeyError:
+#                     # This combination doesn't exist
+#                     # (e.g. nLVO with MT).
+#                     data_exists = False
+
+#                 if data_exists:
+#                     cols_combo.append(col_diff)
+#                     cols_scen1.append(col_scen1)
+#                     cols_scen2.append(col_scen2)
+
+#                     # zero_bool = (data_scen1 - data_scen2) == 0.0
+#                     # df_lsoa[col_zero_bool] = zero_bool
+#                 else:
+#                     pass
+
+#     # Pick out the data from the original dataframe:
+#     df1 = df_lsoa[cols_scen1].copy()
+#     df2 = df_lsoa[cols_scen2].copy()
+#     # Rename columns so they match:
+#     df1.columns = cols_combo
+#     df2.columns = cols_combo
+#     # Create new dataframe from combining the two separate ones:
+#     combo_data = df1 - df2
+#     # Update column names to mark them as combined:
+#     combo_cols = [
+#         ''.join([
+#             f"{col.split('_')[0]}_",
+#             f'diff_{scenario_types[0]}_minus_{scenario_types[1]}_',
+#             f"{'_'.join(col.split('_')[1:])}"
+#             ])
+#         for col in cols_combo]
+#     combo_data.columns = combo_cols
+
+#     # Merge this new data into the starting dataframe:
+#     df_lsoa = pd.merge(df_lsoa, combo_data,
+#                        left_index=True, right_index=True)
+
+#     # Round the values:
+#     dp = 3
+#     for col in combo_cols:
+#         df_lsoa[col] = np.round(df_lsoa[col], dp)
+#     return df_lsoa

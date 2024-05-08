@@ -13,6 +13,7 @@ import streamlit as st
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
+import utilities.plot_mrs_dists as mrs
 # Containers:
 import utilities.container_inputs as inputs
 
@@ -56,6 +57,7 @@ with cols[1]:
 with cols[0]:
     st.markdown('__Map choices__')
     container_map_inputs = st.container()
+container_mrs_dists = st.container()
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -187,34 +189,6 @@ if stop_bool:
 # Process LSOA and calculate outcomes:
 df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
 
-col_config = {}
-cols_dists = df_mrs.columns[1:]  # drop Admissions
-
-for col in cols_dists:
-    col_config[col] = st.column_config.BarChartColumn(
-        col,
-        y_min=0,
-        y_max=1,
-    )
-st.dataframe(df_mrs, column_config=col_config)
-
-df_mrs_by_icb, df_mrs_by_isdn, df_mrs_by_nearest_ivt = (
-    calc.group_mrs_dists_by_region(df_mrs, df_lsoa['nearest_ivt_unit']))
-
-cols_dists = [c for c in df_mrs_by_icb if 'dist' in c]
-for col in cols_dists:
-    col_config[col] = st.column_config.BarChartColumn(
-        col,
-        y_min=0,
-        y_max=1,
-    )
-st.dataframe(df_mrs_by_icb, column_config=col_config)
-st.dataframe(df_mrs_by_isdn, column_config=col_config)
-st.dataframe(df_mrs_by_nearest_ivt, column_config=col_config)
-
-
-st.stop()
-
 # Remove the MSU data:
 cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
 df_lsoa = df_lsoa.drop(cols_to_remove, axis='columns')
@@ -228,6 +202,7 @@ redirect_dict = {
     'specificity': input_dict['specificity'],
 }
 df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
+df_mrs = calc.combine_results_by_redirection(df_mrs, redirect_dict, combine_mrs_dists=True)
 
 # Make combined nLVO + LVO data in the proportions given:
 prop_dict = {
@@ -235,15 +210,46 @@ prop_dict = {
     'lvo': input_dict['prop_lvo']
 }
 df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
+df_mrs = calc.combine_results_by_occlusion_type(df_mrs, prop_dict, combine_mrs_dists=True)
 
 # Calculate diff - redirect minus drip-ship:
 df_lsoa = calc.combine_results_by_diff(df_lsoa)
+df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
 
 gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
+df_mrs_national, df_mrs_by_icb, df_mrs_by_isdn, df_mrs_by_nearest_ivt = (
+    calc.group_mrs_dists_by_region(
+        df_mrs, df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']]))
 
+# ----- mRS dist results -----
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+# Gather options:
+bar_options = []
+bar_options += [f'{place}' for place in df_mrs_national.index]
+bar_options += [f'ISDN: {place}' for place in df_mrs_by_isdn.index]
+bar_options += [f'ICB: {place}' for place in df_mrs_by_icb.index]
+bar_options += [f'Nearest unit: {place}'
+                for place in df_mrs_by_nearest_ivt.index]
+# User input:
+with container_mrs_dists:
+    bar_option = st.selectbox('for bar', bar_options)
+
+mrs_lists_dict, region_selected, col_pretty = (
+    mrs.setup_for_mrs_dist_bars(
+        bar_option, scenario_dict,
+        df_mrs_by_isdn, df_mrs_by_icb,
+        df_mrs_by_nearest_ivt, df_mrs_national
+        ))
+
+with container_mrs_dists:
+    mrs.plot_mrs_bars(
+        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+
+# ----- Outcome results tables -----
 with container_results_tables:
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
