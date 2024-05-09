@@ -100,7 +100,7 @@ scenario_dict = inputs.select_scenario(
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
     outline_name = st.radio(
-        'Geographical region type',
+        'Region type to draw on maps',
         ['None', 'ISDN', 'ICB'],
         # horizontal=True
     )
@@ -116,7 +116,7 @@ for key, region_list in region_options_dict.items():
 
 # User input:
 with container_input_mrs_region:
-    bar_option = st.selectbox('for bar', bar_options)
+    bar_option = st.selectbox('Region for mRS distributions', bar_options)
 
 
 # Colourmap selection
