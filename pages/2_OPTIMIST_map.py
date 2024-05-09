@@ -97,6 +97,20 @@ with container_map_inputs:
         # horizontal=True
     )
 
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+
+# User input:
+with container_mrs_dists:
+    bar_option = st.selectbox('for bar', bar_options)
+
+
 # Colourmap selection
 cmap_names = ['cosmic', 'viridis', 'inferno', 'neutral']
 cmap_displays = [
@@ -220,38 +234,13 @@ gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
-df_mrs_national, df_mrs_by_icb, df_mrs_by_isdn, df_mrs_by_nearest_ivt = (
-    calc.group_mrs_dists_by_region(
-        df_mrs, df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']]))
-
 # ----- mRS dist results -----
-
-# # Nearest units from IVT units in df_unit_services,
-# # ISDN and ICB from the reference data.
-# def load_region_lists():
-
-#     # Key for region type, value for list of options.
-
-#     return region_dict
-
-# Select a region based on what's actually in the data,
-# not by guessing in advance which IVT units are included for example.
-# Gather options:
-bar_options = []
-bar_options += [f'{place}' for place in df_mrs_national.index]
-bar_options += [f'ISDN: {place}' for place in df_mrs_by_isdn.index]
-bar_options += [f'ICB: {place}' for place in df_mrs_by_icb.index]
-bar_options += [f'Nearest unit: {place}'
-                for place in df_mrs_by_nearest_ivt.index]
-# User input:
-with container_mrs_dists:
-    bar_option = st.selectbox('for bar', bar_options)
-
 mrs_lists_dict, region_selected, col_pretty = (
     mrs.setup_for_mrs_dist_bars(
-        bar_option, scenario_dict,
-        df_mrs_by_isdn, df_mrs_by_icb,
-        df_mrs_by_nearest_ivt, df_mrs_national
+        bar_option,
+        scenario_dict,
+        df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+        df_mrs
         ))
 
 with container_mrs_dists:

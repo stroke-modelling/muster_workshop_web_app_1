@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt  # for colour maps
 import cmasher as cmr  # for additional colour maps
+from importlib_resources import files
 
 from stroke_maps.catchment import Catchment  # for unit services
 
@@ -972,3 +973,36 @@ def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
         line_str += s
     line_str += '$'
     return line_str
+
+
+def load_region_lists(df_unit_services_full):
+    """
+    # Nearest units from IVT units in df_unit_services,
+    # ISDN and ICB from the reference data.
+    """
+
+    # Load region data:
+    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
+    df_regions = pd.read_csv(path_to_file)
+    # Only keep English regions:
+    mask = df_regions['region_code'].str.contains('E')
+    df_regions = df_regions.loc[mask]
+
+    # Lists of ICBs and ISDNs without repeats:
+    icb_list = sorted(list(set(df_regions['icb'])))
+    isdn_list = sorted(list(set(df_regions['isdn'])))
+
+    # Find list of units offering IVT.
+    # Use names not postcodes here to match ICB and ISDN names
+    # and have nicer display on the app.
+    mask = df_unit_services_full['use_ivt'] == 1
+    nearest_ivt_unit_names_list = df_unit_services_full.loc[mask, 'stroke_team']
+
+    # Key for region type, value for list of options.
+    region_options_dict = {
+        'ISDN': isdn_list,
+        'ICB': icb_list,
+        'Nearest unit': nearest_ivt_unit_names_list
+    }
+
+    return region_options_dict

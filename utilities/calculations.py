@@ -260,7 +260,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
 # ##### mRS DISTRIBUTIONS #####
 # #############################
 @st.cache_data
-def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units):
+def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units, **kwargs):
     df_lsoa = df_lsoa.copy()
 
     # cols_mrs_dist = [col for col in df_lsoa.columns if
@@ -299,20 +299,22 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units):
     # for col in cols_mrs_dist:
     #     df_lsoa[f'{col}_by_admissions'] = df_lsoa['Admissions'] * df_lsoa[col].apply(lambda x: np.array(x))
 
-    df_national = group_mrs_dists_by_column(df_lsoa)
-    df_nearest_ivt = group_mrs_dists_by_column(df_lsoa, 'nearest_ivt_unit_name')
-    df_icb = group_mrs_dists_by_column(df_lsoa, 'icb')
-    df_isdn = group_mrs_dists_by_column(df_lsoa, 'isdn')
+    df = group_mrs_dists_by_column(df_lsoa, **kwargs)
+    # df_national = group_mrs_dists_by_column(df_lsoa)
+    # df_nearest_ivt = group_mrs_dists_by_column(df_lsoa, 'nearest_ivt_unit_name')
+    # df_icb = group_mrs_dists_by_column(df_lsoa, 'icb')
+    # df_isdn = group_mrs_dists_by_column(df_lsoa, 'isdn')
 
-    return df_national, df_icb, df_isdn, df_nearest_ivt
+    return df
 
 
-def group_mrs_dists_by_column(df_lsoa, col_region=''):
+def group_mrs_dists_by_column(df_lsoa, col_region='', col_vals=[]):
     # Glob results by column values:
     df_lsoa = df_lsoa.copy()
 
     if len(col_region) > 0:
-        col_vals = sorted(list(set(df_lsoa[col_region])))
+        if len(col_vals) == 0:
+            col_vals = sorted(list(set(df_lsoa[col_region])))
         use_all = False
     else:
         col_vals = ['National']

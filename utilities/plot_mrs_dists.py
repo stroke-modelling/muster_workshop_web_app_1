@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+import utilities.calculations as calc
+
 
 def load_reference_mrs_dists():
     mrs_dists_ref, mrs_dists_ref_notes = (
@@ -30,30 +32,34 @@ def load_reference_mrs_dists():
 def setup_for_mrs_dist_bars(
         bar_option,
         scenario_dict,
-        df_mrs_by_isdn,
-        df_mrs_by_icb,
-        df_mrs_by_nearest_ivt,
-        df_mrs_national
+        df_nearest_units,
+        df_mrs
         ):
     # Set up where the data should come from -
     # which of the input dataframes, and which column within it.
     # Also keep a copy of the name of the selected region.
     if bar_option.startswith('ISDN: '):
-        df = df_mrs_by_isdn
         str_region_type = 'ISDN'
         str_selected_region = bar_option.split('ISDN: ')[-1]
+        col_region = 'isdn'
     elif bar_option.startswith('ICB: '):
-        df = df_mrs_by_icb
         str_region_type = 'ICB'
         str_selected_region = bar_option.split('ICB: ')[-1]
+        col_region = 'icb'
     elif bar_option.startswith('Nearest unit: '):
-        df = df_mrs_by_nearest_ivt
         str_region_type = 'Nearest unit'
         str_selected_region = bar_option.split('Nearest unit: ')[-1]
+        col_region = 'nearest_ivt_unit_name'
     else:
-        df = df_mrs_national
         str_region_type = 'National'
-        str_selected_region = bar_option.split('National: ')[-1]
+        str_selected_region = 'National'
+        col_region = ''
+
+    col_vals = [str_selected_region]
+
+    # Create the data for this region:
+    df = calc.group_mrs_dists_by_region(
+        df_mrs, df_nearest_units, col_region=col_region, col_vals=col_vals)
 
     occ_type = scenario_dict['stroke_type']
     treat_type = scenario_dict['treatment_type']
