@@ -622,54 +622,21 @@ def update_stroke_unit_services(
     return df_unit_services, df_unit_services_full
 
 
-def select_scenario(
-        scenarios=['outcome', 'treatment', 'stroke'],
-        containers=[],
-        use_combo_stroke_types=False
-        ):
-    if len(containers) == 0:
-        containers = [st.container() for i in range(3)]
-
-    # Store results in here:
-    scenario_dict = {}
-    if 'outcome' in scenarios:
-        outcome_type, outcome_type_str = select_outcome_type(containers[0])
-        scenario_dict['outcome_type_str'] = outcome_type_str
-        scenario_dict['outcome_type'] = outcome_type
-    if 'treatment' in scenarios:
-        treatment_type, treatment_type_str = select_treatment_type(containers[1])
-        scenario_dict['treatment_type_str'] = treatment_type_str
-        scenario_dict['treatment_type'] = treatment_type
-    if 'stroke' in scenarios:
-        stroke_type, stroke_type_str = select_stroke_type(
-            containers[2], use_combo_stroke_types)
-        scenario_dict['stroke_type_str'] = stroke_type_str
-        scenario_dict['stroke_type'] = stroke_type
-
-    # scenario_dict['scenario_type_str'] = scenario_type_str
-    # scenario_dict['scenario_type'] = scenario_type
-    return scenario_dict
-
-
-def select_outcome_type(container=None):
+def select_outcome_type():
     """
     """
-    if container is None:
-        container = st.container()
-
     # Outcome type input:
-    with container:
-        outcome_type_str = st.radio(
-            'Outcome measure',
-            [
-                # 'Utility',
-                'Added utility',
-                # 'Mean shift in mRS',
-                'mRS <= 2'
-                ],
-            index=0,  # 'added utility' as default
-            # horizontal=True
-        )
+    outcome_type_str = st.radio(
+        'Outcome measure',
+        [
+            # 'Utility',
+            'Added utility',
+            # 'Mean shift in mRS',
+            'mRS <= 2'
+            ],
+        index=0,  # 'added utility' as default
+        # horizontal=True
+    )
     # Match the input string to the file name string:
     outcome_type_dict = {
         'Utility': 'utility',
@@ -681,34 +648,14 @@ def select_outcome_type(container=None):
     return outcome_type, outcome_type_str
 
 
-    # # Scenario input:
-    # with containers[1]:    
-    #     scenario_type_str = st.radio(
-    #         'Scenario',
-    #         ['Drip-and-ship', 'Mothership', 'MSU'],
-    #         # horizontal=True
-    #     )
-    # # Match the input string to the file name string:
-    # scenario_type_dict = {
-    #     'Drip-and-ship': 'drip_ship',
-    #     'Mothership': 'mothership',
-    #     'MSU': 'msu'
-    # }
-    # scenario_type = scenario_type_dict[scenario_type_str]
-
-
-def select_treatment_type(container=None):
-    if container is None:
-        container = st.container()
-
+def select_treatment_type():
     # Treatment type:
-    with container:
-        treatment_type_str = st.radio(
-            'Treatment type',
-            ['IVT', 'MT', 'IVT & MT'],
-            index=2,  # IVT & MT as default
-            # horizontal=True
-            )
+    treatment_type_str = st.radio(
+        'Treatment type',
+        ['IVT', 'MT', 'IVT & MT'],
+        index=2,  # IVT & MT as default
+        # horizontal=True
+        )
     # Match the input string to the file name string:
     treatment_type_dict = {
         'IVT': 'ivt',
@@ -719,21 +666,17 @@ def select_treatment_type(container=None):
     return treatment_type, treatment_type_str
 
 
-def select_stroke_type(container=None, use_combo_stroke_types=False):
-    if container is None:
-        container = st.container()
-
+def select_stroke_type(use_combo_stroke_types=False):
     options = ['LVO', 'nLVO']
     if use_combo_stroke_types:
         options += ['Combined']
 
     # Stroke type:
-    with container:
-        stroke_type_str = st.radio(
-            'Stroke type',
-            options,
-            # horizontal=True
-            )
+    stroke_type_str = st.radio(
+        'Stroke type',
+        options,
+        # horizontal=True
+        )
     # Match the input string to the file name string:
     stroke_type_dict = {
         'LVO': 'lvo',
@@ -744,7 +687,12 @@ def select_stroke_type(container=None, use_combo_stroke_types=False):
     return stroke_type, stroke_type_str
 
 
-def set_up_colours(scenario_dict, v_name='v', cmap_name='inferno', cmap_diff_name='RdBu'):
+def set_up_colours(
+        scenario_dict,
+        v_name='v',
+        cmap_name='inferno',
+        cmap_diff_name='RdBu'
+        ):
     """
     max ever displayed:
 
@@ -1006,3 +954,40 @@ def load_region_lists(df_unit_services_full):
     }
 
     return region_options_dict
+
+
+def select_colour_maps(cmap_names, cmap_diff_names):
+    cmap_displays = [
+        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+        for cmap_name in cmap_names
+        ]
+    cmap_diff_displays = [
+        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+        for cmap_name in cmap_diff_names
+        ]
+
+    try:
+        cmap_name = st.session_state['cmap_name']
+        cmap_diff_name = st.session_state['cmap_diff_name']
+    except KeyError:
+        cmap_name = cmap_names[0]
+        cmap_diff_name = cmap_diff_names[0]
+    cmap_ind = cmap_names.index(cmap_name)
+    cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
+
+    cmap_name = st.radio(
+        'Colour display for "usual care" map',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_name'
+    )
+
+    cmap_diff_name = st.radio(
+        'Colour display for difference map',
+        cmap_diff_names,
+        captions=cmap_diff_displays,
+        index=cmap_diff_ind,
+        key='cmap_diff_name'
+    )
+    return cmap_name, cmap_diff_name
