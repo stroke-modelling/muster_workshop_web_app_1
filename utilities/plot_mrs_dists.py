@@ -33,7 +33,8 @@ def setup_for_mrs_dist_bars(
         bar_option,
         scenario_dict,
         df_nearest_units,
-        df_mrs
+        df_mrs,
+        scenarios=['drip_ship', 'redirect']
         ):
     # Set up where the data should come from -
     # which of the input dataframes, and which column within it.
@@ -64,8 +65,8 @@ def setup_for_mrs_dist_bars(
     occ_type = scenario_dict['stroke_type']
     treat_type = scenario_dict['treatment_type']
 
-    col = f'{occ_type}_drip_ship_{treat_type}_mrs_dists'  # temp - scenario name still in here
-    col2 = f'{occ_type}_redirect_{treat_type}_mrs_dists'  # temp - scenario name still in here
+    col = f'{occ_type}_{scenarios[0]}_{treat_type}_mrs_dists'
+    col2 = f'{occ_type}_{scenarios[1]}_{treat_type}_mrs_dists'
 
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
@@ -118,7 +119,7 @@ def setup_for_mrs_dist_bars(
         # },
         # # if str_selected_region is 'National',
         # # then the following entry overwrites previous:
-        'Drip-and-ship': {
+        scenarios[0]: {
             'noncum': dist_noncum,
             'cum': dist_cum,
             'std': dist_std,
@@ -127,7 +128,7 @@ def setup_for_mrs_dist_bars(
         },
         # if str_selected_region is 'National',
         # then the following entry overwrites previous:
-        'Redirect': {
+        scenarios[1]: {
             'noncum': dist2_noncum,
             'cum': dist2_cum,
             'std': dist2_std,

@@ -13,6 +13,7 @@ import streamlit as st
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
+import utilities.plot_mrs_dists as mrs
 # Containers:
 import utilities.container_inputs as inputs
 
@@ -49,6 +50,7 @@ with cols[1]:
 with cols[0]:
     st.markdown('__Map choices__')
     container_map_inputs = st.container()
+container_mrs_dists = st.container()
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -84,6 +86,20 @@ with container_map_inputs:
         'Geographical region type',
         ['None', 'ISDN', 'ICB']
     )
+
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+
+# User input:
+with container_mrs_dists:
+    bar_option = st.selectbox('for bar', bar_options)
+
 
 # Colourmap selection
 cmap_names = ['cosmic', 'viridis', 'inferno', 'neutral']
@@ -178,10 +194,28 @@ if stop_bool:
 # Process LSOA and calculate outcomes:
 df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
 
+# df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
+
 gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
+# ----- mRS dist results -----
+mrs_lists_dict, region_selected, col_pretty = (
+    mrs.setup_for_mrs_dist_bars(
+        bar_option,
+        scenario_dict,
+        df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+        df_mrs,
+        scenarios=['drip_ship', 'msu']
+        ))
+
+with container_mrs_dists:
+    mrs.plot_mrs_bars(
+        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+
+
+# ----- Outcome results tables -----
 with container_results_tables:
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
