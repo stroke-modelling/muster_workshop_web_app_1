@@ -13,6 +13,7 @@ import streamlit as st
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
+import utilities.plot_mrs_dists as mrs
 # Containers:
 import utilities.container_inputs as inputs
 
@@ -50,14 +51,22 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-cols = st.columns([1, 9])
-with cols[1]:
+container_map, container_mrs_dists = st.columns([2, 1])
+# Convert the map container to empty so that the placeholder map
+# is replaced once the real map is ready.
+with container_map:
     container_map = st.empty()
-with cols[0]:
+container_map_inputs = st.container()
+with container_map_inputs:
     st.markdown('__Map choices__')
-    container_map_inputs = st.container()
+    cols = st.columns(4)
+    (container_input_treatment, container_input_stroke_type,
+     container_input_region_type, container_input_mrs_region) = cols
 container_results_tables = st.container()
-container_select_outcome = st.container()
+with st.sidebar:
+    with st.expander('Accessibility & advanced options'):
+        container_select_outcome = st.container()
+        container_select_cmap = st.container()
 
 # ###########################
 # ########## SETUP ##########
@@ -79,19 +88,76 @@ with container_inputs:
         submitted = st.form_submit_button('Submit')
 
 with container_select_outcome:
-    st.markdown('### Alternative outcome measure for map')
-    st.markdown('Try these if you dare.')
+    st.markdown('### Alternative outcome measures')
 scenario_dict = inputs.select_scenario(
-    containers=[container_select_outcome] + [container_map_inputs] * 2,
+    containers=[
+        container_select_outcome,
+        container_input_treatment,
+        container_input_stroke_type
+        ],
     use_combo_stroke_types=True
     )
 # Name of the column in the geojson that labels the shapes:
-with container_map_inputs:
+with container_input_region_type:
     outline_name = st.radio(
         'Geographical region type',
         ['None', 'ISDN', 'ICB'],
         # horizontal=True
     )
+
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+
+# User input:
+with container_input_mrs_region:
+    bar_option = st.selectbox('for bar', bar_options)
+
+
+# Colourmap selection
+cmap_names = ['cosmic', 'viridis', 'inferno', 'neutral']
+cmap_displays = [
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+    for cmap_name in cmap_names
+    ]
+cmap_diff_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
+cmap_diff_displays = [
+    inputs.make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+    for cmap_name in cmap_diff_names
+    ]
+
+try:
+    cmap_name = st.session_state['cmap_name']
+    cmap_diff_name = st.session_state['cmap_diff_name']
+except KeyError:
+    cmap_name = cmap_names[0]
+    cmap_diff_name = cmap_diff_names[0]
+cmap_ind = cmap_names.index(cmap_name)
+cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
+
+with container_select_cmap:
+    st.markdown('### Colour schemes')
+    cmap_name = st.radio(
+        'Colour display for "usual care" map',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_name'
+    )
+
+    cmap_diff_name = st.radio(
+        'Colour display for difference map',
+        cmap_diff_names,
+        captions=cmap_diff_displays,
+        index=cmap_diff_ind,
+        key='cmap_diff_name'
+    )
+
 
 # ----- Setup for plots -----
 # Which scenarios will be shown in the maps:
@@ -99,8 +165,8 @@ with container_map_inputs:
 scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
 
 subplot_titles = [
-    'Drip-and-ship',
-    'Benefit of redirection over drip-and-ship'
+    'Usual care',
+    'Benefit of redirection over usual care'
 ]
 
 legend_title = None
@@ -111,7 +177,7 @@ legend_title = None
 
 cmap_titles = [
     f'{scenario_dict["outcome_type_str"]}',
-    f'{scenario_dict["outcome_type_str"]}: Benefit of redirection over drip-and-ship'
+    f'{scenario_dict["outcome_type_str"]}: Benefit of redirection over usual care'
     ]
 
 # Which subplots to draw which units on:
@@ -140,9 +206,10 @@ if stop_bool:
         st.warning('No data for nLVO with MT.')
         st.stop()
 
+
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
-df_lsoa = calc.calculate_outcomes(input_dict, df_unit_services)
+df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
 
 # Remove the MSU data:
 cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
@@ -157,6 +224,7 @@ redirect_dict = {
     'specificity': input_dict['specificity'],
 }
 df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
+df_mrs = calc.combine_results_by_redirection(df_mrs, redirect_dict, combine_mrs_dists=True)
 
 # Make combined nLVO + LVO data in the proportions given:
 prop_dict = {
@@ -164,15 +232,31 @@ prop_dict = {
     'lvo': input_dict['prop_lvo']
 }
 df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
+df_mrs = calc.combine_results_by_occlusion_type(df_mrs, prop_dict, combine_mrs_dists=True)
 
 # Calculate diff - redirect minus drip-ship:
 df_lsoa = calc.combine_results_by_diff(df_lsoa)
+df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
 
 gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
 df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
+# ----- mRS dist results -----
+mrs_lists_dict, region_selected, col_pretty = (
+    mrs.setup_for_mrs_dist_bars(
+        bar_option,
+        scenario_dict,
+        df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+        df_mrs,
+        scenarios=['drip_ship', 'redirect']
+        ))
 
+with container_mrs_dists:
+    mrs.plot_mrs_bars(
+        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+
+# ----- Outcome results tables -----
 with container_results_tables:
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
@@ -210,9 +294,11 @@ with container_results_tables:
 # Give the scenario dict a dummy 'scenario_type' entry
 # so that the right colour map and colour limits are picked.
 colour_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'not diff'})
+    scenario_dict | {'scenario_type': 'not diff'},
+    cmap_name=cmap_name, cmap_diff_name=cmap_diff_name)
 colour_diff_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'diff'}, v_name='d')
+    scenario_dict | {'scenario_type': 'diff'}, v_name='d',
+    cmap_name=cmap_name, cmap_diff_name=cmap_diff_name)
 # Find the names of the columns that contain the data
 # that will be shown in the colour maps.
 columns_colours = [

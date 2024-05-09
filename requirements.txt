@@ -1,13 +1,15 @@
+cmasher
+geopandas==0.14.2
+matplotlib
 numpy
 pandas
 plotly
-geopandas==0.14.2
 pyproj
-matplotlib
+pyyaml
 shapely==2.0.1
+statsmodels
 stroke-outcome
 stroke-maps
-pyyaml
 # yaml is temporary - should have been included in stroke-maps package
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 
