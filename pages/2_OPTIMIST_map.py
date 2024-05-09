@@ -225,6 +225,15 @@ df_mrs_national, df_mrs_by_icb, df_mrs_by_isdn, df_mrs_by_nearest_ivt = (
         df_mrs, df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']]))
 
 # ----- mRS dist results -----
+
+# # Nearest units from IVT units in df_unit_services,
+# # ISDN and ICB from the reference data.
+# def load_region_lists():
+
+#     # Key for region type, value for list of options.
+
+#     return region_dict
+
 # Select a region based on what's actually in the data,
 # not by guessing in advance which IVT units are included for example.
 # Gather options:

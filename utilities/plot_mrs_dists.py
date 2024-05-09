@@ -69,21 +69,21 @@ def setup_for_mrs_dist_bars(
 
     # Gather mRS distributions.
     # Selected region:
-    dist_noncum = df.loc[str_selected_region, f'{col}_noncum']
-    dist_cum = df.loc[str_selected_region, col]
-    dist_std = df.loc[str_selected_region, f'{col}_noncum_std']
+    dist_noncum = df.loc[str_selected_region, [f'{col}_noncum_{i}' for i in range(7)]].values
+    dist_cum = df.loc[str_selected_region, [f'{col}_{i}' for i in range(7)]].values
+    dist_std = df.loc[str_selected_region, [f'{col}_noncum_std_{i}' for i in range(7)]].values
 
     # Redirect:
-    dist2_noncum = df.loc[str_selected_region, f'{col2}_noncum']
-    dist2_cum = df.loc[str_selected_region, col2]
-    dist2_std = df.loc[str_selected_region, f'{col2}_noncum_std']
+    dist2_noncum = df.loc[str_selected_region, [f'{col2}_noncum_{i}' for i in range(7)]].values
+    dist2_cum = df.loc[str_selected_region, [f'{col2}_{i}' for i in range(7)]].values
+    dist2_std = df.loc[str_selected_region, [f'{col2}_noncum_std_{i}' for i in range(7)]].values
 
-    # National data:
-    dist_national_noncum = (
-        df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum'])
-    dist_national_cum = df_mrs_national.loc[df_mrs_national.index[0], col]
-    dist_national_std = (
-        df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum_std'])
+    # # National data:
+    # dist_national_noncum = (
+    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum'])
+    # dist_national_cum = df_mrs_national.loc[df_mrs_national.index[0], col]
+    # dist_national_std = (
+    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum_std'])
 
     # No-treatment data:
     dist_dict = load_reference_mrs_dists()

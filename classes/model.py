@@ -67,25 +67,19 @@ class Model(object):
         self.add_diff_msu_minus_drip_ship()
 
         # Make non-cumulative mRS distributions:
-        cols = self.full_mrs_dists.columns
-        cols = [c for c in cols if c not in ['LSOA', 'Admissions']]
+        cols = self.full_mrs_dists.columns.values
+        cols = sorted(list(set(['_'.join(c.split('_')[:-1]) for c in cols if c not in ['LSOA', 'Admissions']])))
         for c in cols:
-            new_col = f'{c}_noncum'
-            new_data = self.full_mrs_dists[c]
-            # Make one very long Series with one value per row:
-            # Explicitly cast to float so that np.round() doesn't
-            # throw up a TypeError later.
-            new_data = new_data.explode().astype(float)
-            # Reshape into one row per LSOA:
-            new_data = new_data.values.reshape(len(self.full_mrs_dists[c]), 7)
+            cols_cumsum = [f'{c}_{i}' for i in range(7)]
+            cols_noncum = [f'{c}_noncum_{i}' for i in range(7)]
+
+            new_data = self.full_mrs_dists[cols_cumsum]
             # Take the difference between mRS bands:
             new_data = np.diff(new_data, prepend=0.0, axis=1)
             # Round the values:
             new_data = np.round(new_data, 3)
-            # Return to a single list per row:
-            new_data = new_data.tolist()
             # Store:
-            self.full_mrs_dists[new_col] = new_data
+            self.full_mrs_dists[cols_noncum] = new_data
 
         # Reindex on LSOA
         self.full_results.set_index('LSOA', inplace=True)
@@ -156,7 +150,7 @@ class Model(object):
         col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
         outs = outcomes_by_stroke_type[col].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['nlvo_drip_ship_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'nlvo_drip_ship_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         # Add clinical benefit for LVO outcome (stroke type = 2)
         # Set up input table for stroke outcome package
@@ -203,12 +197,12 @@ class Model(object):
         outs = outcomes_by_stroke_type[
             'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_drip_ship_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_drip_ship_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         outs = outcomes_by_stroke_type[
             'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_drip_ship_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_drip_ship_mt_mrs_dists_{i}' for i in range(7)]] = outs
 
         # Pick the treatment that causes more mRS 0-2:
         inds = self.full_results[
@@ -226,7 +220,7 @@ class Model(object):
         outs[mask, :] = outs_mt[mask, :].copy()
         # Reshape as normal:
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_drip_ship_ivt_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_drip_ship_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
 
 
 
@@ -276,7 +270,7 @@ class Model(object):
         col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
         outs = outcomes_by_stroke_type[col].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['nlvo_mothership_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'nlvo_mothership_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         # Add clinical benefit for LVO outcome (stroke type = 2)
         # Set up input table for stroke outcome package
@@ -325,12 +319,12 @@ class Model(object):
         outs = outcomes_by_stroke_type[
             'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_mothership_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_mothership_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         outs = outcomes_by_stroke_type[
             'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_mothership_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_mothership_mt_mrs_dists_{i}' for i in range(7)]] = outs
 
         # Pick the treatment that causes more mRS 0-2:
         inds = self.full_results[
@@ -348,7 +342,7 @@ class Model(object):
         outs[mask, :] = outs_mt[mask, :].copy()
         # Reshape as normal:
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_mothership_ivt_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_mothership_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
 
     def add_msu(self):
         """Add MSU times to IVT & MT, clinical benefit, and utilised time"""
@@ -413,7 +407,7 @@ class Model(object):
         col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
         outs = outcomes_by_stroke_type[col].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['nlvo_msu_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'nlvo_msu_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         # Add clinical benefit for LVO outcome (stroke type = 2)
         # Set up input table for stroke outcome package
@@ -460,12 +454,12 @@ class Model(object):
         outs = outcomes_by_stroke_type[
             'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_msu_ivt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_msu_ivt_mrs_dists_{i}' for i in range(7)]] = outs
 
         outs = outcomes_by_stroke_type[
             'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_msu_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_msu_mt_mrs_dists_{i}' for i in range(7)]] = outs
     
         # Pick the treatment that causes more mRS 0-2:
         inds = self.full_results[
@@ -483,7 +477,7 @@ class Model(object):
         outs[mask, :] = outs_mt[mask, :].copy()
         # Reshape as normal:
         outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists['lvo_msu_ivt_mt_mrs_dists'] = outs
+        self.full_mrs_dists[[f'lvo_msu_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
 
     def add_diff_msu_minus_drip_ship(self):
 
