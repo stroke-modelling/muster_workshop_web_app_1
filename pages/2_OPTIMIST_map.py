@@ -51,13 +51,17 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-cols = st.columns([1, 9])
-with cols[1]:
+container_map, container_mrs_dists = st.columns([2, 1])
+# Convert the map container to empty so that the placeholder map
+# is replaced once the real map is ready.
+with container_map:
     container_map = st.empty()
-with cols[0]:
+container_map_inputs = st.container()
+with container_map_inputs:
     st.markdown('__Map choices__')
-    container_map_inputs = st.container()
-container_mrs_dists = st.container()
+    cols = st.columns(4)
+    (container_input_treatment, container_input_stroke_type,
+     container_input_region_type, container_input_mrs_region) = cols
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -86,11 +90,15 @@ with container_inputs:
 with container_select_outcome:
     st.markdown('### Alternative outcome measures')
 scenario_dict = inputs.select_scenario(
-    containers=[container_select_outcome] + [container_map_inputs] * 2,
+    containers=[
+        container_select_outcome,
+        container_input_treatment,
+        container_input_stroke_type
+        ],
     use_combo_stroke_types=True
     )
 # Name of the column in the geojson that labels the shapes:
-with container_map_inputs:
+with container_input_region_type:
     outline_name = st.radio(
         'Geographical region type',
         ['None', 'ISDN', 'ICB'],
@@ -107,7 +115,7 @@ for key, region_list in region_options_dict.items():
     bar_options += [f'{key}: {v}' for v in region_list]
 
 # User input:
-with container_mrs_dists:
+with container_input_mrs_region:
     bar_option = st.selectbox('for bar', bar_options)
 
 
@@ -240,7 +248,8 @@ mrs_lists_dict, region_selected, col_pretty = (
         bar_option,
         scenario_dict,
         df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-        df_mrs
+        df_mrs,
+        scenarios=['drip_ship', 'redirect']
         ))
 
 with container_mrs_dists:

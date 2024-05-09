@@ -101,13 +101,21 @@ def setup_for_mrs_dist_bars(
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
 
+    # Seaborn-colorblind colours:
+    # #0072b2  blue
+    # #009e73  green
+    # #d55e00  red
+    # #cc79a7  pink
+    # #f0e442  yellow
+    # #56b4e9  light blue
+
     # Place all data and setup for plot into this dictionary:
     mrs_lists_dict = {
         'No treatment': {
             'noncum': dist_ref_noncum,
             'cum': dist_ref_cum,
             'std': None,
-            'colour': 'red',
+            'colour': 'grey',
             'linestyle': 'dot',
         },
         # 'National': {
@@ -123,7 +131,7 @@ def setup_for_mrs_dist_bars(
             'noncum': dist_noncum,
             'cum': dist_cum,
             'std': dist_std,
-            'colour': 'blue',
+            'colour': '#0072b2',
             'linestyle': 'dash',
         },
         # if str_selected_region is 'National',
@@ -132,8 +140,8 @@ def setup_for_mrs_dist_bars(
             'noncum': dist2_noncum,
             'cum': dist2_cum,
             'std': dist2_std,
-            'colour': 'magenta',
-            'linestyle': 'dash',
+            'colour': '#56b4e9',
+            'linestyle': 'dashdot',
         },
     }
     return mrs_lists_dict, str_selected_region, col_pretty
@@ -146,7 +154,7 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
         'Cumulative probability<br>of discharge disability'
     ]
 
-    fig = make_subplots(rows=1, cols=2, subplot_titles=subplot_titles)
+    fig = make_subplots(rows=2, cols=1, subplot_titles=subplot_titles)
 
     for label, mrs_dict in mrs_lists_dict.items():
 
@@ -158,6 +166,7 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
                 array=mrs_dict['std'],
                 visible=True),
             name=label,
+            legendgroup=1,
             marker_color=mrs_dict['colour'],
             ), row=1, col=1)
 
@@ -165,16 +174,32 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
             x=[*range(7)],
             y=mrs_dict['cum'],
             name=label,
+            legendgroup=2,
             marker_color=mrs_dict['colour'],
             mode='lines',
             line=dict(dash=mrs_dict['linestyle'])
-            ), row=1, col=2)
+            ), row=2, col=1)
 
     fig.update_layout(barmode='group')
     fig.update_layout(title=title_text)
-    fig.update_xaxes(title_text='Discharge disability (mRS)', row=1, col='all')
+    for row in [1, 2]:  # 'all' doesn't work for some reason
+        fig.update_xaxes(
+            title_text='Discharge disability (mRS)',
+            # Ensure that all mRS ticks are shown:
+            tickmode='linear',
+            tick0=0,
+            dtick=1,
+            row=row, col=1
+            )
     fig.update_yaxes(title_text='Probability', row=1, col=1)
-    fig.update_yaxes(title_text='Cumulative probability', row=1, col=2)
+    fig.update_yaxes(title_text='Cumulative probability', row=2, col=1)
+
+    # Figure setup.
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        margin_t=100,
+        )
 
     # fig.show()
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)

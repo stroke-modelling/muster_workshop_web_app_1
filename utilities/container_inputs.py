@@ -996,7 +996,7 @@ def load_region_lists(df_unit_services_full):
     # Use names not postcodes here to match ICB and ISDN names
     # and have nicer display on the app.
     mask = df_unit_services_full['use_ivt'] == 1
-    nearest_ivt_unit_names_list = df_unit_services_full.loc[mask, 'stroke_team']
+    nearest_ivt_unit_names_list = sorted(df_unit_services_full.loc[mask, 'stroke_team'])
 
     # Key for region type, value for list of options.
     region_options_dict = {
