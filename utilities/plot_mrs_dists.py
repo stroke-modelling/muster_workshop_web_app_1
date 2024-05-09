@@ -81,6 +81,22 @@ def setup_for_mrs_dist_bars(
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
 
+    # Display names for the data:
+    display_name_dict = {
+        'drip_ship': 'Usual care',
+        'redirect': 'Redirection',
+        'msu': 'MSU'
+    }
+
+    try:
+        display0 = display_name_dict[scenarios[0]]
+    except KeyError:
+        display0 = scenarios[0]
+    try:
+        display1 = display_name_dict[scenarios[1]]
+    except KeyError:
+        display1 = scenarios[1]
+
     # Seaborn-colorblind colours:
     # #0072b2  blue
     # #009e73  green
@@ -107,7 +123,7 @@ def setup_for_mrs_dist_bars(
         # },
         # # if str_selected_region is 'National',
         # # then the following entry overwrites previous:
-        scenarios[0]: {
+        display0: {
             'noncum': dist_noncum,
             'cum': dist_cum,
             'std': dist_std,
@@ -116,7 +132,7 @@ def setup_for_mrs_dist_bars(
         },
         # if str_selected_region is 'National',
         # then the following entry overwrites previous:
-        scenarios[1]: {
+        display1: {
             'noncum': dist2_noncum,
             'cum': dist2_cum,
             'std': dist2_std,
@@ -161,6 +177,10 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
             ), row=2, col=1)
 
     fig.update_layout(barmode='group')
+    # Bump the second half of the legend downwards:
+    # (bump amount is eyeballed based on fig height)
+    fig.update_layout(legend_tracegroupgap=270)
+
     fig.update_layout(title=title_text)
     for row in [1, 2]:  # 'all' doesn't work for some reason
         fig.update_xaxes(
@@ -181,5 +201,4 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
         margin_t=100,
         )
 
-    # fig.show()
     st.plotly_chart(fig, use_container_width=True)

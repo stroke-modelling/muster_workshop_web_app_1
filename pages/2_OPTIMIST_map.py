@@ -76,9 +76,9 @@ container_map, container_mrs_dists = st.columns([2, 1])
 # is replaced once the real map is ready.
 with container_map:
     container_map = st.empty()
-container_map_inputs = st.container()
+container_map_inputs = st.container(border=True)
 with container_map_inputs:
-    st.markdown('__Map choices__')
+    st.markdown('__Plot options__')
     (container_input_treatment,
      container_input_stroke_type,
      container_input_region_type,
@@ -256,6 +256,7 @@ with container_mrs_dists:
 # ########## RESULTS - OUTCOMES ##########
 # ########################################
 with container_results_tables:
+    st.markdown('## Full data')
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
         'Results by ISDN',
