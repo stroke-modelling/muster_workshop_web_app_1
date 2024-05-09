@@ -2,6 +2,7 @@ import numpy as np
 from itertools import product
 import pandas as pd
 from importlib_resources import files
+import stroke_outcome  # for reference dists
 
 
 def find_multiindex_column_names(gdf, **kwargs):
@@ -253,3 +254,22 @@ def make_outline_msoa_from_lsoa():
 
     # Save:
     gdf.to_file(f'data/outline_{col}s.geojson')
+
+
+def load_reference_mrs_dists():
+    mrs_dists_ref, mrs_dists_ref_notes = (
+        stroke_outcome.outcome_utilities.import_mrs_dists_from_file())
+
+    nlvo_no_treatment = mrs_dists_ref.loc['no_treatment_nlvo'].values
+    nlvo_no_treatment_noncum = np.diff(nlvo_no_treatment, prepend=0.0)
+
+    lvo_no_treatment = mrs_dists_ref.loc['no_treatment_lvo'].values
+    lvo_no_treatment_noncum = np.diff(lvo_no_treatment, prepend=0.0)
+
+    dist_dict = {
+        'nlvo_no_treatment': nlvo_no_treatment,
+        'nlvo_no_treatment_noncum': nlvo_no_treatment_noncum,
+        'lvo_no_treatment': lvo_no_treatment,
+        'lvo_no_treatment_noncum': lvo_no_treatment_noncum,
+    }
+    return dist_dict

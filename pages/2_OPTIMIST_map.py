@@ -35,18 +35,29 @@ st.set_page_config(
 # utils.make_outline_england_wales()
 # st.stop()
 
+
 # Make containers:
-# +-----------------------------+
-# |       container_intro       |
-# +-----------------------------+
-# |        container_map        |
-# +-----------------------------+
-# |    container_map_inputs     |
-# +-----------------------------+
-# |  container_results_tables   |
-# +-----------------------------+
-# |  container_select_outcome   |
-# +-----------------------------+
+# +-----------------------------------------------+
+# |                container_intro                |
+# +-------------------------+---------------------+
+# |      container_map      | container_mrs_dists |
+# +-------------------------+---------------------+
+# |              container_map_inputs             |
+# +-----------------------------------------------+
+# |            container_results_tables           |
+# +-----------------------------------------------+
+
+# Sidebar:
+# +--------------------------+
+# |     container_inputs     |
+# +--------------------------+
+# |  container_unit_services |
+# +--------------------------+
+# | container_select_outcome |
+# +--------------------------+
+# |  container_select_cmap   |
+# +--------------------------+
+
 container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
@@ -59,9 +70,10 @@ with container_map:
 container_map_inputs = st.container()
 with container_map_inputs:
     st.markdown('__Map choices__')
-    cols = st.columns(4)
-    (container_input_treatment, container_input_stroke_type,
-     container_input_region_type, container_input_mrs_region) = cols
+    (container_input_treatment,
+     container_input_stroke_type,
+     container_input_region_type,
+     container_input_mrs_region) = st.columns(4)
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -195,16 +207,16 @@ unit_subplot_dict = {
 with container_map:
     maps.plotly_blank_maps(subplot_titles, n_blank=2)
 
-# If the requested data is nLVO + MT, stop now.
-try:
-    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo']) &
-                 (scenario_dict['treatment_type'] == 'mt'))
-except KeyError:
-    stop_bool = False
-if stop_bool:
-    with container_map_inputs:
-        st.warning('No data for nLVO with MT.')
-        st.stop()
+# # If the requested data is nLVO + MT, stop now.
+# try:
+#     stop_bool = ((scenario_dict['stroke_type'] in ['nlvo']) &
+#                  (scenario_dict['treatment_type'] == 'mt'))
+# except KeyError:
+#     stop_bool = False
+# if stop_bool:
+#     with container_mrs_dists:
+#         st.warning('No data for nLVO with MT.')
+#         st.stop()
 
 
 # ----- Main calculations -----
@@ -243,6 +255,10 @@ df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
     df_lsoa, df_unit_services)
 
 # ----- mRS dist results -----
+# if ((scenario_dict['stroke_type'] in ['nlvo', 'combo']) & (scenario_dict['treatment_type'] == 'mt')):
+#     with container_mrs_dists:
+#         st.warning('No data for nLVO and MT.')
+# else:
 mrs_lists_dict, region_selected, col_pretty = (
     mrs.setup_for_mrs_dist_bars(
         bar_option,

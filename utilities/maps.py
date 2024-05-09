@@ -138,39 +138,6 @@ def combine_geography_with_outcomes(df_lsoa):
     return gdf_boundaries_msoa, df_msoa
 
 
-def make_dummy_gdf_for_legend(
-        v_bands_str,
-        legend_title,
-        # subplot_title
-        ):
-    """
-    Make a bonus gdf of the world's tiniest polygons, one of
-    each colour, so that the legend has all of the colour entries
-    and is always in increasing order.
-    """
-    gdf_bonus = pd.DataFrame()
-    gdf_bonus[legend_title] = v_bands_str
-    # gdf_bonus['inds'] = i*100 + np.arange(len(v_bands_str))
-    # gdf_bonus['scenario'] = subplot_title
-    # Make a tiny polygon around these coordinates on the Isle of Man
-    # (coordinates should be included on our England & Wales map
-    # but not expecting anyone to closely look at this area).
-    # Coords: 54.147729, -4.471397
-    bonus_long = 54.147729
-    bonus_lat = -4.471397
-    poly = Polygon([
-        [bonus_lat, bonus_long],
-        [bonus_lat+1e-5, bonus_long],
-        [bonus_lat+1e-5, bonus_long+1e-5],
-        [bonus_lat, bonus_long+1e-5],
-        ])
-    gdf_bonus['geometry'] = poly
-    gdf_bonus = geopandas.GeoDataFrame(
-        gdf_bonus, geometry='geometry', crs='EPSG:4326')
-    gdf_bonus = gdf_bonus.to_crs('EPSG:27700')
-    return gdf_bonus
-
-
 def assign_colour_to_areas(
         df_msoa,
         col_col,
@@ -182,7 +149,6 @@ def assign_colour_to_areas(
         ):
 
     df_msoa = df_msoa.copy()
-    # df_msoa = df_msoa.reset_index()
 
     # Selected column to use for colour values:
     column_colour = utils.find_multiindex_column_names(
@@ -190,22 +156,6 @@ def assign_colour_to_areas(
         property=[col_col],
         )
 
-    # # Special case - update polygons that are exactly zero.
-    # if 'diff' in scen:
-    #     col_zero_bool = col_col + '_iszero'
-    #     st.write(col_col, col_zero_bool)
-    #     column_zero_bool = utils.find_multiindex_column_names(
-    #         gdf, property=[col_zero_bool])
-
-
-    #     # Only keep the required columns:
-    #     gdf = gdf[[column_colour, column_geometry, column_zero_bool]]
-    #     # Only keep the 'property' subheading:
-    #     gdf = pd.DataFrame(
-    #         gdf.values,
-    #         columns=['outcome', 'geometry', 'iszero']
-    #     )
-    # else:
     # Only keep the required columns:
     df_msoa = df_msoa[[column_colour]]
     
@@ -222,20 +172,11 @@ def assign_colour_to_areas(
     inds = np.digitize(df_msoa_colours.loc[mask, 'outcome'], v_bands)
     labels = v_bands_str[inds]
     df_msoa_colours.loc[mask, 'colour_str'] = labels
-
-    # # Special case - update polygons that are exactly zero.
-    # if 'diff' in scen:
-    #     mask_z = (gdf['iszero'] == True)
-    #     gdf.loc[mask_z, 'colour_str'] = '0.0'
     # Flag NaN values:
     df_msoa_colours.loc[~mask, 'colour_str'] = 'rubbish'
-
-    # # Drop outcome column:
-    # df_msoa_colours = df_msoa_colours.drop('outcome', axis='columns')
-
     # Remove the NaN values:
-    df_msoa_colours = df_msoa_colours[df_msoa_colours['colour_str'] != 'rubbish']
-
+    df_msoa_colours = df_msoa_colours[
+        df_msoa_colours['colour_str'] != 'rubbish']
     # Map the colours to the string labels:
     df_msoa_colours['colour'] = df_msoa_colours['colour_str'].map(colour_dict)
 
@@ -546,6 +487,30 @@ def plotly_many_maps(
         horizontal_spacing=0.0,
         subplot_titles=subplot_titles
         )
+
+    # Add a blank outline of England:
+    path_to_file = os.path.join('data', 'outline_england.geojson')
+    gdf_ew = geopandas.read_file(path_to_file)
+
+    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
+    gdf_ew['x'] = x_list
+    gdf_ew['y'] = y_list
+
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    for i in gdf_ew.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_ew.loc[i, 'x'],
+            y=gdf_ew.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='grey',
+            showlegend=False,
+            hoverinfo='skip',
+            ), row='all', col='all'
+            )
 
 
     # Return a gdf of some x, y coordinates to scatter

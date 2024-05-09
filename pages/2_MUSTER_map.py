@@ -29,17 +29,27 @@ st.set_page_config(
     )
 
 # Make containers:
-# +-----------------------------+
-# |       container_intro       |
-# +-----------------------------+
-# |        container_map        |
-# +-----------------------------+
-# |    container_map_inputs     |
-# +-----------------------------+
-# |  container_results_tables   |
-# +-----------------------------+
-# |  container_select_outcome   |
-# +-----------------------------+
+# +-----------------------------------------------+
+# |                container_intro                |
+# +-------------------------+---------------------+
+# |      container_map      | container_mrs_dists |
+# +-------------------------+---------------------+
+# |              container_map_inputs             |
+# +-----------------------------------------------+
+# |            container_results_tables           |
+# +-----------------------------------------------+
+
+# Sidebar:
+# +--------------------------+
+# |     container_inputs     |
+# +--------------------------+
+# |  container_unit_services |
+# +--------------------------+
+# | container_select_outcome |
+# +--------------------------+
+# |  container_select_cmap   |
+# +--------------------------+
+
 container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
@@ -52,9 +62,10 @@ with container_map:
 container_map_inputs = st.container()
 with container_map_inputs:
     st.markdown('__Map choices__')
-    cols = st.columns(4)
-    (container_input_treatment, container_input_stroke_type,
-     container_input_region_type, container_input_mrs_region) = cols
+    (container_input_treatment,
+     container_input_stroke_type,
+     container_input_region_type,
+     container_input_mrs_region) = st.columns(4)
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -191,16 +202,16 @@ unit_subplot_dict = {
 }
 
 
-# If the requested data is nLVO + MT, stop now.
-try:
-    stop_bool = ((scenario_dict['stroke_type'] in ['nlvo', 'combo']) &
-                 ('mt' in scenario_dict['treatment_type']))
-except KeyError:
-    stop_bool = False
-if stop_bool:
-    with container_map_inputs:
-        st.warning('No data for nLVO with MT.')
-        st.stop()
+# # If the requested data is nLVO + MT, stop now.
+# try:
+#     stop_bool = ((scenario_dict['stroke_type'] in ['nlvo', 'combo']) &
+#                  ('mt' in scenario_dict['treatment_type']))
+# except KeyError:
+#     stop_bool = False
+# if stop_bool:
+#     with container_map_inputs:
+#         st.warning('No data for nLVO with MT.')
+#         st.stop()
 
 # ----- Main calculations -----
 # Process LSOA and calculate outcomes:
