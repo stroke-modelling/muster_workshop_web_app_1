@@ -20,19 +20,15 @@ def setup_for_mrs_dist_bars(
     # which of the input dataframes, and which column within it.
     # Also keep a copy of the name of the selected region.
     if bar_option.startswith('ISDN: '):
-        str_region_type = 'ISDN'
         str_selected_region = bar_option.split('ISDN: ')[-1]
         col_region = 'isdn'
     elif bar_option.startswith('ICB: '):
-        str_region_type = 'ICB'
         str_selected_region = bar_option.split('ICB: ')[-1]
         col_region = 'icb'
     elif bar_option.startswith('Nearest unit: '):
-        str_region_type = 'Nearest unit'
         str_selected_region = bar_option.split('Nearest unit: ')[-1]
         col_region = 'nearest_ivt_unit_name'
     else:
-        str_region_type = 'National'
         str_selected_region = 'National'
         col_region = ''
 
@@ -56,21 +52,20 @@ def setup_for_mrs_dist_bars(
 
     # Gather mRS distributions.
     # Selected region:
-    dist_noncum = df.loc[str_selected_region, [f'{col}_noncum_{i}' for i in range(7)]].values
-    dist_cum = df.loc[str_selected_region, [f'{col}_{i}' for i in range(7)]].values
-    dist_std = df.loc[str_selected_region, [f'{col}_noncum_std_{i}' for i in range(7)]].values
+    dist_noncum = df.loc[str_selected_region,
+                         [f'{col}_noncum_{i}' for i in range(7)]].values
+    dist_cum = df.loc[str_selected_region,
+                      [f'{col}_{i}' for i in range(7)]].values
+    dist_std = df.loc[str_selected_region,
+                      [f'{col}_noncum_std_{i}' for i in range(7)]].values
 
     # Redirect:
-    dist2_noncum = df.loc[str_selected_region, [f'{col2}_noncum_{i}' for i in range(7)]].values
-    dist2_cum = df.loc[str_selected_region, [f'{col2}_{i}' for i in range(7)]].values
-    dist2_std = df.loc[str_selected_region, [f'{col2}_noncum_std_{i}' for i in range(7)]].values
-
-    # # National data:
-    # dist_national_noncum = (
-    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum'])
-    # dist_national_cum = df_mrs_national.loc[df_mrs_national.index[0], col]
-    # dist_national_std = (
-    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum_std'])
+    dist2_noncum = df.loc[str_selected_region,
+                          [f'{col2}_noncum_{i}' for i in range(7)]].values
+    dist2_cum = df.loc[str_selected_region,
+                       [f'{col2}_{i}' for i in range(7)]].values
+    dist2_std = df.loc[str_selected_region,
+                       [f'{col2}_noncum_std_{i}' for i in range(7)]].values
 
     # No-treatment data:
     dist_dict = load_reference_mrs_dists()
@@ -87,7 +82,8 @@ def setup_for_mrs_dist_bars(
         'redirect': 'Redirection',
         'msu': 'MSU'
     }
-
+    # Pick out the nicer-formatted names if they exist
+    # or use the current names if not.
     try:
         display0 = display_name_dict[scenarios[0]]
     except KeyError:
@@ -105,7 +101,8 @@ def setup_for_mrs_dist_bars(
     # #f0e442  yellow
     # #56b4e9  light blue
 
-    # Place all data and setup for plot into this dictionary:
+    # Place all data and setup for plot into this dictionary.
+    # The keys are used for the legend labels.
     mrs_lists_dict = {
         'No treatment': {
             'noncum': dist_ref_noncum,
@@ -114,15 +111,6 @@ def setup_for_mrs_dist_bars(
             'colour': 'grey',
             'linestyle': 'dot',
         },
-        # 'National': {
-        #     'noncum': dist_national_noncum,
-        #     'cum': dist_national_cum,
-        #     'std': dist_national_std,
-        #     'colour': 'green',
-        #     'linestyle': None,
-        # },
-        # # if str_selected_region is 'National',
-        # # then the following entry overwrites previous:
         display0: {
             'noncum': dist_noncum,
             'cum': dist_cum,
@@ -130,8 +118,6 @@ def setup_for_mrs_dist_bars(
             'colour': '#0072b2',
             'linestyle': 'dash',
         },
-        # if str_selected_region is 'National',
-        # then the following entry overwrites previous:
         display1: {
             'noncum': dist2_noncum,
             'cum': dist2_cum,
@@ -179,7 +165,7 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
     fig.update_layout(barmode='group')
     # Bump the second half of the legend downwards:
     # (bump amount is eyeballed based on fig height)
-    fig.update_layout(legend_tracegroupgap=270)
+    fig.update_layout(legend_tracegroupgap=240)
 
     fig.update_layout(title=title_text)
     for row in [1, 2]:  # 'all' doesn't work for some reason
@@ -198,7 +184,27 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
     fig.update_layout(
         # width=1200,
         height=700,
-        margin_t=100,
+        margin_t=150,
         )
 
-    st.plotly_chart(fig, use_container_width=True)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)

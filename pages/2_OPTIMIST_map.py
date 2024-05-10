@@ -20,6 +20,48 @@ import utilities.plot_mrs_dists as mrs
 import utilities.container_inputs as inputs
 
 
+@st.cache_data
+def main_calculations(input_dict, df_unit_services):
+    # Process LSOA and calculate outcomes:
+    df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
+
+    # Remove the MSU data:
+    cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
+    df_lsoa = df_lsoa.drop(cols_to_remove, axis='columns')
+    # Current setup means that MSU data is calculated with default
+    # values even if we don't explicitly give it any parameters.
+
+    # Extra calculations for redirection:
+    # Combine drip-and-ship and mothership results in proportions given:
+    redirect_dict = {
+        'sensitivity': input_dict['sensitivity'],
+        'specificity': input_dict['specificity'],
+    }
+    df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
+    df_mrs = calc.combine_results_by_redirection(
+        df_mrs, redirect_dict, combine_mrs_dists=True)
+
+    # Make combined nLVO + LVO data in the proportions given:
+    prop_dict = {
+        'nlvo': input_dict['prop_nlvo'],
+        'lvo': input_dict['prop_lvo']
+    }
+    df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
+    df_mrs = calc.combine_results_by_occlusion_type(
+        df_mrs, prop_dict, combine_mrs_dists=True)
+
+    # Calculate diff - redirect minus drip-ship:
+    df_lsoa = calc.combine_results_by_diff(df_lsoa)
+    df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
+
+    gdf_boundaries_msoa, df_msoa = (
+        maps.combine_geography_with_outcomes(df_lsoa))
+    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+        df_lsoa, df_unit_services)
+    return (df_lsoa, df_mrs, gdf_boundaries_msoa, df_msoa,
+            df_icb, df_isdn, df_nearest_ivt)
+
+
 # ###########################
 # ##### START OF SCRIPT #####
 # ###########################
@@ -83,6 +125,12 @@ with container_map_inputs:
      container_input_stroke_type,
      container_input_region_type,
      container_input_mrs_region) = st.columns(4)
+with container_input_mrs_region:
+    container_input_mrs_region = st.empty()
+# Convert mRS dists to empty so that re-running a fragment replaces
+# the bars rather than displays the new plot in addition.
+with container_mrs_dists:
+    container_mrs_dists = st.empty()
 container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -96,6 +144,8 @@ with container_intro:
 # #################################
 # ########## USER INPUTS ##########
 # #################################
+
+# These affect the data in all tables and all plots.
 with container_inputs:
     with st.form('Model setup'):
         st.markdown('### Pathway inputs')
@@ -111,6 +161,24 @@ with container_inputs:
         # to multiple widgets at once.)
         submitted = st.form_submit_button('Submit')
 
+# #######################################
+# ########## MAIN CALCULATIONS ##########
+# #######################################
+# While the main calculations are happening, display a blank map.
+# Later, when the calculations are finished, replace with the actual map.
+with container_map:
+    maps.plotly_blank_maps(['', ''], n_blank=2)
+
+(df_lsoa, df_mrs,
+ gdf_boundaries_msoa, df_msoa,
+ df_icb, df_isdn, df_nearest_ivt) = main_calculations(input_dict,
+                                                      df_unit_services)
+
+# ###########################################
+# ########## USER INPUTS FOR PLOTS ##########
+# ###########################################
+# These do not change the underlying data,
+# but do change what is shown in the plots.
 with container_select_outcome:
     st.markdown('### Alternative outcome measures')
     outcome_type, outcome_type_str = inputs.select_outcome_type()
@@ -141,10 +209,7 @@ region_options_dict = inputs.load_region_lists(df_unit_services_full)
 bar_options = ['National']
 for key, region_list in region_options_dict.items():
     bar_options += [f'{key}: {v}' for v in region_list]
-# User input:
-with container_input_mrs_region:
-    bar_option = st.selectbox('Region for mRS distributions', bar_options)
-
+# User input moved to fragment.
 
 # Colourmap selection
 cmap_names = [
@@ -159,9 +224,9 @@ with container_select_cmap:
         cmap_names, cmap_diff_names)
 
 
-# ###############################
-# ########## VARIABLES ##########
-# ###############################
+# #########################################
+# ########## VARIABLES FOR PLOTS ##########
+# #########################################
 # Which scenarios will be shown in the maps:
 # (in this order)
 scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
@@ -185,76 +250,14 @@ cmap_titles = [
 # The order in which they are drawn (and so which markers appear
 # on top) is the order of this dictionary.
 unit_subplot_dict = {
-    'ivt': [[1, 1], [1, 2]],  # both maps
+    'ivt': [[1, 1]],          # left map only
     'mt': [[1, 1], [1, 2]]    # both maps
 }
 
 
-# #######################################
-# ########## MAIN CALCULATIONS ##########
-# #######################################
-# While the main calculations are happening, display a blank map.
-# Later, when the calculations are finished, replace with the actual map.
-with container_map:
-    maps.plotly_blank_maps(subplot_titles, n_blank=2)
-
-# Process LSOA and calculate outcomes:
-df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
-
-# Remove the MSU data:
-cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
-df_lsoa = df_lsoa.drop(cols_to_remove, axis='columns')
-# Current setup means that MSU data is calculated with default
-# values even if we don't explicitly give it any parameters.
-
-# Extra calculations for redirection:
-# Combine drip-and-ship and mothership results in proportions given:
-redirect_dict = {
-    'sensitivity': input_dict['sensitivity'],
-    'specificity': input_dict['specificity'],
-}
-df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
-df_mrs = calc.combine_results_by_redirection(
-    df_mrs, redirect_dict, combine_mrs_dists=True)
-
-# Make combined nLVO + LVO data in the proportions given:
-prop_dict = {
-    'nlvo': input_dict['prop_nlvo'],
-    'lvo': input_dict['prop_lvo']
-}
-df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
-df_mrs = calc.combine_results_by_occlusion_type(
-    df_mrs, prop_dict, combine_mrs_dists=True)
-
-# Calculate diff - redirect minus drip-ship:
-df_lsoa = calc.combine_results_by_diff(df_lsoa)
-df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
-
-gdf_boundaries_msoa, df_msoa = maps.combine_geography_with_outcomes(df_lsoa)
-df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
-    df_lsoa, df_unit_services)
-
-mrs_lists_dict, region_selected, col_pretty = (
-    mrs.setup_for_mrs_dist_bars(
-        bar_option,
-        scenario_dict,
-        df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-        df_mrs,
-        scenarios=scenario_mrs
-        ))
-
-
 # #########################################
-# ########## RESULTS - mRS DISTS ##########
+# ########## RESULTS - FULL DATA ##########
 # #########################################
-with container_mrs_dists:
-    mrs.plot_mrs_bars(
-        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
-
-
-# ########################################
-# ########## RESULTS - OUTCOMES ##########
-# ########################################
 with container_results_tables:
     st.markdown('## Full data')
     results_tabs = st.tabs([
@@ -293,40 +296,59 @@ with container_results_tables:
         st.dataframe(df_lsoa)
 
 
+# #########################################
+# ########## RESULTS - mRS DISTS ##########
+# #########################################
+
+# Keep this in its own fragment so that choosing a new region
+# to plot doesn't re-run the maps too.
+@st.experimental_fragment
+def display_mrs_dists():
+    # User input:
+    with container_input_mrs_region:
+        bar_option = st.selectbox('Region for mRS distributions', bar_options)
+
+    mrs_lists_dict, region_selected, col_pretty = (
+        mrs.setup_for_mrs_dist_bars(
+            bar_option,
+            scenario_dict,
+            df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+            df_mrs,
+            scenarios=scenario_mrs
+            ))
+
+    with container_mrs_dists:
+        mrs.plot_mrs_bars(
+            mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+
+
+display_mrs_dists()
+
+
 # ####################################
 # ########## SETUP FOR MAPS ##########
 # ####################################
 # Keep this below the results above because the map creation is slow.
 
-# ----- Colour setup -----
-# Give the scenario dict a dummy 'scenario_type' entry
-# so that the right colour map and colour limits are picked.
-colour_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'not diff'},
-    cmap_name=cmap_name,
-    cmap_diff_name=cmap_diff_name
+gdf_lhs, colour_dict = maps.create_colour_gdf(
+    gdf_boundaries_msoa,
+    df_msoa,
+    scenario_dict,
+    cmap_name,
+    cbar_title=cmap_titles[0],
+    scenario_type=scenario_types[0],
     )
-colour_diff_dict = inputs.set_up_colours(
-    scenario_dict | {'scenario_type': 'diff'},
-    cmap_name=cmap_name,
-    cmap_diff_name=cmap_diff_name
+gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
+    gdf_boundaries_msoa,
+    df_msoa,
+    scenario_dict,
+    cmap_name,
+    cbar_title=cmap_titles[1],
+    scenario_type=scenario_types[1],
     )
-# Pull down colourbar titles from earlier in this script:
-colour_dict['title'] = cmap_titles[0]
-colour_diff_dict['title'] = cmap_titles[1]
-# Find the names of the columns that contain the data
-# that will be shown in the colour maps.
-columns_colours = [
-    '_'.join([
-        scenario_dict['stroke_type'],
-        scenario_type,
-        scenario_dict['treatment_type'],
-        scenario_dict['outcome_type']
-    ])
-    for scenario_type in scenario_types
-    ]
-colour_dict['column'] = columns_colours[0]
-colour_diff_dict['column'] = columns_colours[1]
+
+
+# ----- Region outlines -----
 
 # TO DO - get this working! ----------------------------------------------------------------------------------
 # # Create hospital catchment areas from this MSOA geography data.
@@ -336,37 +358,6 @@ colour_diff_dict['column'] = columns_colours[1]
 # # Save:
 # gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
 
-
-# ----- Outcome maps -----
-# Left-hand subplot colours:
-df_msoa_colours = maps.assign_colour_to_areas(
-    df_msoa,
-    colour_dict['column'],
-    colour_dict['v_bands'],
-    colour_dict['v_bands_str'],
-    colour_dict['colour_map']
-    )
-# For each colour scale and data column combo,
-# merge polygons that fall into the same colour band.
-gdf_lhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
-    df_msoa_colours
-    )
-
-# Right-hand subplot colours:
-df_msoa_diff_colours = maps.assign_colour_to_areas(
-    df_msoa,
-    colour_diff_dict['column'],
-    colour_diff_dict['v_bands'],
-    colour_diff_dict['v_bands_str'],
-    colour_diff_dict['colour_map']
-    )
-gdf_rhs = maps.dissolve_polygons_by_colour(
-    gdf_boundaries_msoa,
-    df_msoa_diff_colours
-    )
-
-# ----- Region outlines -----
 # Load in another gdf:
 load_gdf_catchment = True
 if outline_name == 'ISDN':

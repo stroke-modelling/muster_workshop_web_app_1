@@ -13,6 +13,7 @@ from shapely import Polygon  # for dummy polygons for legend order
 
 # Custom functions:
 import utilities.calculations as calc
+import utilities.container_inputs as inputs
 import utilities.utils as utils
 # For setting up maps:
 from stroke_maps.geo import import_geojson, check_scenario_level
@@ -138,14 +139,11 @@ def combine_geography_with_outcomes(df_lsoa):
     return gdf_boundaries_msoa, df_msoa
 
 
-def assign_colour_to_areas(
+def assign_colour_bands_to_areas(
         df_msoa,
         col_col,
         v_bands,
         v_bands_str,
-        colour_dict,
-        scen=''
-        # subplot_title
         ):
 
     df_msoa = df_msoa.copy()
@@ -158,7 +156,7 @@ def assign_colour_to_areas(
 
     # Only keep the required columns:
     df_msoa = df_msoa[[column_colour]]
-    
+
     df_msoa_colours = pd.DataFrame(
         df_msoa.values,
         columns=['outcome'],
@@ -177,10 +175,18 @@ def assign_colour_to_areas(
     # Remove the NaN values:
     df_msoa_colours = df_msoa_colours[
         df_msoa_colours['colour_str'] != 'rubbish']
-    # Map the colours to the string labels:
-    df_msoa_colours['colour'] = df_msoa_colours['colour_str'].map(colour_dict)
 
     return df_msoa_colours
+
+
+def assign_colour_to_areas(
+        df,
+        colour_dict,
+        ):
+    # Map the colours to the string labels:
+    df['colour'] = df['colour_str'].map(colour_dict)
+
+    return df
 
 
 def dissolve_polygons_by_colour(
@@ -223,14 +229,6 @@ def dissolve_polygons_by_colour(
         gdf, property=['geometry'])
 
     # Selected column to use for colour values:
-    column_colour = utils.find_multiindex_column_names(
-        gdf,
-        property=['colour'],
-        # scenario=[scenario_type],
-        # subtype=['mean']
-        )
-
-    # Selected column to use for colour values:
     column_colour_str = utils.find_multiindex_column_names(
         gdf,
         property=['colour_str'],
@@ -239,11 +237,11 @@ def dissolve_polygons_by_colour(
         )
 
     # Only keep the required columns:
-    gdf = gdf[[column_colour_str, column_colour, column_geometry]]
+    gdf = gdf[[column_colour_str, column_geometry]]
     # Only keep the 'property' subheading:
     gdf = pd.DataFrame(
         gdf.values,
-        columns=['colour_str', 'colour', 'geometry']
+        columns=['colour_str', 'geometry']
     )
     # gdf['iszero'] = False
     gdf = geopandas.GeoDataFrame(gdf, geometry='geometry', crs=crs)
@@ -268,6 +266,56 @@ def dissolve_polygons_by_colour(
     #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(10000).to_crs(gdf.crs)
     # )
     return gdf
+
+@st.cache_data
+def create_colour_gdf(
+        _gdf_boundaries_msoa,
+        df_msoa,
+        scenario_dict,
+        cmap_name,
+        cbar_title,
+        scenario_type,
+        ):
+    # ----- Colour setup -----
+    # Give the scenario dict a dummy 'scenario_type' entry
+    # so that the right colour map and colour limits are picked.
+    colour_dict = inputs.set_up_colours(
+        scenario_dict | {'scenario_type': scenario_type},
+        cmap_name=cmap_name
+        )
+    # Pull down colourbar titles from earlier in this script:
+    colour_dict['title'] = cbar_title
+    # Find the names of the columns that contain the data
+    # that will be shown in the colour maps.
+    column_colours = '_'.join([
+            scenario_dict['stroke_type'],
+            scenario_type,
+            scenario_dict['treatment_type'],
+            scenario_dict['outcome_type']
+        ])
+    colour_dict['column'] = column_colours
+
+    # ----- Outcome maps -----
+    # Left-hand subplot colours:
+    df_msoa_colours = assign_colour_bands_to_areas(
+        df_msoa,
+        colour_dict['column'],
+        colour_dict['v_bands'],
+        colour_dict['v_bands_str']
+        )
+    # For each colour scale and data column combo,
+    # merge polygons that fall into the same colour band.
+    gdf_lhs = dissolve_polygons_by_colour(
+        _gdf_boundaries_msoa,
+        df_msoa_colours
+        )
+    # Map the colours to the colour names:
+    gdf_lhs = assign_colour_to_areas(
+        gdf_lhs,
+        colour_dict['colour_map']
+    )
+
+    return gdf_lhs, colour_dict
 
 
 def create_stroke_team_markers(df_units=None):
