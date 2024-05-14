@@ -1,15 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objs as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 import os
 import geopandas
 import pyproj  # for crs conversion
 from shapely.validation import make_valid  # for fixing dodgy polygons
-# from plotly.subplots import make_subplots
-from shapely import Polygon  # for dummy polygons for legend order
 
 # Custom functions:
 import utilities.calculations as calc
@@ -26,9 +21,11 @@ def _import_geojson(*args, **kwargs):
 
 
 @st.cache_data
-def _load_geometry_msoa(df_msoa):
+def _load_geometry_msoa(df_msoa: pd.DataFrame):
     """
     Create GeoDataFrames of new geometry and existing DataFrames.
+
+    TO DO - why is this here and not just using the one from stroke-maps package? --------------------------------------------------
 
     Inputs
     ------
@@ -125,7 +122,21 @@ def _load_geometry_msoa(df_msoa):
 
 
 @st.cache_data
-def combine_geography_with_outcomes(df_lsoa):
+def combine_geography_with_outcomes(df_lsoa: pd.DataFrame):
+    """
+    Main function for building geometry for each area.
+
+    Inputs
+    ------
+    df_lsoa - pd.DataFrame. Should contain at least LSOA codes.
+
+    Returns
+    -------
+    gdf_boundaries_msoa - geopandas.GeoDataFrame. Geometry for each
+                          MSOA with df_msoa contents merged in.
+    df_msoa             - pd.DataFrame. Just the MSOA data without
+                          geometry. (TO DO - why have I done this??? -------------------------------------------------)
+    """
     # ----- MSOAs for geography -----
     df_msoa = calc.convert_lsoa_to_msoa_results(df_lsoa)
 
@@ -139,13 +150,110 @@ def combine_geography_with_outcomes(df_lsoa):
     return gdf_boundaries_msoa, df_msoa
 
 
-def assign_colour_bands_to_areas(
-        df_msoa,
-        col_col,
-        v_bands,
-        v_bands_str,
+@st.cache_data
+def create_colour_gdf(
+        _gdf_boundaries_msoa: geopandas.GeoDataFrame,
+        df_msoa: pd.DataFrame,
+        scenario_dict: dict,
+        scenario_type: str,
+        cmap_name: str = '',
+        cmap_diff_name: str = '',
+        cbar_title: str = '',
         ):
+    """
+    Main colour map creation function for Streamlit apps.
 
+    Inputs
+    ------
+    _gdf_boundaries_msoa - geopandas.GeoDataFrame. Geometry info for
+                           each MSOA (with outcome data merged in).
+    df_msoa              - pd.DataFrame. Main results for each MSOA.
+    scenario_dict        - dict. User inputs such as occlusion and
+                           treatment type.
+    cmap_name            - str. Name of the colourmap for assigning
+                           colours, e.g. 'viridis'.
+    cbar_title           - str. Label that will be displayed with
+                           the colourbar.
+    scenario_type        - str. Starts with either 'diff' or anything
+                           else. Used to pick out either the continuous
+                           or the diverging colourmap.
+
+    Returns
+    -------
+    gdf         - geopandas.GeoDataFrame. Contains one entry per
+                  colour band in the colour dict so long as at least
+                  one area in the input data matched that colour band.
+                  The geometry is now merged together into one large
+                  area rather than multiple separate MSOA of the
+                  same value.
+    colour_dict - dict. The information used to set up the colours.
+    """
+    # ----- Colour setup -----
+    # Give the scenario dict a dummy 'scenario_type' entry
+    # so that the right colour map and colour limits are picked.
+    colour_dict = inputs.set_up_colours(
+        scenario_dict | {'scenario_type': scenario_type},
+        cmap_name=cmap_name,
+        cmap_diff_name=cmap_diff_name
+        )
+    # Pull down colourbar titles from earlier in this script:
+    colour_dict['title'] = cbar_title
+    # Find the names of the columns that contain the data
+    # that will be shown in the colour maps.
+    column_colours = '_'.join([
+            scenario_dict['stroke_type'],
+            scenario_type,
+            scenario_dict['treatment_type'],
+            scenario_dict['outcome_type']
+        ])
+    colour_dict['column'] = column_colours
+
+    # ----- Outcome maps -----
+    # Left-hand subplot colours:
+    df_msoa_colours = assign_colour_bands_to_areas(
+        df_msoa,
+        colour_dict['column'],
+        colour_dict['v_bands'],
+        colour_dict['v_bands_str']
+        )
+    # For each colour scale and data column combo,
+    # merge polygons that fall into the same colour band.
+    gdf = dissolve_polygons_by_colour(
+        _gdf_boundaries_msoa,
+        df_msoa_colours
+        )
+    # Map the colours to the colour names:
+    gdf = assign_colour_to_areas(
+        gdf,
+        colour_dict['colour_map']
+    )
+
+    return gdf, colour_dict
+
+
+def assign_colour_bands_to_areas(
+        df_msoa: pd.DataFrame,
+        col_col: str,
+        v_bands: list,
+        v_bands_str: list,
+        ):
+    """
+    Assign labels to each row based on their value.
+
+    Inputs
+    ------
+    df_msoa     - pd.DataFrame. MSOA names and outcomes.
+    col_col     - str. Name of the column that contains values to
+                  assign the colours to.
+    v_bands     - list. The cutoff points for the colour bands.
+    v_bands_str - list. Labels for the colour bands.
+
+    Returns
+    -------
+    df_msoa_colours - pd.DataFrame. The outcome values from the input
+                      data and the colour bands that they have been
+                      assigned to.
+    """
     df_msoa = df_msoa.copy()
 
     # Selected column to use for colour values:
@@ -179,20 +287,23 @@ def assign_colour_bands_to_areas(
     return df_msoa_colours
 
 
-def assign_colour_to_areas(
-        df,
-        colour_dict,
-        ):
-    # Map the colours to the string labels:
-    df['colour'] = df['colour_str'].map(colour_dict)
-
-    return df
-
-
 def dissolve_polygons_by_colour(
-        gdf_all,
-        df_msoa,
+        gdf_all: geopandas.GeoDataFrame,
+        df_msoa: pd.DataFrame,
         ):
+    """
+    Merge the dataframes and then merge polygons with same value.
+
+    TO DO - split this function apart more. What's with all the column
+    lookup and dataframe merging?
+
+    Inputs
+    ------
+    gdf_all - geopandas.GeoDataFrame. Contains geometry for each MSOA
+              separately.
+    df_msoa - pd.DataFrame. Contains the colour bands that each MSOA
+              has been assigned to.
+    """
 
     # Merge in the colour information:
     gdf = gdf_all.copy()
@@ -267,545 +378,51 @@ def dissolve_polygons_by_colour(
     # )
     return gdf
 
-@st.cache_data
-def create_colour_gdf(
-        _gdf_boundaries_msoa,
-        df_msoa,
-        scenario_dict,
-        cmap_name,
-        cbar_title,
-        scenario_type,
-        ):
-    # ----- Colour setup -----
-    # Give the scenario dict a dummy 'scenario_type' entry
-    # so that the right colour map and colour limits are picked.
-    colour_dict = inputs.set_up_colours(
-        scenario_dict | {'scenario_type': scenario_type},
-        cmap_name=cmap_name
-        )
-    # Pull down colourbar titles from earlier in this script:
-    colour_dict['title'] = cbar_title
-    # Find the names of the columns that contain the data
-    # that will be shown in the colour maps.
-    column_colours = '_'.join([
-            scenario_dict['stroke_type'],
-            scenario_type,
-            scenario_dict['treatment_type'],
-            scenario_dict['outcome_type']
-        ])
-    colour_dict['column'] = column_colours
 
-    # ----- Outcome maps -----
-    # Left-hand subplot colours:
-    df_msoa_colours = assign_colour_bands_to_areas(
-        df_msoa,
-        colour_dict['column'],
-        colour_dict['v_bands'],
-        colour_dict['v_bands_str']
-        )
-    # For each colour scale and data column combo,
-    # merge polygons that fall into the same colour band.
-    gdf_lhs = dissolve_polygons_by_colour(
-        _gdf_boundaries_msoa,
-        df_msoa_colours
-        )
-    # Map the colours to the colour names:
-    gdf_lhs = assign_colour_to_areas(
-        gdf_lhs,
-        colour_dict['colour_map']
-    )
-
-    return gdf_lhs, colour_dict
-
-
-def create_stroke_team_markers(df_units=None):
-    from stroke_maps.utils import find_multiindex_column_names
-
-    # Add stroke team markers.
-    from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
-    if df_units is None:
-        from stroke_maps.catchment import Catchment
-        catchment = Catchment()
-        df_units = catchment.get_unit_services()
-    else:
-        pass
-    # Build geometry:
-    df_units = check_scenario_level(df_units)
-    gdf_points_units = _load_geometry_stroke_units(df_units)
-
-    # # Convert to British National Grid.
-    # The geometry column should be BNG on import, so just overwrite
-    # the longitude and latitude columns that are by default long/lat.
-    col_geo = find_multiindex_column_names(gdf_points_units, property=['geometry'])
-    # gdf_points_units = gdf_points_units.set_crs('EPSG:27700', allow_override=True)
-
-    # Overwrite long and lat:
-    gdf_points_units[('Longitude', 'any')] = gdf_points_units[col_geo].x
-    gdf_points_units[('Latitude', 'any')] = gdf_points_units[col_geo].y
-
-
-    # Set up markers using a new column in DataFrame.
-    # Set everything to the IVT marker:
-    markers = np.full(len(gdf_points_units), 'circle', dtype=object)
-    # Update MT units:
-    col_use_mt = find_multiindex_column_names(
-        gdf_points_units, property=['use_mt'])
-    mask_mt = (gdf_points_units[col_use_mt] == 1)
-    markers[mask_mt] = 'square'
-    # Store in the DataFrame:
-    gdf_points_units[('marker', 'any')] = markers
-
-    # Add markers in separate traces for the sake of legend entries.
-    # Pick out which stroke unit types are where in the gdf:
-    col_ivt = ('use_ivt', 'scenario')
-    col_mt = ('use_mt', 'scenario')
-    col_msu = ('use_msu', 'scenario')
-    mask_ivt = gdf_points_units[col_ivt] == 1
-    mask_mt = gdf_points_units[col_mt] == 1
-    mask_msu = gdf_points_units[col_msu] == 1
-
-    # Formatting for the markers:
-    format_dict = {
-        'ivt': {
-            'label': 'IVT unit',
-            'mask': mask_ivt,
-            'marker': 'circle',
-            'size': 6,
-            'colour': 'white'
-        },
-        'mt': {
-            'label': 'MT unit',
-            'mask': mask_mt,
-            'marker': 'star',
-            'size': 10,
-            'colour': 'white'
-        },
-        'msu': {
-            'label': 'MSU base',
-            'mask': mask_msu,
-            'marker': 'square',
-            'size': 13,
-            'colour': 'white'
-        },
-    }
-
-    # Build the traces for the stroke units...
-    traces = {}
-    for service, s_dict in format_dict.items():
-        mask = s_dict['mask']
-
-        trace = go.Scatter(
-            x=gdf_points_units.loc[mask, ('Longitude', 'any')],
-            y=gdf_points_units.loc[mask, ('Latitude', 'any')],
-            mode='markers',
-            marker={
-                'symbol': s_dict['marker'],
-                'color': s_dict['colour'],
-                'line': {'color': 'black', 'width': 1},
-                'size': s_dict['size']
-            },
-            name=s_dict['label'],
-            customdata=np.stack(
-                [gdf_points_units.loc[mask, ('ssnap_name', 'scenario')]],
-                axis=-1
-                ),
-            hovertemplate=(
-                '%{customdata[0]}' +
-                # Need the following line to remove default "trace" bit
-                # in second "extra" box:
-                '<extra></extra>'
-                )
-        )
-        traces[service] = trace
-    return traces
-
-
-def plotly_blank_maps(subplot_titles=[], n_blank=2):
-    """
-    write me
-    """
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
-
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=n_blank,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), row='all', col='all'
-            )
-
-    # Add a blank trace to create space for a legend.
-    # Stupid? Yes. Works? Also yes.
-    fig.add_trace(go.Scatter(
-        x=[None],
-        y=[None],
-        mode='markers',
-        marker={'color': 'rgba(0,0,0,0)'},
-        name=' ' * 20
-    ))
-
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
-
-    # Shared pan and zoom settings:
-    fig.update_xaxes(matches='x')
-    fig.update_yaxes(matches='y')
-
-    # Remove axis ticks:
-    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
-
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=700,
-        margin_t=40,
-        margin_b=60  # mimic space taken up by colourbar
-        )
-
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
-
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
-
-
-def plotly_many_maps(
-        gdf_lhs,
-        gdf_rhs,
-        gdf_catchment=None,
-        outline_names_col='',
-        outline_name='',
-        traces_units=None,
-        unit_subplot_dict={},
-        subplot_titles=[],
-        legend_title='',
-        colour_dict={},
-        colour_diff_dict={}
+def assign_colour_to_areas(
+        df: pd.DataFrame,
+        colour_dict: dict,
         ):
     """
-    write me
+    Map colours to a label column using a dictionary.
+
+    Inputs
+    ------
+    df          - pd.DataFrame. Contains a 'colour_str' column that
+                  labels each row as one of the keys of colour_dict.
+    colour_dict - dict. Keys are colour labels, values are the colours.
+
+    Returns
+    -------
+    df - pd.DataFrame. The input data with the new column of colours.
     """
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=2,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
-
-    # Add a blank outline of England:
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
-
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), row='all', col='all'
-            )
-
-
-    # Return a gdf of some x, y coordinates to scatter
-    # in such a tiny size that they'll never be seen,
-    # but that will cause the colourbar of the colour scale to display.
-    # Separate colour scales for the two maps.
-
-    def draw_dummy_scatter(fig, colour_dict, col=1, trace_name=''):
-        # Dummy coordinates:
-        # Isle of Man: 238844, 482858
-        bonus_x = 238844
-        bonus_y = 482858
-        x_dummy = np.array([bonus_x]*2)
-        y_dummy = np.array([bonus_y]*2)
-        z_dummy = np.array([0.0, 1.0])
-
-        # Sometimes the ticks don't show at the very ends of the colour bars.
-        # In that case, cheat with e.g.
-        # tick_locs = [bounds[0] + 1e-2, *bounds[1:-1], bounds[-1] - 1e-3]
-        tick_locs = colour_dict['bounds_for_colour_scale']
-
-        tick_names = [f'{t:.3f}' for t in colour_dict['v_bands']]
-        tick_names = ['←', *tick_names, '→']
-
-        # Replace zeroish with zero:
-        # (this is a visual difference only - it combines two near-zero
-        # ticks and their labels into a single tick.)
-        if colour_dict['scen'] == 'diff':
-            ind_z = np.where(np.sign(colour_dict['v_bands']) >= 0.0)[0][0] + 1
-            tick_z = np.mean([tick_locs[ind_z-1], tick_locs[ind_z]])
-            name_z = '0'
-
-            tick_locs_z = np.append(tick_locs[:ind_z -1], tick_z)
-            tick_locs_z = np.append(tick_locs_z, tick_locs[ind_z+1:])
-            tick_locs = tick_locs_z
-
-            tick_names_z = np.append(tick_names[:ind_z -1], name_z)
-            tick_names_z = np.append(tick_names_z, tick_names[ind_z+1:])
-            tick_names = tick_names_z
-
-        # Add dummy scatter:
-        fig.add_trace(go.Scatter(
-            x=x_dummy,
-            y=y_dummy,
-            marker=dict(
-                color=z_dummy,
-                colorscale=colour_dict['colour_scale'],
-                colorbar=dict(
-                    thickness=20,
-                    tickmode='array',
-                    tickvals=tick_locs,
-                    ticktext=tick_names,
-                    # ticklabelposition='outside top'
-                    title=colour_dict['title']
-                    ),
-                size=1e-4,
-                ),
-            showlegend=False,
-            mode='markers',
-            hoverinfo='skip',
-            name=trace_name
-        ), row='all', col=col)
-
-        return fig
-
-    fig = draw_dummy_scatter(fig, colour_dict, col=1, trace_name='cbar')
-    fig = draw_dummy_scatter(fig, colour_diff_dict, col=2, trace_name='cbar_diff')
-    fig.update_traces(
-        {'marker': {'colorbar': {
-            'orientation': 'h',
-            'x': 0.0,
-            'y': -0.1,
-            'len': 0.5,
-            'xanchor': 'left',
-            'title_side': 'bottom'
-            # 'xref': 'paper'
-            }}},
-        selector={'name': 'cbar'}
-        )
-    fig.update_traces(
-        {'marker': {'colorbar': {
-            'orientation': 'h',
-            'x': 1.0,
-            'y': -0.1,
-            'len': 0.5,
-            'xanchor': 'right',
-            'title_side': 'bottom'
-            # 'xref': 'paper'
-            }}},
-        selector={'name': 'cbar_diff'}
-        )
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_lhs.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_lhs.loc[i, 'x'],
-            y=gdf_lhs.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor=gdf_lhs.loc[i, 'colour'],
-            line_width=0,
-            hoverinfo='skip',
-            name=gdf_lhs.loc[i, 'colour_str'],
-            showlegend=False
-            ), row='all', col=1
-            )    
-
-    for i in gdf_rhs.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_rhs.loc[i, 'x'],
-            y=gdf_rhs.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor=gdf_rhs.loc[i, 'colour'],
-            line_width=0,
-            hoverinfo='skip',
-            name=gdf_rhs.loc[i, 'colour_str'],
-            showlegend=False
-            ), row='all', col=2
-            )
-
-    if gdf_catchment is None:
-        pass
-    else:
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_catchment.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_catchment.loc[i, 'x'],
-                y=gdf_catchment.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_catchment.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_catchment.loc[i, 'outline_type'],
-                text=gdf_catchment.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col='all'
-                )
-
-    fig.update_traces(
-        hoverlabel=dict(
-            bgcolor='grey',
-            font_color='white'),
-        selector={'name': outline_name}
-    )
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
-
-    # Shared pan and zoom settings:
-    fig.update_xaxes(matches='x')
-    fig.update_yaxes(matches='y')
-
-    # Remove axis ticks:
-    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
-
-    # --- Stroke unit scatter markers ---
-    if len(unit_subplot_dict) > 0:
-        if gdf_catchment is None:
-            pass
-        else:
-            # # Add a blank trace to put a gap in the legend.
-            # Stupid? Yes. Works? Also yes.
-            # Make sure the name isn't the same as any other blank name
-            # already set, e.g. in combo_colour_dict.
-            fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                marker={'color': 'rgba(0,0,0,0)'},
-                name=' ' * 10
-            ))
-
-        # Create the scatter traces for the stroke units in advance
-        # and then add traces to the subplots.
-        for service, grid_lists in unit_subplot_dict.items():
-            for grid_list in grid_lists:
-                row = grid_list[0]
-                col = grid_list[1]
-                fig.add_trace(traces_units[service], row=row, col=col)
-
-    # Remove repeat legend names:
-    # (e.g. multiple sets of IVT unit, MT unit)
-    # from https://stackoverflow.com/a/62162555
-    names = set()
-    fig.for_each_trace(
-        lambda trace:
-            trace.update(showlegend=False)
-            if (trace.name in names) else names.add(trace.name))
-    # This makes sure that if multiple maps use the exact same
-    # colours and labels, the labels only appear once in the legend.
-
-    fig.update_layout(
-        legend=dict(
-            title_text=legend_title,
-            bordercolor='grey',
-            borderwidth=2
-        )
-    )
-
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=700,
-        margin_t=40,
-        margin_b=0
-        )
-
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
-
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    # Write to streamlit:
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config=plotly_config
-        )
+    df['colour'] = df['colour_str'].map(colour_dict)
+    return df
 
 
 @st.cache_data
-def find_geometry_ivt_catchment(gdf_boundaries_msoa):
+def find_geometry_ivt_catchment(gdf_boundaries_msoa: geopandas.GeoDataFrame):
+    """
+    Merge geometry for all polygons with a shared value (stroke unit).
+
+    TO DO - the input to this function needs fixing - current setup
+    means that MSOA can be counted for multiple nearest units if
+    their constituent LSOAs are counted for multiple nearest units.
+
+    TO DO also - shouldn't this use a more generic dissolve function?
+    Combine with the other dissolve by colour function. --------------------------------
+
+    Inputs
+    ------
+    gdf_boundaries_msoa - geopandas.GeoDataFrame. Contains geometry
+                          and some value to merge shapes by.
+
+    Returns
+    -------
+    gdf_catchment - geopandas.GeoDataFrame. A new dataframe of the
+                    merged geometry data. Its index is the values that
+                    were globbed together (e.g. nearest stroke unit).
+    """
     gdf_catchment = pd.DataFrame()
     gdf_catchment['nearest_ivt_unit'] = gdf_boundaries_msoa[
         (('nearest_ivt_unit', 'scenario'))]
@@ -815,7 +432,20 @@ def find_geometry_ivt_catchment(gdf_boundaries_msoa):
     return gdf_catchment
 
 
-def convert_shapely_polys_into_xy(gdf):
+def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
+    """
+    Turn Polygon objects into two lists of x and y coordinates.
+
+    Inputs
+    ------
+    gdf - geopandas.GeoDataFrame. Contains geometry.
+
+    Returns
+    -------
+    x_list - list. The x-coordinates from the input polygons.
+             One list entry per row in the input gdf.
+    y_list - list. Same but for y-coordinates.
+    """
     x_list = []
     y_list = []
     for i in gdf.index:
@@ -840,7 +470,8 @@ def convert_shapely_polys_into_xy(gdf):
             elif geo.geom_type == 'GeometryCollection':
                 # Treat this similarly to MultiPolygon but remove
                 # anything that's not a polygon.
-                polys = [t for t in geo.geoms if t.geom_type in ['Polygon', 'MultiPolygon']]
+                polys = [t for t in geo.geoms 
+                         if t.geom_type in ['Polygon', 'MultiPolygon']]
                 # Put None values between polygons.
                 x_combo = []
                 y_combo = []
@@ -860,7 +491,7 @@ def convert_shapely_polys_into_xy(gdf):
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
             else:
-                st.write('help', i)
+                st.write('help', i)  # TO DO - turn this into a proper Warning or Exception -----------------------
         except AttributeError:
             # This isn't a geometry object. ???
             x_list.append([]),

@@ -15,6 +15,7 @@ import geopandas  # for importing region outlines
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
+import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
 # Containers:
 import utilities.container_inputs as inputs
@@ -71,6 +72,41 @@ st.set_page_config(
     page_icon=':ambulance:',
     layout='wide'
     )
+
+
+# """
+# TO DO - check geopandas version - updated with statsmodels?
+
+# Conversion from lat/long to BNG isn't working
+# returns inf coordinates, ends up with points instead of polygons
+
+# requirements file says 0.14.2, current install is 0.14.3
+
+# """
+
+# # All msoa shapes:
+# from utilities.maps import _import_geojson
+# import os
+
+# gdf_boundaries_msoa = geopandas.read_file(os.path.join('data', 'outline_msoa11cds.geojson'))
+
+# st.write(gdf_boundaries_msoa.crs)
+
+# # If crs is given in the file, geopandas automatically
+# # pulls it through. Convert to National Grid coordinates:
+# if gdf_boundaries_msoa.crs != 'EPSG:27700':
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.to_crs('EPSG:27700')
+    
+# # gdf_boundaries_msoa = _import_geojson(
+# #     'MSOA11NM',
+# #     # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
+# #     # path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+# #     path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')
+#     # )
+# st.write(gdf_boundaries_msoa['geometry'])
+# for col in gdf_boundaries_msoa.columns:
+#     st.write(gdf_boundaries_msoa[col])
+# st.stop()
 
 # import utilities.utils as utils
 # utils.make_outline_msoa_from_lsoa()
@@ -167,7 +203,7 @@ with container_inputs:
 # While the main calculations are happening, display a blank map.
 # Later, when the calculations are finished, replace with the actual map.
 with container_map:
-    maps.plotly_blank_maps(['', ''], n_blank=2)
+    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
 (df_lsoa, df_mrs,
  gdf_boundaries_msoa, df_msoa,
@@ -334,17 +370,17 @@ gdf_lhs, colour_dict = maps.create_colour_gdf(
     gdf_boundaries_msoa,
     df_msoa,
     scenario_dict,
-    cmap_name,
-    cbar_title=cmap_titles[0],
     scenario_type=scenario_types[0],
+    cmap_name=cmap_name,
+    cbar_title=cmap_titles[0],
     )
 gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
     gdf_boundaries_msoa,
     df_msoa,
     scenario_dict,
-    cmap_name,
-    cbar_title=cmap_titles[1],
     scenario_type=scenario_types[1],
+    cmap_diff_name=cmap_diff_name,
+    cbar_title=cmap_titles[1],
     )
 
 
@@ -390,7 +426,7 @@ if load_gdf_catchment:
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
-traces_units = maps.create_stroke_team_markers(df_unit_services_full)
+traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
@@ -404,7 +440,7 @@ for gdf in gdfs_to_convert:
 
 # ----- Plot -----
 with container_map:
-    maps.plotly_many_maps(
+    plot_maps.plotly_many_maps(
         gdf_lhs,
         gdf_rhs,
         gdf_catchment,
