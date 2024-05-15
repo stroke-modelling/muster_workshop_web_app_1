@@ -235,6 +235,8 @@ def plotly_many_maps(
         gdf_lhs: geopandas.GeoDataFrame,
         gdf_rhs: geopandas.GeoDataFrame,
         gdf_catchment: geopandas.GeoDataFrame = None,
+        gdf_nearest_lhs: geopandas.GeoDataFrame = None,
+        gdf_nearest_rhs: geopandas.GeoDataFrame = None,
         outline_names_col: str = '',
         outline_name: str = '',
         traces_units: dict = None,
@@ -441,6 +443,45 @@ def plotly_many_maps(
                 hoverinfo="text",
                 hoverlabel=dict(bgcolor='red'),
                 ), row='all', col='all'
+                )
+
+    if gdf_nearest_lhs is None:
+        pass
+    else:
+        # I can't for the life of me get hovertemplate working here
+        # for mysterious reasons, so just stick to "text" for hover info.
+        for i in gdf_nearest_lhs.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_nearest_lhs.loc[i, 'x'],
+                y=gdf_nearest_lhs.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor=gdf_nearest_lhs.loc[i, 'colour'],
+                line_color='grey',
+                name=gdf_nearest_lhs.loc[i, 'outline_type'],
+                text=gdf_nearest_lhs.loc[i, outline_names_col],
+                hoverinfo="text",
+                hoverlabel=dict(bgcolor='red'),
+                ), row='all', col=1
+                )
+    if gdf_nearest_rhs is None:
+        pass
+    else:
+        # I can't for the life of me get hovertemplate working here
+        # for mysterious reasons, so just stick to "text" for hover info.
+        for i in gdf_nearest_rhs.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_nearest_rhs.loc[i, 'x'],
+                y=gdf_nearest_rhs.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor=gdf_nearest_rhs.loc[i, 'colour'],
+                line_color='grey',
+                name=gdf_nearest_rhs.loc[i, 'outline_type'],
+                text=gdf_nearest_rhs.loc[i, outline_names_col],
+                hoverinfo="text",
+                hoverlabel=dict(bgcolor='red'),
+                ), row='all', col=2
                 )
 
     fig.update_traces(

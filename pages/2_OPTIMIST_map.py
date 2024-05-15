@@ -231,7 +231,7 @@ scenario_dict['stroke_type'] = stroke_type
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
     outline_name = st.radio('Region type to draw on maps',
-                            ['None', 'ISDN', 'ICB'])
+                            ['None', 'ISDN', 'ICB', 'Nearest service'])
 
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,
@@ -378,27 +378,46 @@ gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
 
 
 # ----- Region outlines -----
-
-# TO DO - get this working! ----------------------------------------------------------------------------------
-# # Create hospital catchment areas from this MSOA geography data.
-# cols = [('nearest_ivt_unit', 'scenario'), ('geometry', 'any')]
-# import pandas as pd
-# gdf_catchment = maps.find_geometry_ivt_catchment(pd.DataFrame(gdf_boundaries_msoa[cols]))
-# # Save:
-# gdf_catchment.to_file(f'data/outline_nearest_ivt.geojson')
-
 # Load in another gdf:
+extra_gdf_list = []
+
+gdf_nearest_lhs = None
+gdf_nearest_rhs = None
+gdf_catchment = None
+
 load_gdf_catchment = True
 if outline_name == 'ISDN':
     outline_file = './data/outline_isdns.geojson'
     outline_names_col = 'isdn'
-    outline_name = 'ISDN'  # to display
 elif outline_name == 'ICB':
     outline_file = './data/outline_icbs.geojson'
     outline_names_col = 'icb'  # to display
+elif outline_name == 'Nearest service':
+    load_gdf_catchment = False
+    outline_names_col = 'Nearest service'
+    # Make catchment area polygons:
+    gdf_nearest_lhs = maps.dissolve_polygons_by_value(
+        df_lsoa,
+        col='nearest_ivt_unit_name',
+        load_msoa=True
+        )
+    # Make colour transparent:
+    gdf_nearest_lhs['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_nearest_lhs['outline_type'] = outline_name
+    gdf_nearest_lhs = gdf_nearest_lhs.rename(columns={'nearest_ivt_unit_name': 'Nearest service'})
+
+    gdf_nearest_rhs = maps.dissolve_polygons_by_value(
+        df_lsoa,
+        col='nearest_mt_unit_name',
+        load_msoa=True
+        )
+    # Make colour transparent:
+    gdf_nearest_rhs['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_nearest_rhs['outline_type'] = outline_name
+    gdf_nearest_rhs = gdf_nearest_rhs.rename(columns={'nearest_mt_unit_name': 'Nearest service'})
+    extra_gdf_list += [gdf_nearest_lhs, gdf_nearest_rhs]
 else:
     load_gdf_catchment = False
-    gdf_catchment = None
     outline_name = None
     outline_names_col = None
 
@@ -416,6 +435,7 @@ if load_gdf_catchment:
     gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
     gdf_catchment['outline_type'] = outline_name
     # st.write(gdf_catchment['geometry'])
+    extra_gdf_list.append(gdf_catchment)
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
@@ -423,9 +443,7 @@ traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_lhs, gdf_rhs]
-if gdf_catchment is not None:
-    gdfs_to_convert.append(gdf_catchment)
+gdfs_to_convert = [gdf_lhs, gdf_rhs] + extra_gdf_list
 for gdf in gdfs_to_convert:
     x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
     gdf['x'] = x_list
@@ -437,6 +455,8 @@ with container_map:
         gdf_lhs,
         gdf_rhs,
         gdf_catchment,
+        gdf_nearest_lhs,
+        gdf_nearest_rhs,
         outline_names_col,
         outline_name,
         traces_units,
