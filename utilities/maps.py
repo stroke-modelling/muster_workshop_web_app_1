@@ -14,146 +14,145 @@ import utilities.utils as utils
 from stroke_maps.geo import import_geojson, check_scenario_level
 
 
-@st.cache_data
-def _import_geojson(*args, **kwargs):
-    """Wrapper for stroke-maps import_geojson so cache_data used."""
-    return import_geojson(*args, **kwargs)
+# @st.cache_data
+# def _import_geojson(*args, **kwargs):
+#     """Wrapper for stroke-maps import_geojson so cache_data used."""
+#     return import_geojson(*args, **kwargs)
 
 
-@st.cache_data
-def _load_geometry_msoa(df_msoa: pd.DataFrame):
-    """
-    Create GeoDataFrames of new geometry and existing DataFrames.
+# @st.cache_data
+# def _load_geometry_msoa(df_msoa: pd.DataFrame):
+#     """
+#     Create GeoDataFrames of new geometry and existing DataFrames.
 
-    TO DO - why is this here and not just using the one from stroke-maps package? --------------------------------------------------
+#     TO DO - why is this here and not just using the one from stroke-maps package? --------------------------------------------------
 
-    Inputs
-    ------
-    df_msoa - pd.DataFrame. msoa info.
+#     Inputs
+#     ------
+#     df_msoa - pd.DataFrame. msoa info.
 
-    Returns
-    -------
-    gdf_boundaries_msoa - GeoDataFrame. msoa info and geometry.
-    """
+#     Returns
+#     -------
+#     gdf_boundaries_msoa - GeoDataFrame. msoa info and geometry.
+#     """
 
-    # All msoa shapes:
-    gdf_boundaries_msoa = _import_geojson(
-        'MSOA11NM',
-        # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
-        # path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
-        path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')
-        )
-    crs = gdf_boundaries_msoa.crs
-    # Index column: msoa11CD.
-    # Always has only one unnamed column index level.
-    gdf_boundaries_msoa = gdf_boundaries_msoa.reset_index()
-    # gdf_boundaries_msoa = gdf_boundaries_msoa.rename(
-    #     columns={'msoa11NM': 'msoa', 'msoa11CD': 'msoa_code'})
-    gdf_boundaries_msoa = gdf_boundaries_msoa.rename(
-        columns={'MSOA11NM': 'msoa', 'MSOA11CD': 'msoa_code'})
-    gdf_boundaries_msoa = gdf_boundaries_msoa.set_index(['msoa_code'])
-    gdf_boundaries_msoa = gdf_boundaries_msoa.drop('msoa', axis='columns')
+#     # All msoa shapes:
+#     gdf_boundaries_msoa = _import_geojson(
+#         'MSOA11NM',
+#         # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
+#         # path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
+#         path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')
+#         )
+#     crs = gdf_boundaries_msoa.crs
+#     # Index column: msoa11CD.
+#     # Always has only one unnamed column index level.
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.reset_index()
+#     # gdf_boundaries_msoa = gdf_boundaries_msoa.rename(
+#     #     columns={'msoa11NM': 'msoa', 'msoa11CD': 'msoa_code'})
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.rename(
+#         columns={'MSOA11NM': 'msoa', 'MSOA11CD': 'msoa_code'})
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.set_index(['msoa_code'])
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.drop('msoa', axis='columns')
 
-    # ----- Prepare separate data -----
-    # Set up column level info for the merged DataFrame.
-    # Everything needs at least two levels: scenario and property.
-    # Sometimes also a 'subtype' level.
-    # Add another column level to the coordinates.
-    df_msoa = df_msoa.reset_index()
-    df_msoa = df_msoa.set_index('msoa_code')
-    col_level_names = df_msoa.columns.names
-    cols_gdf_boundaries_msoa = [
-        gdf_boundaries_msoa.columns,                 # property
-        ['any'] * len(gdf_boundaries_msoa.columns),  # scenario
-    ]
-    if 'subtype' in col_level_names:
-        cols_gdf_boundaries_msoa.append(
-            [''] * len(gdf_boundaries_msoa.columns))
+#     # ----- Prepare separate data -----
+#     # Set up column level info for the merged DataFrame.
+#     # Everything needs at least two levels: scenario and property.
+#     # Sometimes also a 'subtype' level.
+#     # Add another column level to the coordinates.
+#     df_msoa = df_msoa.reset_index()
+#     df_msoa = df_msoa.set_index('msoa_code')
+#     col_level_names = df_msoa.columns.names
+#     cols_gdf_boundaries_msoa = [
+#         gdf_boundaries_msoa.columns,                 # property
+#         ['any'] * len(gdf_boundaries_msoa.columns),  # scenario
+#     ]
+#     if 'subtype' in col_level_names:
+#         cols_gdf_boundaries_msoa.append(
+#             [''] * len(gdf_boundaries_msoa.columns))
 
-    # Make all data to be combined have the same column levels.
-    # Geometry:
-    gdf_boundaries_msoa = pd.DataFrame(
-        gdf_boundaries_msoa.values,
-        index=gdf_boundaries_msoa.index,
-        columns=cols_gdf_boundaries_msoa
-    )
+#     # Make all data to be combined have the same column levels.
+#     # Geometry:
+#     gdf_boundaries_msoa = pd.DataFrame(
+#         gdf_boundaries_msoa.values,
+#         index=gdf_boundaries_msoa.index,
+#         columns=cols_gdf_boundaries_msoa
+#     )
 
-    # ----- Create final data -----
-    # Merge together all of the DataFrames.
-    gdf_boundaries_msoa = pd.merge(
-        gdf_boundaries_msoa, df_msoa,
-        left_index=True, right_index=True, how='right'
-    )
-    # Name the column levels:
-    gdf_boundaries_msoa.columns = (
-        gdf_boundaries_msoa.columns.set_names(col_level_names))
+#     # ----- Create final data -----
+#     # Merge together all of the DataFrames.
+#     gdf_boundaries_msoa = pd.merge(
+#         gdf_boundaries_msoa, df_msoa,
+#         left_index=True, right_index=True, how='right'
+#     )
+#     # Name the column levels:
+#     gdf_boundaries_msoa.columns = (
+#         gdf_boundaries_msoa.columns.set_names(col_level_names))
 
-    # Sort the results by scenario:
-    gdf_boundaries_msoa = gdf_boundaries_msoa.sort_index(
-        axis='columns', level='scenario')
+#     # Sort the results by scenario:
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.sort_index(
+#         axis='columns', level='scenario')
 
-    # Convert to GeoDataFrame:
-    col_geo = utils.find_multiindex_column_names(
-        gdf_boundaries_msoa, property=['geometry'])
+#     # Convert to GeoDataFrame:
+#     col_geo = utils.find_multiindex_column_names(
+#         gdf_boundaries_msoa, property=['geometry'])
 
-    # for i in gdf_boundaries_msoa.index:
-    #     st.write(gdf_boundaries_msoa.loc[i, col_geo])
+#     # for i in gdf_boundaries_msoa.index:
+#     #     st.write(gdf_boundaries_msoa.loc[i, col_geo])
 
-    # for i, g in enumerate(gdf_boundaries_msoa[col_geo].values):
-    #     try:
-    #         if g.geom_type not in ['Polygon', 'MultiPolygon']:
-    #             st.write(g.geom_type)
-    #     except AttributeError:
-    #         st.write(g)
-    #         st.write(gdf_boundaries_msoa.iloc[i])
+#     # for i, g in enumerate(gdf_boundaries_msoa[col_geo].values):
+#     #     try:
+#     #         if g.geom_type not in ['Polygon', 'MultiPolygon']:
+#     #             st.write(g.geom_type)
+#     #     except AttributeError:
+#     #         st.write(g)
+#     #         st.write(gdf_boundaries_msoa.iloc[i])
 
-    # Make geometry valid:
-    gdf_boundaries_msoa[col_geo] = [
-        make_valid(g) if g is not None else g
-        for g in gdf_boundaries_msoa[col_geo].values
-        ]
-    gdf_boundaries_msoa = geopandas.GeoDataFrame(
-        gdf_boundaries_msoa,
-        geometry=col_geo,
-        crs=crs
-        )
+#     # Make geometry valid:
+#     gdf_boundaries_msoa[col_geo] = [
+#         make_valid(g) if g is not None else g
+#         for g in gdf_boundaries_msoa[col_geo].values
+#         ]
+#     gdf_boundaries_msoa = geopandas.GeoDataFrame(
+#         gdf_boundaries_msoa,
+#         geometry=col_geo,
+#         crs=crs
+#         )
 
-    return gdf_boundaries_msoa
+#     return gdf_boundaries_msoa
 
 
-@st.cache_data
-def combine_geography_with_outcomes(df_lsoa: pd.DataFrame):
-    """
-    Main function for building geometry for each area.
+# @st.cache_data
+# def combine_geography_with_outcomes(df_lsoa: pd.DataFrame):
+#     """
+#     Main function for building geometry for each area.
 
-    Inputs
-    ------
-    df_lsoa - pd.DataFrame. Should contain at least LSOA codes.
+#     Inputs
+#     ------
+#     df_lsoa - pd.DataFrame. Should contain at least LSOA codes.
 
-    Returns
-    -------
-    gdf_boundaries_msoa - geopandas.GeoDataFrame. Geometry for each
-                          MSOA with df_msoa contents merged in.
-    df_msoa             - pd.DataFrame. Just the MSOA data without
-                          geometry. (TO DO - why have I done this??? -------------------------------------------------)
-    """
-    # ----- MSOAs for geography -----
-    df_msoa = calc.convert_lsoa_to_msoa_results(df_lsoa)
+#     Returns
+#     -------
+#     gdf_boundaries_msoa - geopandas.GeoDataFrame. Geometry for each
+#                           MSOA with df_msoa contents merged in.
+#     df_msoa             - pd.DataFrame. Just the MSOA data without
+#                           geometry. (TO DO - why have I done this??? -------------------------------------------------)
+#     """
+#     # # ----- MSOAs for geography -----
+#     # df_msoa = calc.convert_lsoa_to_msoa_results(df_lsoa)
 
-    # Check whether the input DataFrames have a 'scenario' column level.
-    # This is required for talking to stroke-maps package.
-    # If not, add one now with a placeholder scenario name.
-    df_msoa = check_scenario_level(df_msoa)
+#     # Check whether the input DataFrames have a 'scenario' column level.
+#     # This is required for talking to stroke-maps package.
+#     # If not, add one now with a placeholder scenario name.
+#     df_lsoa = check_scenario_level(df_lsoa)
 
-    # Merge outcome and geography:
-    gdf_boundaries_msoa = _load_geometry_msoa(df_msoa)
-    return gdf_boundaries_msoa, df_msoa
+#     # Merge outcome and geography:
+#     gdf_boundaries_lsoa = _load_geometry_lsoa(df_lsoa)
+#     return gdf_boundaries_lsoa
 
 
 @st.cache_data
 def create_colour_gdf(
-        _gdf_boundaries_msoa: geopandas.GeoDataFrame,
-        df_msoa: pd.DataFrame,
+        df: pd.DataFrame,
         scenario_dict: dict,
         scenario_type: str,
         cmap_name: str = '',
@@ -210,29 +209,23 @@ def create_colour_gdf(
 
     # ----- Outcome maps -----
     # Left-hand subplot colours:
-    df_msoa_colours = assign_colour_bands_to_areas(
-        df_msoa,
+    df_colours = assign_colour_bands_to_areas(
+        df,
         colour_dict['column'],
         colour_dict['v_bands'],
         colour_dict['v_bands_str']
         )
     # For each colour scale and data column combo,
     # merge polygons that fall into the same colour band.
-    gdf = dissolve_polygons_by_colour(
-        _gdf_boundaries_msoa,
-        df_msoa_colours
-        )
+    gdf = dissolve_polygons_by_value(df_colours, col='colour_str')
     # Map the colours to the colour names:
-    gdf = assign_colour_to_areas(
-        gdf,
-        colour_dict['colour_map']
-    )
+    gdf = assign_colour_to_areas(gdf, colour_dict['colour_map'])
 
     return gdf, colour_dict
 
 
 def assign_colour_bands_to_areas(
-        df_msoa: pd.DataFrame,
+        df: pd.DataFrame,
         col_col: str,
         v_bands: list,
         v_bands_str: list,
@@ -242,7 +235,7 @@ def assign_colour_bands_to_areas(
 
     Inputs
     ------
-    df_msoa     - pd.DataFrame. MSOA names and outcomes.
+    df          - pd.DataFrame. Region names and outcomes.
     col_col     - str. Name of the column that contains values to
                   assign the colours to.
     v_bands     - list. The cutoff points for the colour bands.
@@ -250,44 +243,151 @@ def assign_colour_bands_to_areas(
 
     Returns
     -------
-    df_msoa_colours - pd.DataFrame. The outcome values from the input
-                      data and the colour bands that they have been
-                      assigned to.
+    df_colours - pd.DataFrame. The outcome values from the input
+                 data and the colour bands that they have been
+                 assigned to.
     """
-    df_msoa = df_msoa.copy()
-
-    # Selected column to use for colour values:
-    column_colour = utils.find_multiindex_column_names(
-        df_msoa,
-        property=[col_col],
-        )
+    df = df.copy()
 
     # Only keep the required columns:
-    df_msoa = df_msoa[[column_colour]]
+    df = df[[col_col]]
 
-    df_msoa_colours = pd.DataFrame(
-        df_msoa.values,
+    df_colours = pd.DataFrame(
+        df.values,
         columns=['outcome'],
-        index=df_msoa.index
+        index=df.index
     )
 
     # Group by outcome band.
     # Only group by non-NaN values:
-    mask = ~pd.isna(df_msoa_colours['outcome'])
+    mask = ~pd.isna(df_colours['outcome'])
     # Pick out only regions with zero exactly for the zero label.
-    inds = np.digitize(df_msoa_colours.loc[mask, 'outcome'], v_bands)
+    inds = np.digitize(df_colours.loc[mask, 'outcome'], v_bands)
     labels = v_bands_str[inds]
-    df_msoa_colours.loc[mask, 'colour_str'] = labels
+    df_colours.loc[mask, 'colour_str'] = labels
     # Flag NaN values:
-    df_msoa_colours.loc[~mask, 'colour_str'] = 'rubbish'
+    df_colours.loc[~mask, 'colour_str'] = 'rubbish'
     # Remove the NaN values:
-    df_msoa_colours = df_msoa_colours[
-        df_msoa_colours['colour_str'] != 'rubbish']
+    df_colours = df_colours[
+        df_colours['colour_str'] != 'rubbish']
 
-    return df_msoa_colours
+    return df_colours
 
 
-def dissolve_polygons_by_colour(
+def dissolve_polygons_by_value(
+        df_lsoa: pd.DataFrame,
+        col='colour_str',
+        load_msoa=True
+        ):
+    """
+    Merge the dataframes and then merge polygons with same value.
+
+    write me
+    """
+    # Only keep columns with regions and values:
+    df_lsoa = df_lsoa.reset_index()
+    df_lsoa = df_lsoa[['lsoa', col]]
+    if load_msoa:
+        # Match LSOA to MSOA:
+        df_lsoa_to_msoa = pd.read_csv('data/lsoa_to_msoa.csv')
+        df_lsoa = pd.merge(
+            df_lsoa,
+            df_lsoa_to_msoa[['lsoa11nm', 'msoa11cd']],
+            left_on='lsoa', right_on='lsoa11nm', how='left'
+            )
+        # Split off just the MSOA and the colour bands:
+        df_msoa_values = df_lsoa[['msoa11cd', col]].copy()
+        # Remove duplicates:
+        df_msoa_values = df_msoa_values.drop_duplicates()
+
+        # Which MSOA appear multiple times?
+        mask_msoa_multi = df_msoa_values['msoa11cd'].duplicated(keep=False)
+
+        # Pick out MSOA that appear only once in this list.
+        # These can be used directly.
+        selected_msoa = df_msoa_values[~mask_msoa_multi]
+        # Load MSOA geometry:
+        path_to_msoa = os.path.join('data', 'outline_msoa11cds.geojson')
+        gdf_msoa = geopandas.read_file(path_to_msoa)
+        # Columns: MSOA11CD, MSOA11NM, geometry.
+        # Limit to only selected MSOA:
+        gdf_msoa = pd.merge(
+            gdf_msoa, selected_msoa,
+            left_on='MSOA11CD', right_on='msoa11cd', how='right'
+            )
+        gdf_msoa = gdf_msoa[['geometry', col]]
+        
+        for col in gdf_msoa.columns:
+            st.write(gdf_msoa[col])
+
+        # Pick out MSOA that appear more than once in the value list.
+        # These must be replaced with their constituent LSOA.
+        mask_lsoa = df_lsoa['msoa11cd'].isin(df_msoa_values.loc[mask_msoa_multi, 'msoa11cd'])        
+        # Find the LSOA that go into these MSOA:
+        selected_lsoa = df_lsoa[mask_lsoa]
+        # Load LSOA geometry:
+        path_to_lsoa = os.path.join('data',
+                                    'LSOA_V3_reduced_simplified.geojson')
+        gdf_lsoa = geopandas.read_file(path_to_lsoa)
+        # Columns: MSOA11CD, MSOA11NM, geometry.
+        # Limit to only selected MSOA:
+        gdf_lsoa = pd.merge(
+            gdf_lsoa, selected_lsoa,
+            left_on='LSOA11NM', right_on='lsoa', how='right'
+            )
+        gdf_lsoa = gdf_lsoa[['geometry', col]]
+
+        for col in gdf_lsoa.columns:
+            st.write(gdf_lsoa[col])
+
+        # Stack selected geometry:
+        gdf = pd.concat((gdf_msoa, gdf_lsoa))
+        gdf.index = range(len(gdf))
+
+        for col in gdf.columns:
+            st.write(gdf[col])
+    else:
+        # Load LSOA geometry:
+        path_to_lsoa = os.path.join('data',
+                                    'LSOA_V3_reduced_simplified.geojson')
+        gdf = geopandas.read_file(path_to_lsoa)
+        # Merge in column:
+        gdf = pd.merge(gdf, df_lsoa,
+                       left_on='LSOA11NM', right_on='lsoa', how='right')
+        gdf.index = range(len(gdf))
+
+    # Convert to British National Grid:
+    gdf = gdf.to_crs('EPSG:27700')#, allow_override=True)
+
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    for col in gdf.columns:
+        st.write(gdf[col])
+
+    # Dissolve by value:
+    # I have no idea why, but using sort=False in the following line
+    # gives unexpected results in the map. e.g. areas that the data
+    # says should be exactly zero will show up as other colours.
+    # Maybe filling in holes in geometry? Maybe incorrect sorting?
+    gdf = gdf.dissolve(by=col)
+    gdf = gdf.reset_index()
+    # Remove the NaN polygon:
+    gdf = gdf[gdf[col] != 'rubbish']
+
+    # # # Simplify the polygons:
+    # # For Picasso mode.
+    # # Simplify geometry to 10000m accuracy
+    # gdf['geometry'] = (
+    #     gdf.to_crs(gdf.estimate_utm_crs()).simplify(10000).to_crs(gdf.crs)
+    # )
+    return gdf
+
+
+def dissolve_polygons_by_colour_MSOA_ONLY(
         gdf_all: geopandas.GeoDataFrame,
         df_msoa: pd.DataFrame,
         ):

@@ -55,12 +55,9 @@ def main_calculations(input_dict, df_unit_services):
     df_lsoa = calc.combine_results_by_diff(df_lsoa)
     df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
 
-    gdf_boundaries_msoa, df_msoa = (
-        maps.combine_geography_with_outcomes(df_lsoa))
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)
-    return (df_lsoa, df_mrs, gdf_boundaries_msoa, df_msoa,
-            df_icb, df_isdn, df_nearest_ivt)
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
 
 
 # ###########################
@@ -205,10 +202,8 @@ with container_inputs:
 with container_map:
     plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-(df_lsoa, df_mrs,
- gdf_boundaries_msoa, df_msoa,
- df_icb, df_isdn, df_nearest_ivt) = main_calculations(input_dict,
-                                                      df_unit_services)
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
+    main_calculations(input_dict, df_unit_services))
 
 # ###########################################
 # ########## USER INPUTS FOR PLOTS ##########
@@ -367,16 +362,14 @@ display_mrs_dists()
 # Keep this below the results above because the map creation is slow.
 
 gdf_lhs, colour_dict = maps.create_colour_gdf(
-    gdf_boundaries_msoa,
-    df_msoa,
+    df_lsoa,
     scenario_dict,
     scenario_type=scenario_types[0],
     cmap_name=cmap_name,
     cbar_title=cmap_titles[0],
     )
 gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
-    gdf_boundaries_msoa,
-    df_msoa,
+    df_lsoa,
     scenario_dict,
     scenario_type=scenario_types[1],
     cmap_diff_name=cmap_diff_name,
