@@ -92,8 +92,8 @@ st.set_page_config(
 # # If crs is given in the file, geopandas automatically
 # # pulls it through. Convert to National Grid coordinates:
 # if gdf_boundaries_msoa.crs != 'EPSG:27700':
-#     gdf_boundaries_msoa = gdf_boundaries_msoa.to_crs('EPSG:27700')
-    
+#     gdf_boundaries_msoa = gdf_boundaries_msoa.to_crs('EPSG:27700')#
+
 # # gdf_boundaries_msoa = _import_geojson(
 # #     'MSOA11NM',
 # #     # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
@@ -381,9 +381,9 @@ gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
 # Load in another gdf:
 extra_gdf_list = []
 
+gdf_catchment = None
 gdf_nearest_lhs = None
 gdf_nearest_rhs = None
-gdf_catchment = None
 
 load_gdf_catchment = True
 if outline_name == 'ISDN':
@@ -395,26 +395,31 @@ elif outline_name == 'ICB':
 elif outline_name == 'Nearest service':
     load_gdf_catchment = False
     outline_names_col = 'Nearest service'
+
     # Make catchment area polygons:
     gdf_nearest_lhs = maps.dissolve_polygons_by_value(
-        df_lsoa,
+        df_lsoa.copy().reset_index()[['lsoa', 'nearest_ivt_unit_name']],
         col='nearest_ivt_unit_name',
         load_msoa=True
         )
     # Make colour transparent:
     gdf_nearest_lhs['colour'] = 'rgba(0, 0, 0, 0)'
     gdf_nearest_lhs['outline_type'] = outline_name
-    gdf_nearest_lhs = gdf_nearest_lhs.rename(columns={'nearest_ivt_unit_name': 'Nearest service'})
+    gdf_nearest_lhs = gdf_nearest_lhs.rename(
+        columns={'nearest_ivt_unit_name': 'Nearest service'})
 
     gdf_nearest_rhs = maps.dissolve_polygons_by_value(
-        df_lsoa,
+        df_lsoa.copy().reset_index()[['lsoa', 'nearest_mt_unit_name']],
         col='nearest_mt_unit_name',
         load_msoa=True
         )
     # Make colour transparent:
     gdf_nearest_rhs['colour'] = 'rgba(0, 0, 0, 0)'
     gdf_nearest_rhs['outline_type'] = outline_name
-    gdf_nearest_rhs = gdf_nearest_rhs.rename(columns={'nearest_mt_unit_name': 'Nearest service'})
+    gdf_nearest_rhs = gdf_nearest_rhs.rename(
+        columns={'nearest_mt_unit_name': 'Nearest service'})
+
+    # Store these to be updated later:
     extra_gdf_list += [gdf_nearest_lhs, gdf_nearest_rhs]
 else:
     load_gdf_catchment = False
@@ -437,10 +442,6 @@ if load_gdf_catchment:
     # st.write(gdf_catchment['geometry'])
     extra_gdf_list.append(gdf_catchment)
 
-# ----- Stroke units -----
-# Stroke unit scatter markers:
-traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
-
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
 gdfs_to_convert = [gdf_lhs, gdf_rhs] + extra_gdf_list
@@ -448,6 +449,10 @@ for gdf in gdfs_to_convert:
     x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
     gdf['x'] = x_list
     gdf['y'] = y_list
+
+# ----- Stroke units -----
+# Stroke unit scatter markers:
+traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
 
 # ----- Plot -----
 with container_map:

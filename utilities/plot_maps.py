@@ -425,9 +425,7 @@ def plotly_many_maps(
             ), row='all', col=2
             )
 
-    if gdf_catchment is None:
-        pass
-    else:
+    def draw_outline(fig, gdf_catchment, col='all'):
         # I can't for the life of me get hovertemplate working here
         # for mysterious reasons, so just stick to "text" for hover info.
         for i in gdf_catchment.index:
@@ -442,47 +440,23 @@ def plotly_many_maps(
                 text=gdf_catchment.loc[i, outline_names_col],
                 hoverinfo="text",
                 hoverlabel=dict(bgcolor='red'),
-                ), row='all', col='all'
+                ), row='all', col=col
                 )
+
+    if gdf_catchment is None:
+        pass
+    else:
+        draw_outline(fig, gdf_catchment, col='all')
 
     if gdf_nearest_lhs is None:
         pass
     else:
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_nearest_lhs.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_nearest_lhs.loc[i, 'x'],
-                y=gdf_nearest_lhs.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_nearest_lhs.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_nearest_lhs.loc[i, 'outline_type'],
-                text=gdf_nearest_lhs.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col=1
-                )
+        draw_outline(fig, gdf_nearest_lhs, col=1)
+
     if gdf_nearest_rhs is None:
         pass
     else:
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_nearest_rhs.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_nearest_rhs.loc[i, 'x'],
-                y=gdf_nearest_rhs.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_nearest_rhs.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_nearest_rhs.loc[i, 'outline_type'],
-                text=gdf_nearest_rhs.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col=2
-                )
+        draw_outline(fig, gdf_nearest_rhs, col=2)
 
     fig.update_traces(
         hoverlabel=dict(
