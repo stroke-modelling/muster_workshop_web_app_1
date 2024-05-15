@@ -316,9 +316,6 @@ def dissolve_polygons_by_value(
             left_on='MSOA11CD', right_on='msoa11cd', how='right'
             )
         gdf_msoa = gdf_msoa[['geometry', col]]
-        
-        for col in gdf_msoa.columns:
-            st.write(gdf_msoa[col])
 
         # Pick out MSOA that appear more than once in the value list.
         # These must be replaced with their constituent LSOA.
@@ -337,15 +334,9 @@ def dissolve_polygons_by_value(
             )
         gdf_lsoa = gdf_lsoa[['geometry', col]]
 
-        for col in gdf_lsoa.columns:
-            st.write(gdf_lsoa[col])
-
         # Stack selected geometry:
         gdf = pd.concat((gdf_msoa, gdf_lsoa))
         gdf.index = range(len(gdf))
-
-        for col in gdf.columns:
-            st.write(gdf[col])
     else:
         # Load LSOA geometry:
         path_to_lsoa = os.path.join('data',
@@ -364,9 +355,6 @@ def dissolve_polygons_by_value(
         make_valid(g) if g is not None else g
         for g in gdf['geometry'].values
         ]
-
-    for col in gdf.columns:
-        st.write(gdf[col])
 
     # Dissolve by value:
     # I have no idea why, but using sort=False in the following line

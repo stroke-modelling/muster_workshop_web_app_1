@@ -15,6 +15,7 @@ import geopandas  # for importing region outlines
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
+import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
 # Containers:
 import utilities.container_inputs as inputs
@@ -25,13 +26,9 @@ def main_calculations(input_dict, df_unit_services):
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
 
-    gdf_boundaries_msoa, df_msoa = (
-        maps.combine_geography_with_outcomes(df_lsoa))
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)
-    return (df_lsoa, df_mrs,
-            gdf_boundaries_msoa, df_msoa,
-            df_icb, df_isdn, df_nearest_ivt)
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
 
 
 # ###########################
@@ -133,12 +130,10 @@ with container_inputs:
 # While the main calculations are happening, display a blank map.
 # Later, when the calculations are finished, replace with the actual map.
 with container_map:
-    maps.plotly_blank_maps(['', ''], n_blank=2)
+    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-(df_lsoa, df_mrs,
- gdf_boundaries_msoa, df_msoa,
- df_icb, df_isdn, df_nearest_ivt) = main_calculations(input_dict,
-                                                      df_unit_services)
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
+    main_calculations(input_dict, df_unit_services))
 
 # ###########################################
 # ########## USER INPUTS FOR PLOTS ##########
@@ -297,20 +292,18 @@ display_mrs_dists()
 # Keep this below the results above because the map creation is slow.
 
 gdf_lhs, colour_dict = maps.create_colour_gdf(
-    gdf_boundaries_msoa,
-    df_msoa,
+    df_lsoa,
     scenario_dict,
-    cmap_name,
-    cbar_title=cmap_titles[0],
     scenario_type=scenario_types[0],
+    cmap_name=cmap_name,
+    cbar_title=cmap_titles[0],
     )
 gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
-    gdf_boundaries_msoa,
-    df_msoa,
+    df_lsoa,
     scenario_dict,
-    cmap_name,
-    cbar_title=cmap_titles[1],
     scenario_type=scenario_types[1],
+    cmap_diff_name=cmap_diff_name,
+    cbar_title=cmap_titles[1],
     )
 
 # ----- Region outlines -----
@@ -356,7 +349,7 @@ if load_gdf_catchment:
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
-traces_units = maps.create_stroke_team_markers(df_unit_services_full)
+traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
@@ -370,7 +363,7 @@ for gdf in gdfs_to_convert:
 
 # ----- Plot -----
 with container_map:
-    maps.plotly_many_maps(
+    plot_maps.plotly_many_maps(
         gdf_lhs,
         gdf_rhs,
         gdf_catchment,
