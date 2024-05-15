@@ -138,6 +138,7 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
 
     fig = make_subplots(rows=2, cols=1,
                         subplot_titles=subplot_titles, shared_xaxes=True)
+    fig.update_layout(xaxis_showticklabels=True)
 
     for label, mrs_dict in mrs_lists_dict.items():
 
