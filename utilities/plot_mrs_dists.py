@@ -136,7 +136,8 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
         'Cumulative probability<br>of discharge disability'
     ]
 
-    fig = make_subplots(rows=2, cols=1, subplot_titles=subplot_titles)
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=subplot_titles, shared_xaxes=True)
 
     for label, mrs_dict in mrs_lists_dict.items():
 
