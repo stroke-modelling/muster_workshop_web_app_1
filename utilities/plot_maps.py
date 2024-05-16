@@ -234,9 +234,8 @@ def plotly_blank_maps(subplot_titles: list = None, n_blank: int = 2):
 def plotly_many_maps(
         gdf_lhs: geopandas.GeoDataFrame,
         gdf_rhs: geopandas.GeoDataFrame,
-        gdf_catchment: geopandas.GeoDataFrame = None,
-        gdf_nearest_lhs: geopandas.GeoDataFrame = None,
-        gdf_nearest_rhs: geopandas.GeoDataFrame = None,
+        gdf_catchment_lhs: geopandas.GeoDataFrame = None,
+        gdf_catchment_rhs: geopandas.GeoDataFrame = None,
         outline_names_col: str = '',
         outline_name: str = '',
         traces_units: dict = None,
@@ -255,9 +254,11 @@ def plotly_many_maps(
                         side.
     gdf_rhs           - geopandas.GeoDataFrame. Data for right-hand
                         side.
-    gdf_catchment     - geopandas.GeoDataFrame. Optional. Data to
+    gdf_catchment_lhs - geopandas.GeoDataFrame. Optional. Data to
                         plot over the top of the other gdf, for example
-                        catchment area outlines.
+                        catchment area outlines. For left-hand map.
+    gdf_catchment_rhs - geopandas.GeoDataFrame. Optional. Same but for
+                        right-hand map.
     outline_names_col - str. Name of the column in gdf_catchment that
                         contains data to show on the hover text.
     outline_name      - str. One value from the 'outcome_type' column
@@ -443,20 +444,15 @@ def plotly_many_maps(
                 ), row='all', col=col
                 )
 
-    if gdf_catchment is None:
+    if gdf_catchment_lhs is None:
         pass
     else:
-        draw_outline(fig, gdf_catchment, col='all')
+        draw_outline(fig, gdf_catchment_lhs, col=1)
 
-    if gdf_nearest_lhs is None:
+    if gdf_catchment_rhs is None:
         pass
     else:
-        draw_outline(fig, gdf_nearest_lhs, col=1)
-
-    if gdf_nearest_rhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_nearest_rhs, col=2)
+        draw_outline(fig, gdf_catchment_rhs, col=2)
 
     fig.update_traces(
         hoverlabel=dict(
@@ -478,7 +474,7 @@ def plotly_many_maps(
 
     # --- Stroke unit scatter markers ---
     if len(unit_subplot_dict) > 0:
-        if gdf_catchment is None:
+        if gdf_catchment_lhs is None:
             pass
         else:
             # # Add a blank trace to put a gap in the legend.

@@ -9,8 +9,6 @@ done in functions stored in files named container_(something).py
 """
 # ----- Imports -----
 import streamlit as st
-import geopandas  # for importing region outlines
-# from shapely.validation import make_valid  # for fixing dodgy polygons
 
 # Custom functions:
 import utilities.calculations as calc
@@ -378,77 +376,25 @@ gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
 
 
 # ----- Region outlines -----
-# Load in another gdf:
-extra_gdf_list = []
-
-gdf_catchment = None
-gdf_nearest_lhs = None
-gdf_nearest_rhs = None
-
-load_gdf_catchment = True
-if outline_name == 'ISDN':
-    outline_file = './data/outline_isdns.geojson'
-    outline_names_col = 'isdn'
-elif outline_name == 'ICB':
-    outline_file = './data/outline_icbs.geojson'
-    outline_names_col = 'icb'  # to display
-elif outline_name == 'Nearest service':
-    load_gdf_catchment = False
-    outline_names_col = 'Nearest service'
-
-    # Make catchment area polygons:
-    gdf_nearest_lhs = maps.dissolve_polygons_by_value(
-        df_lsoa.copy().reset_index()[['lsoa', 'nearest_ivt_unit_name']],
-        col='nearest_ivt_unit_name',
-        load_msoa=True
-        )
-    # Make colour transparent:
-    gdf_nearest_lhs['colour'] = 'rgba(0, 0, 0, 0)'
-    gdf_nearest_lhs['outline_type'] = outline_name
-    gdf_nearest_lhs = gdf_nearest_lhs.rename(
-        columns={'nearest_ivt_unit_name': 'Nearest service'})
-
-    gdf_nearest_rhs = maps.dissolve_polygons_by_value(
-        df_lsoa.copy().reset_index()[['lsoa', 'nearest_mt_unit_name']],
-        col='nearest_mt_unit_name',
-        load_msoa=True
-        )
-    # Make colour transparent:
-    gdf_nearest_rhs['colour'] = 'rgba(0, 0, 0, 0)'
-    gdf_nearest_rhs['outline_type'] = outline_name
-    gdf_nearest_rhs = gdf_nearest_rhs.rename(
-        columns={'nearest_mt_unit_name': 'Nearest service'})
-
-    # Store these to be updated later:
-    extra_gdf_list += [gdf_nearest_lhs, gdf_nearest_rhs]
-else:
-    load_gdf_catchment = False
-    outline_name = None
+if outline_name == 'None':
     outline_names_col = None
+    gdf_catchment_lhs = None
+    gdf_catchment_rhs = None
+else:
+    outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs = (
+        calc.load_or_calculate_region_outlines(outline_name, df_lsoa))
 
-if load_gdf_catchment:
-    gdf_catchment = geopandas.read_file(outline_file)
-    # Convert to British National Grid:
-    gdf_catchment = gdf_catchment.to_crs('EPSG:27700')
-    # st.write(gdf_catchment['geometry'])
-    # # Make geometry valid:
-    # gdf_catchment['geometry'] = [
-    #     make_valid(g) if g is not None else g
-    #     for g in gdf_catchment['geometry'].values
-    #     ]
-    # Make colour transparent:
-    gdf_catchment['colour'] = 'rgba(0, 0, 0, 0)'
-    gdf_catchment['outline_type'] = outline_name
-    # st.write(gdf_catchment['geometry'])
-    extra_gdf_list.append(gdf_catchment)
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_lhs, gdf_rhs] + extra_gdf_list
+gdfs_to_convert = [gdf_lhs, gdf_rhs, gdf_catchment_lhs, gdf_catchment_rhs]
 for gdf in gdfs_to_convert:
-    x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
-    gdf['x'] = x_list
-    gdf['y'] = y_list
+    if gdf is None:
+        pass
+    else:
+        x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
+        gdf['x'] = x_list
+        gdf['y'] = y_list
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
@@ -459,9 +405,8 @@ with container_map:
     plot_maps.plotly_many_maps(
         gdf_lhs,
         gdf_rhs,
-        gdf_catchment,
-        gdf_nearest_lhs,
-        gdf_nearest_rhs,
+        gdf_catchment_lhs,
+        gdf_catchment_rhs,
         outline_names_col,
         outline_name,
         traces_units,

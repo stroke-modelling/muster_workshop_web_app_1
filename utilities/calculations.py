@@ -5,6 +5,7 @@ from importlib_resources import files
 import pandas as pd
 import numpy as np
 from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
+import geopandas
 
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
@@ -13,6 +14,7 @@ from classes.scenario import Scenario
 
 # Custom functions:
 from utilities.utils import load_reference_mrs_dists
+from utilities.maps import dissolve_polygons_by_value
 # Containers:
 
 
@@ -732,3 +734,56 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
                        left_index=True, right_index=True)
 
     return df_lsoa
+
+
+def load_or_calculate_region_outlines(outline_name, df_lsoa):
+    # Load in another gdf:
+
+    if outline_name == 'ISDN':
+        load_gdf_catchment = True
+        outline_file = './data/outline_isdns.geojson'
+        outline_names_col = 'isdn'
+    elif outline_name == 'ICB':
+        load_gdf_catchment = True
+        outline_file = './data/outline_icbs.geojson'
+        outline_names_col = 'icb'  # to display
+    elif outline_name == 'Nearest service':
+        load_gdf_catchment = False
+        outline_names_col = 'Nearest service'
+
+        # Make catchment area polygons:
+        gdf_catchment_lhs = dissolve_polygons_by_value(
+            df_lsoa.copy().reset_index()[['lsoa', 'nearest_ivt_unit_name']],
+            col='nearest_ivt_unit_name',
+            load_msoa=True
+            )
+        gdf_catchment_lhs = gdf_catchment_lhs.rename(
+            columns={'nearest_ivt_unit_name': 'Nearest service'})
+
+        gdf_catchment_rhs = dissolve_polygons_by_value(
+            df_lsoa.copy().reset_index()[['lsoa', 'nearest_mt_unit_name']],
+            col='nearest_mt_unit_name',
+            load_msoa=True
+            )
+        gdf_catchment_rhs = gdf_catchment_rhs.rename(
+            columns={'nearest_mt_unit_name': 'Nearest service'})
+
+    if load_gdf_catchment:
+        gdf_catchment_lhs = geopandas.read_file(outline_file)
+        # Convert to British National Grid:
+        gdf_catchment_lhs = gdf_catchment_lhs.to_crs('EPSG:27700')
+        # st.write(gdf_catchment['geometry'])
+        # # Make geometry valid:
+        # gdf_catchment['geometry'] = [
+        #     make_valid(g) if g is not None else g
+        #     for g in gdf_catchment['geometry'].values
+        #     ]
+        gdf_catchment_rhs = gdf_catchment_lhs.copy()
+
+    # Make colour transparent:
+    gdf_catchment_lhs['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_catchment_rhs['colour'] = 'rgba(0, 0, 0, 0)'
+    # Make a dummy column for the legend entry:
+    gdf_catchment_lhs['outline_type'] = outline_name
+    gdf_catchment_rhs['outline_type'] = outline_name
+    return outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs
