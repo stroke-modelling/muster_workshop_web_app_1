@@ -783,7 +783,7 @@ def set_up_colours(
 
     if cmap_name.endswith('_r_r'):
         # Remove the double reverse reverse.
-        cmap_name = cmap_name[:-4]
+        cmap_name = cmap_name[:-2]
 
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
