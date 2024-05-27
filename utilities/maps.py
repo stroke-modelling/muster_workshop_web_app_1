@@ -219,8 +219,7 @@ def dissolve_polygons_by_value(
         # Find the LSOA that go into these MSOA:
         selected_lsoa = df_lsoa[mask_lsoa]
         # Load LSOA geometry:
-        path_to_lsoa = os.path.join('data',
-                                    'LSOA_V3_reduced_simplified.geojson')
+        path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
         gdf_lsoa = geopandas.read_file(path_to_lsoa)
         # Columns: MSOA11CD, MSOA11NM, geometry.
         # Limit to only selected MSOA:
@@ -235,8 +234,7 @@ def dissolve_polygons_by_value(
         gdf.index = range(len(gdf))
     else:
         # Load LSOA geometry:
-        path_to_lsoa = os.path.join('data',
-                                    'LSOA_V3_reduced_simplified.geojson')
+        path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
         gdf = geopandas.read_file(path_to_lsoa)
         # Merge in column:
         gdf = pd.merge(gdf, df_lsoa,

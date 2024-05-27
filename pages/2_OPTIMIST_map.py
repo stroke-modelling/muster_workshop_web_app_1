@@ -105,10 +105,11 @@ st.set_page_config(
 # st.stop()
 
 # import utilities.utils as utils
-# utils.make_outline_msoa_from_lsoa()
-# utils.make_outline_icbs('icb')
-# utils.make_outline_icbs('isdn')
-# utils.make_outline_england_wales()
+# utils.make_outline_lsoa_limit_to_england()
+# # utils.make_outline_msoa_from_lsoa()
+# # utils.make_outline_icbs('icb')
+# # utils.make_outline_icbs('isdn')
+# # utils.make_outline_england_wales()
 # st.stop()
 
 
