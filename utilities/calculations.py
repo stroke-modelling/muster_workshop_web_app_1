@@ -19,7 +19,8 @@ from utilities.maps import dissolve_polygons_by_value
 
 
 @st.cache_data
-def calculate_outcomes(input_dict, df_unit_services):
+def calculate_outcomes(input_dict, df_unit_services,
+                       use_msu=True, use_mothership=True):
     """
 
     # Run the outcomes with the selected pathway:
@@ -43,7 +44,9 @@ def calculate_outcomes(input_dict, df_unit_services):
     # Set up model
     model = Model(
         scenario=scenario,
-        geodata=geo.combined_data
+        geodata=geo.combined_data,
+        use_msu_bool=use_msu,
+        use_mothership_bool=use_mothership
         )
 
     # Run model
@@ -71,28 +74,28 @@ def calculate_outcomes(input_dict, df_unit_services):
             df_lsoa = df_lsoa[
                 [*df_lsoa.columns[:i], f'{col}_name', *df_lsoa.columns[i:-1]]]
 
-    # Make a copy of nLVO IVT results for nLVO IVT+MT results:
-    cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
-    for col in cols_ivt_mt:
-        # Find the equivalent column for nLVO:
-        col_nlvo = col.replace('lvo', 'nlvo')
-        # Find the equivalent column for ivt-only:
-        col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
-        # Copy over the data:
-        df_lsoa[col_nlvo] = df_lsoa[col_ivt]
-    # Set the nLVO MT results to be the nLVO no-treatment results:
-    cols_mt = [c for c in df_lsoa.columns if
-               (('_mt_' in c) & ('_ivt_' not in c))]
-    for col in cols_mt:
-        # Find the equivalent column for nLVO:
-        col_nlvo = col.replace('lvo', 'nlvo')
-        if (('utility_shift' in col_nlvo) | ('mrs_shift' in col_nlvo)):
-            # No change from non-treatment.
-            df_lsoa[col_nlvo] = 0.0
-        elif 'utility' in col_nlvo:
-            df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_utility']
-        elif 'mrs_0-2' in col_nlvo:
-            df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_mrs_0-2']
+    # # Make a copy of nLVO IVT results for nLVO IVT+MT results:
+    # cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
+    # for col in cols_ivt_mt:
+    #     # Find the equivalent column for nLVO:
+    #     col_nlvo = col.replace('lvo', 'nlvo')
+    #     # Find the equivalent column for ivt-only:
+    #     col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
+    #     # Copy over the data:
+    #     df_lsoa[col_nlvo] = df_lsoa[col_ivt]
+    # # Set the nLVO MT results to be the nLVO no-treatment results:
+    # cols_mt = [c for c in df_lsoa.columns if
+    #            (('_mt_' in c) & ('_ivt_' not in c))]
+    # for col in cols_mt:
+    #     # Find the equivalent column for nLVO:
+    #     col_nlvo = col.replace('lvo', 'nlvo')
+    #     if (('utility_shift' in col_nlvo) | ('mrs_shift' in col_nlvo)):
+    #         # No change from non-treatment.
+    #         df_lsoa[col_nlvo] = 0.0
+    #     elif 'utility' in col_nlvo:
+    #         df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_utility']
+    #     elif 'mrs_0-2' in col_nlvo:
+    #         df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_mrs_0-2']
 
     # TO DO - the results df contains a mix of scenarios
     # (drip and ship, mothership, msu) in the column names.
@@ -105,7 +108,7 @@ def calculate_outcomes(input_dict, df_unit_services):
     dict_outcomes_dp = {
         'mrs_0-2': 3,
         'mrs_shift': 3,
-        'utility': 3,
+        # 'utility': 3,
         'utility_shift': 3,
     }
     for suff, dp in dict_outcomes_dp.items():
@@ -120,39 +123,39 @@ def calculate_outcomes(input_dict, df_unit_services):
     # TO DO - more carefully pick out the 7 mRS columns and update the
     # 7 reference mRS values.
 
-    # Make a copy of nLVO IVT results for nLVO IVT+MT results:
-    cols_ivt_mt = [c for c in df_mrs.columns if 'ivt_mt' in c]
-    # Find the col names without _mrs at the end:
-    cols_ivt_mt_prefixes = sorted(list(set(
-        ['_'.join(c.split('_')[:-1]) for c in cols_ivt_mt])))
-    for col in cols_ivt_mt_prefixes:
-        # Find the equivalent column for nLVO:
-        col_nlvo = col.replace('lvo', 'nlvo')
-        # Find the equivalent column for ivt-only:
-        col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
+    # # Make a copy of nLVO IVT results for nLVO IVT+MT results:
+    # cols_ivt_mt = [c for c in df_mrs.columns if 'ivt_mt' in c]
+    # # Find the col names without _mrs at the end:
+    # cols_ivt_mt_prefixes = sorted(list(set(
+    #     ['_'.join(c.split('_')[:-1]) for c in cols_ivt_mt])))
+    # for col in cols_ivt_mt_prefixes:
+    #     # Find the equivalent column for nLVO:
+    #     col_nlvo = col.replace('lvo', 'nlvo')
+    #     # Find the equivalent column for ivt-only:
+    #     col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
 
-        # Add mRS suffixes back on:
-        cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
-        cols_ivt = [f'{col_ivt}_{i}' for i in range(7)]
-        # Copy over the data:
-        df_mrs[cols_nlvo] = df_mrs[cols_ivt]
-    # Set the nLVO MT results to be the nLVO no-treatment results:
-    cols_mt = [c for c in df_mrs.columns if
-               (('_mt_' in c) & ('_ivt_' not in c))]
-    # Find the col names without _mrs at the end:
-    cols_mt_prefixes = sorted(list(set(
-        ['_'.join(c.split('_')[:-1]) for c in cols_mt])))
-    for col in cols_mt_prefixes:
-        # Find the equivalent column for nLVO:
-        col_nlvo = col.replace('lvo', 'nlvo')
-        # Add the suffixes back in:
-        cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
-        if 'noncum' in col_nlvo:
-            dist = dist_dict['nlvo_no_treatment_noncum']
-        else:
-            dist = dist_dict['nlvo_no_treatment']
-        # Copy over the data:
-        df_mrs[cols_nlvo] = dist
+    #     # Add mRS suffixes back on:
+    #     cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
+    #     cols_ivt = [f'{col_ivt}_{i}' for i in range(7)]
+    #     # Copy over the data:
+    #     df_mrs[cols_nlvo] = df_mrs[cols_ivt]
+    # # Set the nLVO MT results to be the nLVO no-treatment results:
+    # cols_mt = [c for c in df_mrs.columns if
+    #            (('_mt_' in c) & ('_ivt_' not in c))]
+    # # Find the col names without _mrs at the end:
+    # cols_mt_prefixes = sorted(list(set(
+    #     ['_'.join(c.split('_')[:-1]) for c in cols_mt])))
+    # for col in cols_mt_prefixes:
+    #     # Find the equivalent column for nLVO:
+    #     col_nlvo = col.replace('lvo', 'nlvo')
+    #     # Add the suffixes back in:
+    #     cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
+    #     if 'noncum' in col_nlvo:
+    #         dist = dist_dict['nlvo_no_treatment_noncum']
+    #     else:
+    #         dist = dist_dict['nlvo_no_treatment']
+    #     # Copy over the data:
+    #     df_mrs[cols_nlvo] = dist
 
     return df_lsoa, df_mrs
 
@@ -236,7 +239,7 @@ def group_results_by_icb(df_lsoa):
     # Round the values.
     # Outcomes:
     cols_outcome = [c for c in df_icb.columns if (
-        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
     for col in cols_outcome:
@@ -269,7 +272,7 @@ def group_results_by_isdn(df_lsoa):
     # Round the values.
     # Outcomes:
     cols_outcome = [c for c in df_isdn.columns if (
-        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
     for col in cols_outcome:
@@ -306,7 +309,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     # Round the values.
     # Outcomes:
     cols_outcome = [c for c in df_nearest_ivt.columns if (
-        (c.endswith('utility')) | (c.endswith('utility_shift')) |
+        (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
     for col in cols_outcome:
@@ -433,6 +436,10 @@ def combine_results_by_occlusion_type(
     This is more efficient than calculating and creating
     each new column individually.
     """
+    # Use a copy of the input dataframe so we can temporarily
+    # add columns for no-treatment:
+    df_lsoa = df_lsoa.copy()
+
     # Simple addition: x% of column 1 plus y% of column 2.
     # Column names for these new DataFrames:
     cols_combo = []
@@ -446,7 +453,10 @@ def combine_results_by_occlusion_type(
     if combine_mrs_dists:
         outcome_list = ['mrs_dists_noncum']  # not cumulative
     else:
-        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility_shift']
+
+    # For no-treatment mRS distributions:
+    dist_dict = load_reference_mrs_dists()
 
     for s in scenario_list:
         for t in treatment_list:
@@ -454,12 +464,18 @@ def combine_results_by_occlusion_type(
                 if combine_mrs_dists:
                     cols_mrs_lvo = [f'lvo_{s}_{t}_{o}_{i}' for i in range(7)]
 
-                    if t == 'ivt_mt':
-                        cols_mrs_nlvo = [
-                            f'nlvo_{s}_ivt_{o}_{i}' for i in range(7)]
-                    else:
+                    if t == 'mt':
                         cols_mrs_nlvo = [
                             f'nlvo_{s}_{t}_{o}_{i}' for i in range(7)]
+                        if 'noncum' in o:
+                            dist = dist_dict['nlvo_no_treatment_noncum']
+                        else:
+                            dist = dist_dict['nlvo_no_treatment']
+                        # Add this data to the starting dataframe:
+                        df_lsoa[cols_mrs_nlvo] = dist
+                    else:
+                        cols_mrs_nlvo = [
+                            f'nlvo_{s}_ivt_{o}_{i}' for i in range(7)]
                     try:
                         data_nlvo = df_lsoa[cols_mrs_nlvo]
                         data_exists = True
@@ -473,19 +489,16 @@ def combine_results_by_occlusion_type(
                         cols_lvo += cols_mrs_lvo
 
                 else:
+                    if t == 'mt':
+                        if o in ['mrs_shift', 'utility_shift']:
+                            col_nlvo = f'nlvo_{s}_ivt_{o}'
+                            df_lsoa[col_nlvo] = 0.0
+                        else:
+                            col_nlvo = f'nlvo_no_treatment_{o}'
+                    else:
+                        col_nlvo = f'nlvo_{s}_ivt_{o}'
 
-                    # if t == 'mt':
-                    #     if o in ['mrs_shift', 'utility_shift']:
-                    #         data_nlvo = 0.0
-                    #         data_exists = True
-                    #     else:
-                    #         col_nlvo = f'nlvo_no_treatment_{o}'
-                    #         data_nlvo = df_lsoa[col_nlvo]
-                    #         data_exists = True
-                    # else:
-                    # col_nlvo = f'nlvo_{s}_ivt_{o}'
-
-                    col_nlvo = f'nlvo_{s}_{t}_{o}'
+                    # col_nlvo = f'nlvo_{s}_{t}_{o}'
                     col_lvo = f'lvo_{s}_{t}_{o}'
                     try:
                         data_nlvo = df_lsoa[col_nlvo]
@@ -554,7 +567,7 @@ def combine_results_by_redirection(
     if combine_mrs_dists:
         outcome_list = ['mrs_dists_noncum']  # not cumulative
     else:
-        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+        outcome_list = ['mrs_0-2', 'mrs_shift', 'utility_shift']
 
     for v in occlusion_list:
         # Column names for these new DataFrames:
@@ -646,7 +659,7 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
     if combine_mrs_dists:
         outcome_types = ['mrs_dists_noncum']  # not cumulative
     else:
-        outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
+        outcome_types = ['mrs_0-2', 'mrs_shift', 'utility_shift']
 
     for occ in occlusion_types:
         for tre in treatment_types:

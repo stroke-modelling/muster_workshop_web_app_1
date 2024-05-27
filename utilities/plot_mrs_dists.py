@@ -50,23 +50,6 @@ def setup_for_mrs_dist_bars(
         f'{scenario_dict["treatment_type_str"]}'
         ])
 
-    # Gather mRS distributions.
-    # Selected region:
-    dist_noncum = df.loc[str_selected_region,
-                         [f'{col}_noncum_{i}' for i in range(7)]].values
-    dist_cum = df.loc[str_selected_region,
-                      [f'{col}_{i}' for i in range(7)]].values
-    dist_std = df.loc[str_selected_region,
-                      [f'{col}_noncum_std_{i}' for i in range(7)]].values
-
-    # Redirect:
-    dist2_noncum = df.loc[str_selected_region,
-                          [f'{col2}_noncum_{i}' for i in range(7)]].values
-    dist2_cum = df.loc[str_selected_region,
-                       [f'{col2}_{i}' for i in range(7)]].values
-    dist2_std = df.loc[str_selected_region,
-                       [f'{col2}_noncum_std_{i}' for i in range(7)]].values
-
     # No-treatment data:
     dist_dict = load_reference_mrs_dists()
     if 'nlvo' in occ_type:
@@ -75,6 +58,55 @@ def setup_for_mrs_dist_bars(
     else:
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
+
+    # Gather mRS distributions.
+    try:
+        # Selected region:
+        dist_noncum = df.loc[str_selected_region,
+                            [f'{col}_noncum_{i}' for i in range(7)]].values
+        dist_cum = df.loc[str_selected_region,
+                        [f'{col}_{i}' for i in range(7)]].values
+        dist_std = df.loc[str_selected_region,
+                        [f'{col}_noncum_std_{i}' for i in range(7)]].values
+
+        # Redirect:
+        dist2_noncum = df.loc[str_selected_region,
+                            [f'{col2}_noncum_{i}' for i in range(7)]].values
+        dist2_cum = df.loc[str_selected_region,
+                        [f'{col2}_{i}' for i in range(7)]].values
+        dist2_std = df.loc[str_selected_region,
+                        [f'{col2}_noncum_std_{i}' for i in range(7)]].values
+    except KeyError:
+        # The data doesn't exist.
+        if (('mt' in treat_type) & ('ivt' not in treat_type)):
+            # MT-only. Use reference data.
+            # Selected region:
+            dist_noncum = dist_ref_noncum
+            dist_cum = dist_ref_cum
+            dist_std = None
+            # Redirect:
+            dist2_noncum = dist_ref_noncum
+            dist2_cum = dist_ref_cum
+            dist2_std = None
+        else:
+            # Use IVT-only data.
+            col = f'{occ_type}_{scenarios[0]}_ivt_mrs_dists'
+            col2 = f'{occ_type}_{scenarios[1]}_ivt_mrs_dists'
+            # Selected region:
+            dist_noncum = df.loc[str_selected_region,
+                                [f'{col}_noncum_{i}' for i in range(7)]].values
+            dist_cum = df.loc[str_selected_region,
+                            [f'{col}_{i}' for i in range(7)]].values
+            dist_std = df.loc[str_selected_region,
+                            [f'{col}_noncum_std_{i}' for i in range(7)]].values
+
+            # Redirect:
+            dist2_noncum = df.loc[str_selected_region,
+                                [f'{col2}_noncum_{i}' for i in range(7)]].values
+            dist2_cum = df.loc[str_selected_region,
+                            [f'{col2}_{i}' for i in range(7)]].values
+            dist2_std = df.loc[str_selected_region,
+                            [f'{col2}_noncum_std_{i}' for i in range(7)]].values
 
     # Display names for the data:
     display_name_dict = {

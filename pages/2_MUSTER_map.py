@@ -22,7 +22,8 @@ import utilities.container_inputs as inputs
 @st.cache_data
 def main_calculations(input_dict, df_unit_services):
     # Process LSOA and calculate outcomes:
-    df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
+    df_lsoa, df_mrs = calc.calculate_outcomes(
+        input_dict, df_unit_services, use_msu=True, use_mothership=False)
 
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)

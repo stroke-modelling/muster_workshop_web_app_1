@@ -22,7 +22,8 @@ import utilities.container_inputs as inputs
 @st.cache_data
 def main_calculations(input_dict, df_unit_services):
     # Process LSOA and calculate outcomes:
-    df_lsoa, df_mrs = calc.calculate_outcomes(input_dict, df_unit_services)
+    df_lsoa, df_mrs = calc.calculate_outcomes(
+        input_dict, df_unit_services, use_msu=False, use_mothership=True)
 
     # Remove the MSU data:
     cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
@@ -202,6 +203,9 @@ with container_map:
 
 df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
     main_calculations(input_dict, df_unit_services))
+
+for col in df_lsoa.columns:
+    st.write(col)
 
 # ###########################################
 # ########## USER INPUTS FOR PLOTS ##########

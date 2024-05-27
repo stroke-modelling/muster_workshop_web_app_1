@@ -58,12 +58,22 @@ def create_colour_gdf(
     colour_dict['title'] = cbar_title
     # Find the names of the columns that contain the data
     # that will be shown in the colour maps.
-    column_colours = '_'.join([
-            scenario_dict['stroke_type'],
-            scenario_type,
-            scenario_dict['treatment_type'],
-            scenario_dict['outcome_type']
-        ])
+    if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+        # Use no-treatment data.
+        treatment_type = ''
+        column_colours = None
+    else:
+        if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
+            # Use IVT-only data.
+            treatment_type = 'ivt'
+        else:
+            treatment_type = scenario_dict['treatment_type']
+        column_colours = '_'.join([
+                scenario_dict['stroke_type'],
+                scenario_type,
+                treatment_type,
+                scenario_dict['outcome_type']
+            ])
     colour_dict['column'] = column_colours
 
     # ----- Outcome maps -----
@@ -110,6 +120,10 @@ def assign_colour_bands_to_areas(
                  assigned to.
     """
     df = df.copy()
+
+    if col_col is None:
+        # Set all shifts to zero.
+        df[col_col] = 0.0
 
     # Only keep the required columns:
     df = df[[col_col]]
