@@ -234,7 +234,6 @@ with container_results_tables:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
-        st.markdown('### Results by nearest IVT unit')
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each IVT unit catchment area.'
@@ -242,17 +241,14 @@ with container_results_tables:
         st.dataframe(df_nearest_ivt)
 
     with results_tabs[1]:
-        st.markdown('### Results by ISDN')
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
         st.dataframe(df_isdn)
 
     with results_tabs[2]:
-        st.markdown('### Results by ICB')
         st.markdown('Results are the mean values of all LSOA in each ICB.')
         st.dataframe(df_icb)
 
     with results_tabs[3]:
-        st.markdown('### Results by LSOA')
         st.dataframe(df_lsoa)
 
 
