@@ -92,7 +92,8 @@ with container_map_inputs:
      container_input_mrs_region) = st.columns(4)
 with container_input_mrs_region:
     container_input_mrs_region = st.empty()
-container_results_tables = st.container()
+with st.expander('Full data tables'):
+    container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
         container_select_outcome = st.container()
@@ -219,7 +220,6 @@ unit_subplot_dict = {
 # ########## RESULTS - FULL DATA ##########
 # #########################################
 with container_results_tables:
-    st.markdown('## Full data')
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
         'Results by ISDN',

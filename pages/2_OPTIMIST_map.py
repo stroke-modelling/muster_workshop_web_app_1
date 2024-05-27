@@ -163,7 +163,8 @@ with container_input_mrs_region:
 # the bars rather than displays the new plot in addition.
 with container_mrs_dists:
     container_mrs_dists = st.empty()
-container_results_tables = st.container()
+with st.expander('Full data tables'):
+    container_results_tables = st.container()
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
         container_select_outcome = st.container()
@@ -204,8 +205,6 @@ with container_map:
 df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
     main_calculations(input_dict, df_unit_services))
 
-for col in df_lsoa.columns:
-    st.write(col)
 
 # ###########################################
 # ########## USER INPUTS FOR PLOTS ##########
@@ -292,7 +291,6 @@ unit_subplot_dict = {
 # ########## RESULTS - FULL DATA ##########
 # #########################################
 with container_results_tables:
-    st.markdown('## Full data')
     results_tabs = st.tabs([
         'Results by IVT unit catchment',
         'Results by ISDN',
