@@ -313,6 +313,10 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
             if geo.geom_type == 'Polygon':
                 # Can use the data pretty much as it is.
                 x, y = geo.exterior.coords.xy
+                for interior in geo.interiors:
+                    x_i, y_i = interior.coords.xy
+                    x = list(x) + [None] + list(x_i)
+                    y = list(y) + [None] + list(y_i)
                 x_list.append(list(x))
                 y_list.append(list(y))
             elif geo.geom_type == 'MultiPolygon':
@@ -323,6 +327,10 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
                     x, y = poly.exterior.coords.xy
                     x_combo += list(x) + [None]
                     y_combo += list(y) + [None]
+                    for interior in poly.interiors:
+                        x_i, y_i = interior.coords.xy
+                        x_combo += list(x_i) + [None]
+                        y_combo += list(y_i) + [None]
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
             elif geo.geom_type == 'GeometryCollection':
@@ -339,6 +347,10 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
                         x, y = t.exterior.coords.xy
                         x_combo += list(x) + [None]
                         y_combo += list(y) + [None]
+                        for interior in t.interiors:
+                            x_i, y_i = interior.coords.xy
+                            x_combo += list(x_i) + [None]
+                            y_combo += list(y_i) + [None]
                     else:
                         # Multipolygon.
                         # Put None values between polygons.
@@ -346,6 +358,10 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
                             x, y = poly.exterior.coords.xy
                             x_combo += list(x) + [None]
                             y_combo += list(y) + [None]
+                            for interior in poly.interiors:
+                                x_i, y_i = interior.coords.xy
+                                x_combo += list(x_i) + [None]
+                                y_combo += list(y_i) + [None]
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
             else:
@@ -355,3 +371,4 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
             x_list.append([]),
             y_list.append([])
     return x_list, y_list
+
