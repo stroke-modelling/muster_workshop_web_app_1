@@ -1,32 +1,12 @@
 """
 Set up and plot mRS distributions.
 """
-import stroke_outcome  # for reference dists
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
 import utilities.calculations as calc
-
-
-def load_reference_mrs_dists():
-    mrs_dists_ref, mrs_dists_ref_notes = (
-        stroke_outcome.outcome_utilities.import_mrs_dists_from_file())
-
-    nlvo_no_treatment = mrs_dists_ref.loc['no_treatment_nlvo'].values
-    nlvo_no_treatment_noncum = np.diff(nlvo_no_treatment, prepend=0.0)
-
-    lvo_no_treatment = mrs_dists_ref.loc['no_treatment_lvo'].values
-    lvo_no_treatment_noncum = np.diff(lvo_no_treatment, prepend=0.0)
-
-    dist_dict = {
-        'nlvo_no_treatment': nlvo_no_treatment,
-        'nlvo_no_treatment_noncum': nlvo_no_treatment_noncum,
-        'lvo_no_treatment': lvo_no_treatment,
-        'lvo_no_treatment_noncum': lvo_no_treatment_noncum,
-    }
-    return dist_dict
+from utilities.utils import load_reference_mrs_dists
 
 
 def setup_for_mrs_dist_bars(
@@ -40,19 +20,15 @@ def setup_for_mrs_dist_bars(
     # which of the input dataframes, and which column within it.
     # Also keep a copy of the name of the selected region.
     if bar_option.startswith('ISDN: '):
-        str_region_type = 'ISDN'
         str_selected_region = bar_option.split('ISDN: ')[-1]
         col_region = 'isdn'
     elif bar_option.startswith('ICB: '):
-        str_region_type = 'ICB'
         str_selected_region = bar_option.split('ICB: ')[-1]
         col_region = 'icb'
     elif bar_option.startswith('Nearest unit: '):
-        str_region_type = 'Nearest unit'
         str_selected_region = bar_option.split('Nearest unit: ')[-1]
         col_region = 'nearest_ivt_unit_name'
     else:
-        str_region_type = 'National'
         str_selected_region = 'National'
         col_region = ''
 
@@ -74,24 +50,6 @@ def setup_for_mrs_dist_bars(
         f'{scenario_dict["treatment_type_str"]}'
         ])
 
-    # Gather mRS distributions.
-    # Selected region:
-    dist_noncum = df.loc[str_selected_region, [f'{col}_noncum_{i}' for i in range(7)]].values
-    dist_cum = df.loc[str_selected_region, [f'{col}_{i}' for i in range(7)]].values
-    dist_std = df.loc[str_selected_region, [f'{col}_noncum_std_{i}' for i in range(7)]].values
-
-    # Redirect:
-    dist2_noncum = df.loc[str_selected_region, [f'{col2}_noncum_{i}' for i in range(7)]].values
-    dist2_cum = df.loc[str_selected_region, [f'{col2}_{i}' for i in range(7)]].values
-    dist2_std = df.loc[str_selected_region, [f'{col2}_noncum_std_{i}' for i in range(7)]].values
-
-    # # National data:
-    # dist_national_noncum = (
-    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum'])
-    # dist_national_cum = df_mrs_national.loc[df_mrs_national.index[0], col]
-    # dist_national_std = (
-    #     df_mrs_national.loc[df_mrs_national.index[0], f'{col}_noncum_std'])
-
     # No-treatment data:
     dist_dict = load_reference_mrs_dists()
     if 'nlvo' in occ_type:
@@ -101,6 +59,72 @@ def setup_for_mrs_dist_bars(
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
 
+    # Gather mRS distributions.
+    try:
+        # Selected region:
+        dist_noncum = df.loc[str_selected_region,
+                            [f'{col}_noncum_{i}' for i in range(7)]].values
+        dist_cum = df.loc[str_selected_region,
+                        [f'{col}_{i}' for i in range(7)]].values
+        dist_std = df.loc[str_selected_region,
+                        [f'{col}_noncum_std_{i}' for i in range(7)]].values
+
+        # Redirect:
+        dist2_noncum = df.loc[str_selected_region,
+                            [f'{col2}_noncum_{i}' for i in range(7)]].values
+        dist2_cum = df.loc[str_selected_region,
+                        [f'{col2}_{i}' for i in range(7)]].values
+        dist2_std = df.loc[str_selected_region,
+                        [f'{col2}_noncum_std_{i}' for i in range(7)]].values
+    except KeyError:
+        # The data doesn't exist.
+        if (('mt' in treat_type) & ('ivt' not in treat_type)):
+            # MT-only. Use reference data.
+            # Selected region:
+            dist_noncum = dist_ref_noncum
+            dist_cum = dist_ref_cum
+            dist_std = None
+            # Redirect:
+            dist2_noncum = dist_ref_noncum
+            dist2_cum = dist_ref_cum
+            dist2_std = None
+        else:
+            # Use IVT-only data.
+            col = f'{occ_type}_{scenarios[0]}_ivt_mrs_dists'
+            col2 = f'{occ_type}_{scenarios[1]}_ivt_mrs_dists'
+            # Selected region:
+            dist_noncum = df.loc[str_selected_region,
+                                [f'{col}_noncum_{i}' for i in range(7)]].values
+            dist_cum = df.loc[str_selected_region,
+                            [f'{col}_{i}' for i in range(7)]].values
+            dist_std = df.loc[str_selected_region,
+                            [f'{col}_noncum_std_{i}' for i in range(7)]].values
+
+            # Redirect:
+            dist2_noncum = df.loc[str_selected_region,
+                                [f'{col2}_noncum_{i}' for i in range(7)]].values
+            dist2_cum = df.loc[str_selected_region,
+                            [f'{col2}_{i}' for i in range(7)]].values
+            dist2_std = df.loc[str_selected_region,
+                            [f'{col2}_noncum_std_{i}' for i in range(7)]].values
+
+    # Display names for the data:
+    display_name_dict = {
+        'drip_ship': 'Usual care',
+        'redirect': 'Redirection',
+        'msu': 'MSU'
+    }
+    # Pick out the nicer-formatted names if they exist
+    # or use the current names if not.
+    try:
+        display0 = display_name_dict[scenarios[0]]
+    except KeyError:
+        display0 = scenarios[0]
+    try:
+        display1 = display_name_dict[scenarios[1]]
+    except KeyError:
+        display1 = scenarios[1]
+
     # Seaborn-colorblind colours:
     # #0072b2  blue
     # #009e73  green
@@ -109,7 +133,8 @@ def setup_for_mrs_dist_bars(
     # #f0e442  yellow
     # #56b4e9  light blue
 
-    # Place all data and setup for plot into this dictionary:
+    # Place all data and setup for plot into this dictionary.
+    # The keys are used for the legend labels.
     mrs_lists_dict = {
         'No treatment': {
             'noncum': dist_ref_noncum,
@@ -118,25 +143,14 @@ def setup_for_mrs_dist_bars(
             'colour': 'grey',
             'linestyle': 'dot',
         },
-        # 'National': {
-        #     'noncum': dist_national_noncum,
-        #     'cum': dist_national_cum,
-        #     'std': dist_national_std,
-        #     'colour': 'green',
-        #     'linestyle': None,
-        # },
-        # # if str_selected_region is 'National',
-        # # then the following entry overwrites previous:
-        scenarios[0]: {
+        display0: {
             'noncum': dist_noncum,
             'cum': dist_cum,
             'std': dist_std,
             'colour': '#0072b2',
             'linestyle': 'dash',
         },
-        # if str_selected_region is 'National',
-        # then the following entry overwrites previous:
-        scenarios[1]: {
+        display1: {
             'noncum': dist2_noncum,
             'cum': dist2_cum,
             'std': dist2_std,
@@ -154,7 +168,9 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
         'Cumulative probability<br>of discharge disability'
     ]
 
-    fig = make_subplots(rows=2, cols=1, subplot_titles=subplot_titles)
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=subplot_titles, shared_xaxes=True)
+    fig.update_layout(xaxis_showticklabels=True)
 
     for label, mrs_dict in mrs_lists_dict.items():
 
@@ -181,6 +197,10 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
             ), row=2, col=1)
 
     fig.update_layout(barmode='group')
+    # Bump the second half of the legend downwards:
+    # (bump amount is eyeballed based on fig height)
+    fig.update_layout(legend_tracegroupgap=240)
+
     fig.update_layout(title=title_text)
     for row in [1, 2]:  # 'all' doesn't work for some reason
         fig.update_xaxes(
@@ -198,8 +218,27 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
     fig.update_layout(
         # width=1200,
         height=700,
-        margin_t=100,
+        margin_t=150,
         )
 
-    # fig.show()
-    st.plotly_chart(fig, use_container_width=True)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
