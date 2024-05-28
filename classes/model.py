@@ -110,7 +110,12 @@ class Model(object):
             self.full_results['nearest_ivt_time'] +
             self.scenario.process_time_arrival_to_needle)
 
-        self.full_results['drip_ship_mt_time'] = (
+        # Separate MT timings required depending on whether transfer
+        # needed. Mask for which rows of data need a transfer:
+        mask_transfer = self.full_results['transfer_required']
+
+        # Timings for units needing transfers:
+        mt_transfer = (
             self.scenario.process_time_call_ambulance +
             self.scenario.process_time_ambulance_response +
             self.scenario.process_ambulance_on_scene_duration +
@@ -118,6 +123,19 @@ class Model(object):
             self.scenario. transfer_time_delay +
             self.full_results['transfer_time'] +
             self.scenario.process_time_transfer_arrival_to_puncture)
+
+        # Timings for units that do not need transfers:
+        mt_no_transfer = (
+            self.scenario.process_time_call_ambulance +
+            self.scenario.process_time_ambulance_response +
+            self.scenario.process_ambulance_on_scene_duration +
+            self.full_results['nearest_ivt_time'] +
+            self.scenario.process_time_arrival_to_puncture)
+
+        self.full_results['drip_ship_mt_time'] = mt_transfer
+        self.full_results.loc[
+            ~mask_transfer, 'drip_ship_mt_time'] = mt_no_transfer
+
 
         # Add clinical benefit for nLVO outcome (stroke type = 1)
         # Set up input table for stroke outcome package

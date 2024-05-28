@@ -38,7 +38,7 @@ def calculate_outcomes(input_dict, df_unit_services,
         )
     geo.run()
 
-    # Reset index because Model expects a column named 'msoa':
+    # Reset index because Model expects a column named 'lsoa':
     geo.combined_data = geo.combined_data.reset_index()
 
     # Set up model
