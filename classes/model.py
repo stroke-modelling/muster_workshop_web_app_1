@@ -151,12 +151,12 @@ class Model(object):
             continuous_outcome.calculate_outcomes())
         self.full_results['nlvo_no_treatment_mrs_0-2'] = \
             continuous_outcome.mrs_distribution_probs['no_treatment_nlvo'][2]
-        # self.full_results['nlvo_no_treatment_utility'] = \
-        #     outcomes_by_stroke_type['nlvo_ivt_utility_not_treated']
+        self.full_results['nlvo_no_treatment_utility'] = \
+            outcomes_by_stroke_type['nlvo_ivt_utility_not_treated']
         self.full_results['lvo_no_treatment_mrs_0-2'] = \
             continuous_outcome.mrs_distribution_probs['no_treatment_lvo'][2]
-        # self.full_results['lvo_no_treatment_utility'] = \
-        #     outcomes_by_stroke_type['lvo_ivt_utility_not_treated']
+        self.full_results['lvo_no_treatment_utility'] = \
+            outcomes_by_stroke_type['lvo_ivt_utility_not_treated']
 
         # Outcome with treatment
         outcome_inputs_df['ivt_chosen_bool'] = 1
@@ -166,7 +166,7 @@ class Model(object):
         self.full_results['nlvo_drip_ship_ivt_mrs_0-2'] = \
             outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
         self.full_results['nlvo_drip_ship_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_shift']        
+            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_shift']
         # self.full_results['nlvo_drip_ship_ivt_utility'] = \
         #     outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_post_stroke']
         self.full_results['nlvo_drip_ship_ivt_utility_shift'] = \
