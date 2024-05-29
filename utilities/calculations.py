@@ -56,8 +56,8 @@ def calculate_outcomes(input_dict, df_unit_services,
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
 
-    # No-treatment data:
-    dist_dict = load_reference_mrs_dists()
+    # # No-treatment data:
+    # dist_dict = load_reference_mrs_dists()
 
     # Copy stroke unit names over. Currently has only postcodes.
     cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
@@ -438,7 +438,7 @@ def combine_results_by_occlusion_type(
     """
     # Use a copy of the input dataframe so we can temporarily
     # add columns for no-treatment:
-    df_lsoa = df_lsoa.copy()
+    df_lsoa_to_update = df_lsoa.copy()
 
     # Simple addition: x% of column 1 plus y% of column 2.
     # Column names for these new DataFrames:
@@ -472,12 +472,12 @@ def combine_results_by_occlusion_type(
                         else:
                             dist = dist_dict['nlvo_no_treatment']
                         # Add this data to the starting dataframe:
-                        df_lsoa[cols_mrs_nlvo] = dist
+                        df_lsoa_to_update[cols_mrs_nlvo] = dist
                     else:
                         cols_mrs_nlvo = [
                             f'nlvo_{s}_ivt_{o}_{i}' for i in range(7)]
                     try:
-                        data_nlvo = df_lsoa[cols_mrs_nlvo]
+                        data_nlvo = df_lsoa_to_update[cols_mrs_nlvo]
                         data_exists = True
                     except KeyError:
                         data_exists = False
@@ -492,7 +492,7 @@ def combine_results_by_occlusion_type(
                     if t == 'mt':
                         if o in ['mrs_shift', 'utility_shift']:
                             col_nlvo = f'nlvo_{s}_ivt_{o}'
-                            df_lsoa[col_nlvo] = 0.0
+                            df_lsoa_to_update[col_nlvo] = 0.0
                         else:
                             col_nlvo = f'nlvo_no_treatment_{o}'
                     else:
@@ -501,7 +501,7 @@ def combine_results_by_occlusion_type(
                     # col_nlvo = f'nlvo_{s}_{t}_{o}'
                     col_lvo = f'lvo_{s}_{t}_{o}'
                     try:
-                        data_nlvo = df_lsoa[col_nlvo]
+                        data_nlvo = df_lsoa_to_update[col_nlvo]
                         data_exists = True
                     except KeyError:
                         data_exists = False
@@ -512,8 +512,8 @@ def combine_results_by_occlusion_type(
                         cols_lvo.append(col_lvo)
 
     # Pick out the data from the original dataframe:
-    df1 = df_lsoa[cols_nlvo].copy()
-    df2 = df_lsoa[cols_lvo].copy()
+    df1 = df_lsoa_to_update[cols_nlvo].copy()
+    df2 = df_lsoa_to_update[cols_lvo].copy()
     # Rename columns so they match:
     df1.columns = cols_combo
     df2.columns = cols_combo
@@ -617,8 +617,8 @@ def combine_results_by_redirection(
 
         # Create new dataframe from combining the two separate ones:
         combo_data = (
-            df1 * prop +
-            df2 * (1.0 - prop)
+            df1 * (1.0 - prop) +
+            df2 * prop
         )
 
         if combine_mrs_dists:

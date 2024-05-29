@@ -56,6 +56,7 @@ def main_calculations(input_dict, df_unit_services):
 
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)
+
     return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
 
 
