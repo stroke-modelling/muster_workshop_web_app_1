@@ -858,6 +858,113 @@ def set_up_colours(
     return colour_dict
 
 
+def set_up_colours_demog(
+        v_min,
+        v_max,
+        step_size,
+        use_diverging=False,
+        cmap_name='inferno',
+        v_name='v',
+        use_discrete=True
+        ):
+
+    if cmap_name.endswith('_r_r'):
+        # Remove the double reverse reverse.
+        cmap_name = cmap_name[:-4]
+
+    # Make a new column for the colours.
+    v_bands = np.arange(v_min, v_max + step_size, step_size)
+    if use_diverging:
+        # Remove existing zero:
+        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
+        if len(ind_z) > 0:
+            ind_z = ind_z[0]
+            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
+        # Add a zero-ish band.
+        ind = np.where(v_bands >= -0.0)[0][0]
+        zero_size = step_size * 0.01
+        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
+        v_bands_z = np.append(v_bands_z, v_bands[ind:])
+        v_bands = v_bands_z
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
+        # Update zeroish name:
+        v_bands_str[ind+1] = '0.0'
+    else:
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
+    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
+
+    # Link bands to colours via v_bands_str:
+    colours = []
+    for v in v_bands_str:
+        colours.append(colour_map[v])
+
+    # Add an extra bound at either end (for the "to infinity" bit):
+    v_bands_for_cs = np.append(v_min - step_size, v_bands)
+    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
+    # Normalise the data bounds:
+    bounds = (
+        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
+        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
+    )
+    # Add extra bounds so that there's a tiny space at either end
+    # for the under/over colours.
+    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
+    bounds_for_cs = bounds
+
+    # Need separate data values and colourbar values.
+    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
+
+    # Create a colour scale from these colours.
+    # To get the discrete colourmap (i.e. no continuous gradient of
+    # colour made between the defined colours),
+    # double up the bounds so that colour A explicitly ends where
+    # colour B starts.
+    if use_discrete:
+        colourscale = []
+        for i in range(len(colours)):
+            colourscale += [
+                [bounds_for_cs[i], colours[i]],
+                [bounds_for_cs[i+1], colours[i]]
+                ]
+    else:
+        # Make a "continuous" colour map in the same way as before
+        # because plotly cannot access all cmaps and sometimes they
+        # differ from matplotlib (e.g. inferno gets a pink end).
+        colour_map_cont = make_colour_map_dict(
+            np.arange(100).astype(str), cmap_name)
+        colours_cont = list(colour_map_cont.values())
+        bounds_for_cs_cont = np.linspace(0.0, 1.0, len(colours_cont)+1)
+
+        colourscale = []
+        for i in range(len(colours_cont)):
+            colourscale += [
+                [bounds_for_cs_cont[i], colours_cont[i]],
+                [bounds_for_cs_cont[i+1], colours_cont[i]]
+                ]
+        # Remove the "to infinity" bits from bounds:
+        # v_bands = v_bands[1:-1]
+        # v_bands_str = v_bands_str[1:-1]
+        bounds_for_cs = np.linspace(0.0, 1.0, len(v_bands))#bounds_for_cs[1:-1]
+
+    colour_dict = {
+        'diverging': use_diverging,
+        'v_min': v_min,
+        'v_max': v_max,
+        'step_size': step_size,
+        'cmap_name': cmap_name,
+        'v_bands': v_bands,
+        'v_bands_str': v_bands_str,
+        'colour_map': colour_map,
+        'colour_scale': colourscale,
+        'bounds_for_colour_scale': bounds_for_cs,
+        # 'zero_label': '0.0',
+        # 'zero_colour': 
+    }
+    return colour_dict
+
+
 def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
     # Get colour values:
     try:
