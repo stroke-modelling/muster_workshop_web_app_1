@@ -5,6 +5,7 @@ Extra notebook to show the OPTIMIST app workings in more detail.
 import streamlit as st
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 
 # Custom functions:
 import utilities.calculations as calc
@@ -24,6 +25,16 @@ st.set_page_config(
     page_icon=':ambulance:',
     layout='wide'
     )
+
+st.markdown('# OPTIMIST app step-by-step')
+st.markdown(
+'''
+The app does three main things:
++ Calculate __times to treatment__.
++ Use those times to calculate __outcomes__ for all patient types.
++ Find results for a __population__ of stroke patients by combining results of different patient types.
+'''
+)
 
 with st.sidebar:
     container_inputs = st.container()
@@ -123,6 +134,9 @@ with container_inputs:
                     step=s_dict['step'],
                     key=key
                     )
+        # Add in some blank values for the travel times:
+        for key in ['nearest_ivt_time', 'transfer_time', 'nearest_mt_time']:
+            pathway_dict[key] = np.NaN
 
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
@@ -147,8 +161,329 @@ df_lsoa, df_mrs = calc.calculate_outcomes(
 # ########## TIMELINE ##########
 # ##############################
 
-st.markdown('## Timeline')
-st.markdown('The pathway timings add up to these treatment times (__excluding__ travel times):')
+st.markdown('## Pathway timings')
+st.markdown(
+'''
+Inputs that affect this:
++ Anything related to "time"
+'''
+)
+st.markdown('### Timeline without travel')
+
+
+# from utilities.plot_timeline import build_data_for_timeline, draw_timeline
+# # Gather cumulative times and nicer-formatted cumulative time labels:
+# # (times_dicts, times_cum_dicts, times_cum_label_dicts
+# # times_dicts = build_data_for_timeline(pathway_dict)
+
+# # Drip-and-ship:
+# # Times since onset:
+# times_keys_drip_ship = [
+#     'process_time_call_ambulance',
+#     'process_time_ambulance_response',
+#     'process_ambulance_on_scene_duration',
+# ]
+# # Times since IVT unit arrival:
+#     'process_time_arrival_to_needle',
+#     'transfer_time_delay',
+#     'transfer_time',
+#     'process_time_transfer_arrival_to_puncture',
+# ]
+# times_values_drip_ship = [params_dict[k] for k in times_keys_drip_ship]
+# times_dict_drip_ship = time_dict | dict(zip(times_keys_drip_ship, times_values_drip_ship))
+# times_dicts['drip_ship'] = times_dict_drip_ship
+
+# # st.write(times_dicts)
+# # st.write(times_cum_dicts)
+# # st.write(times_cum_label_dicts)
+
+# # draw_timeline(times_cum_dicts, times_cum_label_dicts)
+# st.stop()
+
+# "Usual care" is either go to an IVT unit and then an MT unit,
+# or go to the nearest unit which happens to have IVT and MT.
+# "Redirect" adds the extra time for diagnostic and can still
+# have either of those two options.
+
+# Pre-hospital "usual care":
+time_dict_prehosp_usual_care = {'onset': 0}
+prehosp_keys = [
+    'process_time_call_ambulance',
+    'process_time_ambulance_response',
+    'process_ambulance_on_scene_duration',
+    ]
+for key in prehosp_keys:
+    time_dict_prehosp_usual_care[key] = pathway_dict[key]
+# Extra time for redirection:
+time_dict_prehosp_redirect = {'onset': 0}
+# Keep this order so that on the timeline plots, the ambulance doesn't
+# say it leaves before doing the diagnostic.
+prehosp_redirect_keys = [
+    'process_time_call_ambulance',
+    'process_time_ambulance_response',
+    'process_ambulance_on_scene_diagnostic_duration',
+    'process_ambulance_on_scene_duration',
+    ]
+for key in prehosp_redirect_keys:
+    time_dict_prehosp_redirect[key] = pathway_dict[key]
+
+# IVT-only unit:
+time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
+time_dict_ivt_only_unit['arrival_to_needle'] = (
+    pathway_dict['process_time_arrival_to_needle'])
+time_dict_ivt_only_unit['needle_to_door_out'] = (
+    pathway_dict['transfer_time_delay'] -
+    pathway_dict['process_time_arrival_to_needle']
+)
+# MT transfer unit:
+time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
+time_dict_mt_transfer_unit['arrival_to_puncture'] = (
+    pathway_dict['process_time_transfer_arrival_to_puncture'])
+# IVT and MT unit:
+time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
+time_dict_ivt_mt_unit['arrival_to_needle'] = (
+    pathway_dict['process_time_arrival_to_needle'])
+time_dict_ivt_mt_unit['needle_to_puncture'] = (
+    pathway_dict['process_time_arrival_to_puncture'] -
+    pathway_dict['process_time_arrival_to_needle']
+)
+
+# Emoji unicode reference:
+# 🔧 \U0001f527
+# 🏥 \U0001f3e5
+# 🚑 \U0001f691
+# 💉 \U0001f489
+# \U0000260E
+emoji_dict = {
+    'onset': '',
+    'process_time_call_ambulance': '\U0000260E',
+    'process_time_ambulance_response': '\U0001f691',
+    'process_ambulance_on_scene_diagnostic_duration': '\U0000260E',
+    'process_ambulance_on_scene_duration': '\U0001f691',
+    'arrival_ivt_only': '\U0001f3e5',
+    'arrival_ivt_mt': '\U0001f3e5',
+    'arrival_to_needle': '\U0001f489',
+    'needle_to_door_out': '\U0001f691',
+    'needle_to_puncture': '\U0001f527',
+    'arrival_to_puncture': '\U0001f527',
+    # 'MSU<br>leaves base': '\U0001f691',
+    # 'MSU<br>arrives on scene': '\U0001f691',
+    # 'MSU<br>leaves scene': '\U0001f691',
+    'nearest_ivt_time': '',
+    'nearest_mt_time': '',
+    'transfer_time': ''
+    }
+display_text_dict = {
+    'onset': 'Onset',
+    'process_time_call_ambulance': 'Call<br>ambulance',
+    'process_time_ambulance_response': 'Ambulance<br>arrives<br>on scene',
+    'process_ambulance_on_scene_diagnostic_duration': 'Extra time<br>for<br>diagnostic',
+    'process_ambulance_on_scene_duration': 'Ambulance<br>leaves',
+    'arrival_ivt_only': 'Arrival<br>IVT unit',
+    'arrival_ivt_mt': 'Arrival<br>MT unit',
+    'arrival_to_needle': '<b><span style="color:red">IVT</span></b>',
+    'needle_to_door_out': 'Ambulance<br>transfer<br>begins',
+    'needle_to_puncture': '<b><span style="color:red">MT</span></b>',
+    'arrival_to_puncture': '<b><span style="color:red">MT</span></b>',
+    # 'MSU<br>leaves base': '\U0001f691',
+    # 'MSU<br>arrives on scene': '\U0001f691',
+    # 'MSU<br>leaves scene': '\U0001f691',
+    'nearest_ivt_time': '',
+    'nearest_mt_time': '',
+    'transfer_time': ''
+    }
+
+cols = st.columns([6, 4], gap='large')
+# Keep an empty middle column to adjust the gap between plots.
+with cols[0]:
+    container_timeline_prehosp = st.container()
+with cols[1]:
+    container_timeline_info = st.container()
+
+# Pre-hospital timelines
+fig = go.Figure()
+
+y_vals = [0, -1, -3, -4, -5]
+
+time_dict = time_dict_prehosp_usual_care
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[0]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Usual care',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[0]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+time_dict = time_dict_prehosp_redirect
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[1]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Redirection',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[1]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+# fig.update_layout(yaxis=dict(
+#     tickmode='array',
+#     tickvals=y_vals,
+#     ticktext=['Usual care', 'Redirection']
+# ))
+# fig.update_layout(yaxis_range=[-0.25, 0.15])
+# fig.update_layout(xaxis_title='Time (minutes)')
+
+# with container_timeline_prehosp:
+#     st.plotly_chart(fig, use_container_width=True)
+
+
+# # Stroke unit timelines
+# fig = go.Figure()
+
+# y_vals = []
+
+time_dict = time_dict_ivt_only_unit
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[2]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='IVT-only unit',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[2]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+time_dict = time_dict_mt_transfer_unit
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[3]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Transfer to MT unit',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[3]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+time_dict = time_dict_ivt_mt_unit
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[4]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='IVT & MT unit',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[4]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+fig.update_layout(yaxis=dict(
+    tickmode='array',
+    tickvals=y_vals,
+    ticktext=['Usual care', 'Redirection', 'IVT-only unit', 'Transfer to MT unit', 'IVT & MT unit']
+))
+fig.update_layout(yaxis_range=[y_vals[-1] - 0.5, y_vals[0] + 1])
+fig.update_layout(xaxis_title='Time (minutes)')
+
+fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+
+fig.update_layout(
+    # autosize=False,
+    # width=500,
+    height=700
+)
+
+with container_timeline_prehosp:
+    st.plotly_chart(fig, use_container_width=True)
+
+
+
+### CALCULATE TIMES TO TREATMENT 
 
 # Usual care:
 time_to_ivt_without_travel_usual_care = (
@@ -206,7 +541,10 @@ df_times = pd.DataFrame(
     columns=['IVT', 'MT (no transfer)', 'MT (after transfer)'],
     index=['Usual care', 'Redirected']
 )
-st.dataframe(df_times)
+
+with container_timeline_info:
+    st.markdown('The pathway timings add up to these treatment times (__excluding__ travel times):')
+    st.table(df_times)
 
 
 
@@ -214,7 +552,14 @@ st.dataframe(df_times)
 # ########## TIME COMPARISON #######
 # ##################################
 
-st.markdown('## Time comparison')
+st.markdown('### Treatment times with travel')
+st.markdown(
+'''
+Inputs that affect this:
++ Which stroke units provide IVT and MT.
+'''
+)
+
 st.markdown('Take the shared pathway times and add on the travel times to the chosen stroke units.')
 
 selected_unit = st.selectbox(
@@ -228,9 +573,9 @@ df_lsoa = df_lsoa.loc[mask].copy()
 mask_mrs = df_mrs.index.isin(df_lsoa.index)
 df_mrs = df_mrs.loc[mask_mrs].copy()
 
-st.markdown('These tables are for Anna\'s reference, ignore them please')
-st.write(df_lsoa)
-st.write(df_mrs)
+# st.markdown('These tables are for Anna\'s reference, ignore them please')
+# st.write(df_lsoa)
+# st.write(df_mrs)
 
 # Usual care times:
 col_ivt_times_usual_care = 'drip_ship_ivt_time'
@@ -259,68 +604,68 @@ merge_polygons_bool = False
 region_type = 'LSOA'
 use_discrete_cmap = False
 
-gdf_usual_ivt, colour_dict_usual_ivt = maps.create_colour_gdf_demog(
-    df_lsoa[col_ivt_times_usual_care],
-    col_ivt_times_usual_care,
-    tmin,
-    tmax,
-    tstep,
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    merge_polygons_bool=merge_polygons_bool,
-    region_type=region_type,
-    use_discrete_cmap=use_discrete_cmap
-    )
-gdf_usual_mt, colour_dict_usual_mt = maps.create_colour_gdf_demog(
-    df_lsoa[col_mt_times_usual_care],
-    col_mt_times_usual_care,
-    tmin,
-    tmax,
-    tstep,
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    merge_polygons_bool=merge_polygons_bool,
-    region_type=region_type,
-    use_discrete_cmap=use_discrete_cmap
-    )
-gdf_redirect_ivt, colour_dict_redirect_ivt = maps.create_colour_gdf_demog(
-    df_lsoa[col_ivt_times_redirect],
-    col_ivt_times_redirect,
-    tmin,
-    tmax,
-    tstep,
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    merge_polygons_bool=merge_polygons_bool,
-    region_type=region_type,
-    use_discrete_cmap=use_discrete_cmap
-    )
-gdf_redirect_mt, colour_dict_redirect_mt = maps.create_colour_gdf_demog(
-    df_lsoa[col_mt_times_redirect],
-    col_mt_times_redirect,
-    tmin,
-    tmax,
-    tstep,
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    merge_polygons_bool=merge_polygons_bool,
-    region_type=region_type,
-    use_discrete_cmap=use_discrete_cmap
-    )
-
-# ----- Process geography for plotting -----
-# Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_usual_ivt, gdf_redirect_ivt, gdf_usual_mt, gdf_redirect_mt]
-for gdf in gdfs_to_convert:
-    if gdf is None:
-        pass
-    else:
-        x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
-        gdf['x'] = x_list
-        gdf['y'] = y_list
-
-plot_the_maps_please = False
+plot_the_maps_please = st.checkbox('Plot maps')
 if plot_the_maps_please:
+    gdf_usual_ivt, colour_dict_usual_ivt = maps.create_colour_gdf_demog(
+        df_lsoa[col_ivt_times_usual_care],
+        col_ivt_times_usual_care,
+        tmin,
+        tmax,
+        tstep,
+        cmap_name=cmap_name,
+        cbar_title=cmap_titles[0],
+        merge_polygons_bool=merge_polygons_bool,
+        region_type=region_type,
+        use_discrete_cmap=use_discrete_cmap
+        )
+    gdf_usual_mt, colour_dict_usual_mt = maps.create_colour_gdf_demog(
+        df_lsoa[col_mt_times_usual_care],
+        col_mt_times_usual_care,
+        tmin,
+        tmax,
+        tstep,
+        cmap_name=cmap_name,
+        cbar_title=cmap_titles[0],
+        merge_polygons_bool=merge_polygons_bool,
+        region_type=region_type,
+        use_discrete_cmap=use_discrete_cmap
+        )
+    gdf_redirect_ivt, colour_dict_redirect_ivt = maps.create_colour_gdf_demog(
+        df_lsoa[col_ivt_times_redirect],
+        col_ivt_times_redirect,
+        tmin,
+        tmax,
+        tstep,
+        cmap_name=cmap_name,
+        cbar_title=cmap_titles[0],
+        merge_polygons_bool=merge_polygons_bool,
+        region_type=region_type,
+        use_discrete_cmap=use_discrete_cmap
+        )
+    gdf_redirect_mt, colour_dict_redirect_mt = maps.create_colour_gdf_demog(
+        df_lsoa[col_mt_times_redirect],
+        col_mt_times_redirect,
+        tmin,
+        tmax,
+        tstep,
+        cmap_name=cmap_name,
+        cbar_title=cmap_titles[0],
+        merge_polygons_bool=merge_polygons_bool,
+        region_type=region_type,
+        use_discrete_cmap=use_discrete_cmap
+        )
+
+    # ----- Process geography for plotting -----
+    # Convert gdf polygons to xy cartesian coordinates:
+    gdfs_to_convert = [gdf_usual_ivt, gdf_redirect_ivt, gdf_usual_mt, gdf_redirect_mt]
+    for gdf in gdfs_to_convert:
+        if gdf is None:
+            pass
+        else:
+            x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
+            gdf['x'] = x_list
+            gdf['y'] = y_list
+
     plot_maps.plotly_time_maps(
         [gdf_usual_ivt, gdf_redirect_ivt, gdf_usual_mt, gdf_redirect_mt],
         [colour_dict_usual_ivt, colour_dict_redirect_ivt, colour_dict_usual_mt, colour_dict_redirect_mt],
@@ -331,7 +676,6 @@ if plot_the_maps_please:
 # ##################################
 # ########## TIME SCATTER ##########
 # ##################################
-import plotly.graph_objects as go
 fig = go.Figure()
 
 # Add background diagonal line to show parity:
@@ -386,15 +730,15 @@ x_lines = np.stack((df_lsoa[col_ivt_times_usual_care],
 y_lines = np.stack((df_lsoa[col_ivt_times_redirect],
                     df_lsoa[col_mt_times_redirect],
                     [None]*len(df_lsoa)), axis=-1).flatten()
-fig.add_trace(go.Scatter(
-    x=x_lines,
-    y=y_lines,
-    mode='lines',
-    line_color='Salmon',
-    line_width=0.5,
-    showlegend=False,
-    hoverinfo='skip'
-))
+# fig.add_trace(go.Scatter(
+#     x=x_lines,
+#     y=y_lines,
+#     mode='lines',
+#     line_color='Salmon',
+#     line_width=0.5,
+#     showlegend=False,
+#     hoverinfo='skip'
+# ))
 # Plot markers for IVT:
 fig.add_trace(go.Scatter(
     x=df_lsoa[col_ivt_times_usual_care],
@@ -416,7 +760,7 @@ fig.add_trace(go.Scatter(
     x=df_lsoa[col_mt_times_usual_care],
     y=df_lsoa[col_mt_times_redirect],
     customdata=np.stack((df_lsoa.index.values, df_lsoa['nearest_ivt_unit']), axis=-1),
-    marker=dict(symbol='square', color='FireBrick', line=dict(color='black', width=0.5)),
+    marker=dict(symbol='square', color='cyan', line=dict(color='black', width=0.5)),
     mode='markers',
     name='MT',
     hovertemplate=(
@@ -426,6 +770,27 @@ fig.add_trace(go.Scatter(
         '<extra></extra>'
     )
 ))
+
+
+fig.add_annotation(
+    xref="x domain",
+    yref="y domain",
+    x=0.25,
+    y=0.95,
+    showarrow=False,
+    text='"Usual care"<br>is <b>faster</b><br>than "redirection"',
+    # arrowhead=2,
+)
+
+fig.add_annotation(
+    xref="x domain",
+    yref="y domain",
+    x=0.75,
+    y=0.05,
+    showarrow=False,
+    text='"Usual care"<br>is <b>slower</b><br>than "redirection"',
+    # arrowhead=2,
+)
 
 # Equivalent to pyplot set_aspect='equal':
 fig.update_yaxes(scaleanchor='x', scaleratio=1)
@@ -480,37 +845,209 @@ st.write('LSOA(s) with worst time tradeoff: ', ', '.join(lsoa_worst), '.')
 # ##### LSOA CHOICE #####
 # #######################
 
-st.markdown('## Results for one LSOA')
+st.markdown('### Results for one LSOA')
 
 # Pick out an LSOA:
 # lsoa_name = 'East Devon 005D'
 lsoa_name = st.selectbox('LSOA', df_lsoa.index)
 
-st.markdown('### Treatment times')
+# Write the stroke unit names:
+st.markdown(f'Nearest IVT unit: {df_lsoa.loc[lsoa_name, "nearest_ivt_unit_name"]}')
+st.markdown(f'Nearest MT unit: {df_lsoa.loc[lsoa_name, "nearest_mt_unit_name"]}')
+st.markdown(f'Transfer unit: {df_lsoa.loc[lsoa_name, "transfer_unit_name"]}')
+
+st.markdown('__Treatment times__')
+transfer_required = (
+    True if df_lsoa.loc[lsoa_name, 'transfer_required'] == True else False)
 str_transfer_required = (
-    '' if df_lsoa.loc[lsoa_name, 'transfer_required'] == True else 'not ')
+    '' if transfer_required else 'not ')
 st.markdown(f'A transfer is {str_transfer_required} required for MT.')
+
+
+cols = st.columns(3)
+with cols[0]:
+    st.markdown('Treatment times without travel:')
+    st.table(df_times)  # Treatment times from earlier
+
+# Travel times:
+travel_times = [
+    df_lsoa.loc[lsoa_name, 'nearest_ivt_time'],
+    df_lsoa.loc[lsoa_name, 'nearest_mt_time'],
+    df_lsoa.loc[lsoa_name, 'transfer_time'],
+    ]
+df_travel_times = pd.Series(
+    travel_times, 
+    index=['Time to nearest IVT unit', 'Time to nearest MT unit', 'Time for transfer'],
+    name='Travel times'
+    )
+with cols[1]:
+    st.markdown('Travel times:')
+    st.table(df_travel_times)
 
 arr_times = [
     [df_lsoa.loc[lsoa_name, 'drip_ship_ivt_time'],
      df_lsoa.loc[lsoa_name, 'drip_ship_mt_time'],
      ],
-    [df_lsoa.loc[lsoa_name, 'mothership_ivt_time'],
-     df_lsoa.loc[lsoa_name, 'mothership_mt_time'],
-     ]
+    [df_lsoa.loc[lsoa_name, 'drip_ship_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     df_lsoa.loc[lsoa_name, 'drip_ship_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     ],
+    [df_lsoa.loc[lsoa_name, 'mothership_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     df_lsoa.loc[lsoa_name, 'mothership_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     ],
     ]
 df_times = pd.DataFrame(
     arr_times,
     columns=['IVT', 'MT'],
-    index=['Usual care', 'Redirected']
+    index=['Usual care', 'Redirection rejected', 'Redirection approved']
 )
-st.dataframe(df_times)
+with cols[2]:
+    st.markdown('Treatment times with travel:')
+    st.table(df_times)
+
+
+# Draw timeline for this LSOA:
+dict_transfer = (
+        time_dict_ivt_only_unit |
+        {'transfer_time': df_lsoa.loc[lsoa_name, 'transfer_time']} |
+        time_dict_mt_transfer_unit
+    )
+dict_no_transfer = time_dict_ivt_mt_unit
+if transfer_required:
+    dict2 = dict_transfer
+else:
+    dict2 = dict_no_transfer
+
+time_dict_here_usual_care = (
+    time_dict_prehosp_usual_care |
+    {'nearest_ivt_time': df_lsoa.loc[lsoa_name, 'nearest_ivt_time']} |
+    dict2
+)
+time_dict_here_redirect_but_not = (
+    time_dict_prehosp_redirect |
+    {'nearest_ivt_time': df_lsoa.loc[lsoa_name, 'nearest_ivt_time']} |
+    dict_transfer
+)
+time_dict_here_redirect_but_yes = (
+    time_dict_prehosp_redirect |
+    {'nearest_mt_time': df_lsoa.loc[lsoa_name, 'nearest_mt_time']} |
+    dict_no_transfer
+)
+
+# Pre-hospital timelines
+fig = go.Figure()
+
+y_vals = [0, -1, -2]
+
+time_dict = time_dict_here_usual_care
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[0]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Usual care',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[0]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+time_dict = time_dict_here_redirect_but_not
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[1]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Redirection',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[1]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+time_dict = time_dict_here_redirect_but_yes
+cum_times = np.cumsum(list(time_dict.values()))
+emoji_here = [emoji_dict[key] for key in list(time_dict.keys())]
+labels_here = [f'{display_text_dict[key]}<br><br><br>' for key in list(time_dict.keys())]
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[2]]*len(cum_times),
+    mode='lines+markers+text',
+    text=emoji_here,
+    marker=dict(symbol='line-ns', size=10, line_width=2, line_color='grey'),
+    line_color='grey',
+    textposition='top center',
+    textfont=dict(size=24),
+    name='Redirection',
+    showlegend=False,
+    hoverinfo='x'
+))
+fig.add_trace(go.Scatter(
+    x=cum_times,
+    y=[y_vals[2]]*len(cum_times),
+    mode='text',
+    text=labels_here,
+    textposition='top center',
+    # textfont=dict(size=24)
+    showlegend=False,
+    hoverinfo='skip'
+))
+
+fig.update_layout(yaxis=dict(
+    tickmode='array',
+    tickvals=y_vals,
+    ticktext=['Usual care', 'Redirection rejected', 'Redirection approved']
+))
+fig.update_layout(yaxis_range=[y_vals[-1] - 0.5, y_vals[0] + 1])
+fig.update_layout(xaxis_title='Time (minutes)')
+
+fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+
+# fig.update_layout(
+#     # autosize=False,
+#     # width=500,
+#     height=700
+# )
+
+st.plotly_chart(fig, use_container_width=True)
+
 
 # #####################
 # ##### mRS DISTS #####
 # #####################
 
-st.markdown('### mRS distributions')
+st.markdown('## Outcome model')
+st.markdown('## mRS distributions')
+st.markdown('Using the times to treatment in the selected LSOA.')
 
 # Store mRS dists in here:
 mrs_dists = {}
@@ -694,6 +1231,26 @@ fig.add_trace(go.Scatter(
 ))
 
 
+fig.add_annotation(
+    xref="x domain",
+    yref="y domain",
+    x=0.25,
+    y=0.95,
+    showarrow=False,
+    text='"Usual care"<br>gives <b>worse</b> utility<br>than "redirection"',
+    # arrowhead=2,
+)
+
+fig.add_annotation(
+    xref="x domain",
+    yref="y domain",
+    x=0.75,
+    y=0.05,
+    showarrow=False,
+    text='"Usual care"<br>gives <b>better</b> utility <br>than "redirection"',
+    # arrowhead=2,
+)
+
 # Equivalent to pyplot set_aspect='equal':
 fig.update_yaxes(scaleanchor='x', scaleratio=1)
 
@@ -716,7 +1273,13 @@ st.plotly_chart(fig)
 # ##### POPULATION #####
 # ######################
 
-st.write('## Population here')
+st.write('## Population')
+st.markdown(
+'''
+Inputs that affect this:
++ The following ones:
+'''
+)
 
 pie_cols = st.columns([1, 3])
 with pie_cols[0]:
@@ -871,7 +1434,7 @@ mrs_dists['lvo_ivt_mt_combo_noncum'] = (
 st.markdown('### Example: combining "usual care" and "redirected" data')
 st.markdown('Options for bar chart mRS distributions:')
 occ = st.radio('Occlusion type', ['lvo', 'nlvo'])
-tre = st.radio('Treatment type', ['ivt', 'mt'])
+tre = st.radio('Treatment type', ['ivt', 'mt'], index=1)
 prop = prop_lvo_redirected if occ == 'lvo' else prop_nlvo_redirected
 
 plot_dists = {}
@@ -1000,3 +1563,8 @@ fig.update_layout(yaxis=dict(
 fig.update_layout(yaxis_range=[-8.5, 1.5])
 
 st.plotly_chart(fig)
+
+
+st.markdown('### Combining geographical regions')
+
+st.markdown('Weight LSOA by number of admissions to stroke units.')
