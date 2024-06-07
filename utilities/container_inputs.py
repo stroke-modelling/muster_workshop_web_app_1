@@ -190,180 +190,180 @@ def select_parameters_map():
     return input_dict
 
 
-def select_parameters_optimist():
-    """
+# def select_parameters_optimist():
+#     """
 
-    TO DO another day - set these reference values up in fixed_params.
-    Default values from median onset to arrival times document
-    (Mike Allen, 23rd April 2024):
-    onset_to_call: 79,
-    call_to_ambulance_arrival_time: 18,
-    ambulance_on_scene_time: 29,
-    """
-    cols = st.columns([1, 1, 1, 5, 1])
+#     TO DO another day - set these reference values up in fixed_params.
+#     Default values from median onset to arrival times document
+#     (Mike Allen, 23rd April 2024):
+#     onset_to_call: 79,
+#     call_to_ambulance_arrival_time: 18,
+#     ambulance_on_scene_time: 29,
+#     """
+#     cols = st.columns([1, 1, 1, 5, 1])
 
-    with cols[0]:
-        container_shared = st.container(border=True)
-    with cols[1]:
-        container_on_scene = st.container(border=True)
-    with cols[2]:
-        container_diagnostic = st.container(border=True)
-    with cols[3]:
-        container_unit = st.container(border=True)
-    with cols[4]:
-        container_transfer = st.container(border=True)
+#     with cols[0]:
+#         container_shared = st.container(border=True)
+#     with cols[1]:
+#         container_on_scene = st.container(border=True)
+#     with cols[2]:
+#         container_diagnostic = st.container(border=True)
+#     with cols[3]:
+#         container_unit = st.container(border=True)
+#     with cols[4]:
+#         container_transfer = st.container(border=True)
 
-    container_occ = st.container()
+#     container_occ = st.container()
 
 
-    input_dict = {}
-    # Set up scenarios
-    with container_shared:
-        st.markdown('Shared')
-        input_dict['process_time_call_ambulance'] = st.number_input(
-            'Time to call ambulance',
-            value=79,
-            help=f"Reference value: {79}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     input_dict = {}
+#     # Set up scenarios
+#     with container_shared:
+#         st.markdown('Shared')
+#         input_dict['process_time_call_ambulance'] = st.number_input(
+#             'Time to call ambulance',
+#             value=79,
+#             help=f"Reference value: {79}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_on_scene:
-        st.markdown('On scene')
-        input_dict['process_time_ambulance_response'] = st.number_input(
-            'Ambulance response time',
-            value=18,
-            help=f"Reference value: {18}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
-        input_dict['process_ambulance_on_scene_duration'] = st.number_input(
-            'Time ambulance is on scene',
-            value=29,
-            help=f"Reference value: {29}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_on_scene:
+#         st.markdown('On scene')
+#         input_dict['process_time_ambulance_response'] = st.number_input(
+#             'Ambulance response time',
+#             value=18,
+#             help=f"Reference value: {18}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
+#         input_dict['process_ambulance_on_scene_duration'] = st.number_input(
+#             'Time ambulance is on scene',
+#             value=29,
+#             help=f"Reference value: {29}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_diagnostic:
-        st.markdown('Diagnostic')
-        input_dict['process_ambulance_on_scene_diagnostic_duration'] = st.number_input(
-            'Extra time on scene for diagnostic',
-            value=10,
-            help=f"Reference value: {10}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_diagnostic:
+#         st.markdown('Diagnostic')
+#         input_dict['process_ambulance_on_scene_diagnostic_duration'] = st.number_input(
+#             'Extra time on scene for diagnostic',
+#             value=10,
+#             help=f"Reference value: {10}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_unit:
-        st.markdown('Unit')
-        cols_unit = st.columns(3)
-        with cols_unit[0]:
-            input_dict['process_time_arrival_to_needle'] = st.number_input(
-                'Hospital arrival to IVT time',
-                value=30,
-                help=f"Reference value: {30}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
-        with cols_unit[1]:
-            container_unit_with_mt = st.container(border=True)
-        with container_unit_with_mt:
-            input_dict['process_time_arrival_to_puncture'] = st.number_input(
-                'Hospital arrival to MT time (for in-hospital IVT+MT)',
-                value=60,
-                help=f"Reference value: {60}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
-        with cols_unit[2]:
-            container_unit_without_mt = st.container(border=True)
-        with container_unit_without_mt:
-            input_dict['transfer_time_delay'] = st.number_input(
-                'Door-in to door-out (for transfer to MT)',
-                value=60,
-                help=f"Reference value: {60}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
+#     with container_unit:
+#         st.markdown('Unit')
+#         cols_unit = st.columns(3)
+#         with cols_unit[0]:
+#             input_dict['process_time_arrival_to_needle'] = st.number_input(
+#                 'Hospital arrival to IVT time',
+#                 value=30,
+#                 help=f"Reference value: {30}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
+#         with cols_unit[1]:
+#             container_unit_with_mt = st.container(border=True)
+#         with container_unit_with_mt:
+#             input_dict['process_time_arrival_to_puncture'] = st.number_input(
+#                 'Hospital arrival to MT time (for in-hospital IVT+MT)',
+#                 value=60,
+#                 help=f"Reference value: {60}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
+#         with cols_unit[2]:
+#             container_unit_without_mt = st.container(border=True)
+#         with container_unit_without_mt:
+#             input_dict['transfer_time_delay'] = st.number_input(
+#                 'Door-in to door-out (for transfer to MT)',
+#                 value=60,
+#                 help=f"Reference value: {60}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
 
-    with container_transfer:
-        st.markdown('Transfer unit')
-        input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
-            'Hospital arrival to MT time (for transfers)',
-            value=60,
-            help=f"Reference value: {60}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_transfer:
+#         st.markdown('Transfer unit')
+#         input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
+#             'Hospital arrival to MT time (for transfers)',
+#             value=60,
+#             help=f"Reference value: {60}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    inputs_occlusion = {
-        'prop_nlvo': {
-            'name': 'Proportion of population with nLVO',
-            'default': 0.65,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-        'prop_lvo': {
-            'name': 'Proportion of population with LVO',
-            'default': 0.35,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        }
-    }
-    inputs_redirection = {
-        'sensitivity': {
-            'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
-            'default': 0.66,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-        'specificity': {
-            'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
-            'default': 0.87,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-    }
+#     inputs_occlusion = {
+#         'prop_nlvo': {
+#             'name': 'Proportion of population with nLVO',
+#             'default': 0.65,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#         'prop_lvo': {
+#             'name': 'Proportion of population with LVO',
+#             'default': 0.35,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         }
+#     }
+#     inputs_redirection = {
+#         'sensitivity': {
+#             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
+#             'default': 0.66,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#         'specificity': {
+#             'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
+#             'default': 0.87,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#     }
 
-    dicts = {
-        'Occlusion types': inputs_occlusion,
-        'Redirection': inputs_redirection
-        }
+#     dicts = {
+#         'Occlusion types': inputs_occlusion,
+#         'Redirection': inputs_redirection
+#         }
 
-    with container_occ:
-        for heading, i_dict in dicts.items():
-            st.markdown(f'### {heading}')
-            for key, s_dict in i_dict.items():
-                    input_dict[key] = st.number_input(
-                        s_dict['name'],
-                        value=s_dict['default'],
-                        help=f"Reference value: {s_dict['default']}",
-                        min_value=s_dict['min_value'],
-                        max_value=s_dict['max_value'],
-                        step=s_dict['step'],
-                        key=key
-                        )
+#     with container_occ:
+#         for heading, i_dict in dicts.items():
+#             st.markdown(f'### {heading}')
+#             for key, s_dict in i_dict.items():
+#                     input_dict[key] = st.number_input(
+#                         s_dict['name'],
+#                         value=s_dict['default'],
+#                         help=f"Reference value: {s_dict['default']}",
+#                         min_value=s_dict['min_value'],
+#                         max_value=s_dict['max_value'],
+#                         step=s_dict['step'],
+#                         key=key
+#                         )
 
-    return input_dict
+#     return input_dict
 
-def select_parameters_optimist_OLD():
+def select_parameters_pathway_optimist():
     """
     This version creates a long list of number inputs.
 
@@ -440,6 +440,30 @@ def select_parameters_optimist_OLD():
             'step': 1,
         },
     }
+    dicts = {
+        'Shared': inputs_shared,
+        'Standard pathway': inputs_standard,
+        'Transfer required': inputs_transfer,
+        }
+
+    input_dict = {}
+    for heading, i_dict in dicts.items():
+        st.markdown(f'## {heading}')
+        for key, s_dict in i_dict.items():
+            input_dict[key] = st.number_input(
+                s_dict['name'],
+                value=s_dict['default'],
+                help=f"Reference value: {s_dict['default']}",
+                min_value=s_dict['min_value'],
+                max_value=s_dict['max_value'],
+                step=s_dict['step'],
+                key=key
+                )
+
+    return input_dict
+
+
+def select_parameters_population_optimist():
     inputs_occlusion = {
         'prop_nlvo': {
             'name': 'Proportion of population with nLVO',
@@ -474,9 +498,6 @@ def select_parameters_optimist_OLD():
     }
 
     dicts = {
-        'Shared': inputs_shared,
-        'Standard pathway': inputs_standard,
-        'Transfer required': inputs_transfer,
         'Occlusion types': inputs_occlusion,
         'Redirection': inputs_redirection
         }
@@ -738,7 +759,7 @@ def set_up_colours(
             'diff': {
                 'vmin': -0.05,
                 'vmax': 0.05,
-                'step_size': 0.025,
+                'step_size': 0.0125,
                 'cmap_name': cmap_diff_name
             },
         },

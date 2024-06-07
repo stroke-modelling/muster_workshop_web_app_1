@@ -184,7 +184,10 @@ with container_intro:
 with container_inputs:
     with st.form('Model setup'):
         st.markdown('### Pathway inputs')
-        input_dict = inputs.select_parameters_optimist_OLD()
+        pathway_dict = inputs.select_parameters_pathway_optimist()
+
+        st.markdown('### Population inputs')
+        population_dict = inputs.select_parameters_population_optimist()
 
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
@@ -195,6 +198,9 @@ with container_inputs:
         # (so script only re-runs once it is pressed, allows changes
         # to multiple widgets at once.)
         submitted = st.form_submit_button('Submit')
+
+# Combine the two input dicts:
+input_dict = pathway_dict | population_dict
 
 # #######################################
 # ########## MAIN CALCULATIONS ##########
