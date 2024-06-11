@@ -1012,6 +1012,17 @@ with pie_cols[1]:
 with container_occ:
     population_dict = inputs.select_parameters_population_optimist()
 
+    st.markdown('### Bonus level')
+    # Made up these default numbers.
+    prop_nlvo_redirect_considered = st.number_input(
+        'nLVO proportion considered for redirection',
+        0.2345678901
+        )
+    prop_lvo_redirect_considered = st.number_input(
+        'nLVO proportion considered for redirection',
+        0.7890123456
+    )
+
 # Proportion nLVO and LVO:
 prop_nlvo = population_dict['prop_nlvo']
 prop_lvo = population_dict['prop_lvo']
@@ -1019,57 +1030,144 @@ prop_lvo = population_dict['prop_lvo']
 prop_lvo_redirected = population_dict['sensitivity']
 prop_nlvo_redirected = (1.0 - population_dict['specificity'])
 
+colour_nlvo = 'PaleGoldenrod'
+colour_lvo = 'SkyBlue'
+
+
 # How many people are being treated?
-pie_dict = {
+pie_usual_dict = {
     'nLVO': {
         'value': prop_nlvo,
         'parent': '',
         'pattern_shape': '',
+        'colour': colour_nlvo,
+        'label': 'nLVO',
     },
     'LVO': {
         'value': prop_lvo,
         'parent': '',
         'pattern_shape': '',
-    },
-    'nLVO - usual care': {
-        'value': prop_nlvo * (1.0 - prop_nlvo_redirected),
-        'parent': 'nLVO',
-        'pattern_shape': '',
-    },
-    'nLVO - redirected': {
-        'value': prop_nlvo * prop_nlvo_redirected,
-        'parent': 'nLVO',
-        'pattern_shape': '/',
-    },
-    'LVO - usual care': {
-        'value': prop_lvo * (1.0 - prop_lvo_redirected),
-        'parent': 'LVO',
-        'pattern_shape': '',
-    },
-    'LVO - redirected': {
-        'value': prop_lvo * prop_lvo_redirected,
-        'parent': 'LVO',
-        'pattern_shape': '/',
+        'colour': colour_lvo,
+        'label': 'LVO',
     },
 }
 
 # Plot sunburst:
 fig = go.Figure()
 fig.add_trace(go.Sunburst(
-    labels=list(pie_dict.keys()),
-    parents=[pie_dict[key]['parent'] for key in list(pie_dict.keys())],
-    values=[pie_dict[key]['value'] for key in list(pie_dict.keys())],
+    ids=list(pie_usual_dict.keys()),
+    parents=[pie_usual_dict[key]['parent'] for key in list(pie_usual_dict.keys())],
+    labels=[pie_usual_dict[key]['label'] for key in list(pie_usual_dict.keys())],
+    values=[pie_usual_dict[key]['value'] for key in list(pie_usual_dict.keys())],
     marker=dict(
         pattern=dict(
-            shape=[pie_dict[key]['pattern_shape'] for key in list(pie_dict.keys())],
+            shape=[pie_usual_dict[key]['pattern_shape'] for key in list(pie_usual_dict.keys())],
             solidity=0.9,
-            )
+            ),
+        colors=[pie_usual_dict[key]['colour'] for key in list(pie_usual_dict.keys())]
         ),
     branchvalues='total'
 ))
 fig.update_layout(margin=dict(t=0, l=0, r=0, b=0))
 
 with container_sunburst:
+    st.markdown('__Usual population__:')
+    st.plotly_chart(fig)
+
+# How many people are being treated?
+pie_dict = {
+    'nLVO': {
+        'value': prop_nlvo,
+        'parent': '',
+        'pattern_shape': '',
+        'colour': colour_nlvo,
+        'label': 'nLVO',
+    },
+    'LVO': {
+        'value': prop_lvo,
+        'parent': '',
+        'pattern_shape': '',
+        'colour': colour_lvo,
+        'label': 'LVO',
+    },
+    'nLVO - usual care': {
+        'value': prop_nlvo * (1.0 - prop_nlvo_redirect_considered),
+        'parent': 'nLVO',
+        'pattern_shape': '',
+        'colour': colour_nlvo,
+        'label': 'Usual care',
+    },
+    'nLVO - redirection considered': {
+        'value': prop_nlvo * prop_nlvo_redirect_considered,
+        'parent': 'nLVO',
+        'pattern_shape': '.',
+        'colour': 'LimeGreen',
+        'label': 'Redirection<br>considered',
+    },
+    'nLVO - redirection approved': {
+        'value': prop_nlvo * prop_nlvo_redirect_considered * prop_nlvo_redirected,
+        'parent': 'nLVO - redirection considered',
+        'pattern_shape': '.',
+        'colour': colour_nlvo,
+        'label': 'Approved',
+    },
+    'nLVO - redirection rejected': {
+        'value': prop_nlvo * prop_nlvo_redirect_considered * (1.0 - prop_nlvo_redirected),
+        'parent': 'nLVO - redirection considered',
+        'pattern_shape': '',
+        'colour': colour_nlvo,
+        'label': 'Rejected',
+    },
+    'LVO - usual care': {
+        'value': prop_lvo * (1.0 - prop_lvo_redirect_considered),
+        'parent': 'LVO',
+        'pattern_shape': '',
+        'colour': colour_lvo,
+        'label': 'Usual care',
+    },
+    'LVO - redirection considered': {
+        'value': prop_lvo * prop_lvo_redirect_considered,
+        'parent': 'LVO',
+        'pattern_shape': '.',
+        'colour': 'LimeGreen',
+        'label': 'Redirection<br>considered',
+    },
+    'LVO - redirection approved': {
+        'value': prop_lvo * prop_lvo_redirect_considered * prop_lvo_redirected,
+        'parent': 'LVO - redirection considered',
+        'pattern_shape': '.',
+        'colour': colour_lvo,
+        'label': 'Approved',
+    },
+    'LVO - redirection rejected': {
+        'value': prop_lvo * prop_lvo_redirect_considered * (1.0 - prop_lvo_redirected),
+        'parent': 'LVO - redirection considered',
+        'pattern_shape': '',
+        'colour': colour_lvo,
+        'label': 'Rejected',
+    },
+}
+
+# Plot sunburst:
+fig = go.Figure()
+fig.add_trace(go.Sunburst(
+    ids=list(pie_dict.keys()),
+    parents=[pie_dict[key]['parent'] for key in list(pie_dict.keys())],
+    labels=[pie_dict[key]['label'] for key in list(pie_dict.keys())],
+    values=[pie_dict[key]['value'] for key in list(pie_dict.keys())],
+    marker=dict(
+        pattern=dict(
+            shape=[pie_dict[key]['pattern_shape'] for key in list(pie_dict.keys())],
+            solidity=0.9,
+            ),
+        colors=[pie_dict[key]['colour'] for key in list(pie_dict.keys())]
+        ),
+    branchvalues='total'
+))
+fig.update_layout(margin=dict(t=0, l=0, r=0, b=0))
+
+with container_sunburst:
+    st.markdown('__SPEEDY population in green__:')
     st.plotly_chart(fig)
 
 # #############################
