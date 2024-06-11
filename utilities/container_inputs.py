@@ -480,6 +480,23 @@ def select_parameters_population_optimist():
             'step': 0.01,
         }
     }
+    inputs_redirection_considered = {
+        # Made up these default numbers.
+        'prop_nlvo_redirection_considered': {
+            'name': 'nLVO proportion considered for redirection',
+            'default': 0.42,  # INVENTED
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        },
+        'prop_lvo_redirection_considered': {
+            'name': 'LVO proportion considered for redirection',
+            'default': 0.42,  # INVENTED
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.01,
+        },
+    }
     inputs_redirection = {
         'sensitivity': {
             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
@@ -499,7 +516,8 @@ def select_parameters_population_optimist():
 
     dicts = {
         'Occlusion types': inputs_occlusion,
-        'Redirection': inputs_redirection
+        'Redirection considered': inputs_redirection_considered,
+        'Redirection approved': inputs_redirection
         }
 
     input_dict = {}
@@ -515,6 +533,25 @@ def select_parameters_population_optimist():
                 step=s_dict['step'],
                 key=key
                 )
+
+    # Now calculate the proportions of the "redirection considered" group
+    # that are nLVO and LVO.
+    input_dict['prop_redirection_considered'] = (
+        (input_dict['prop_nlvo'] *
+         input_dict['prop_nlvo_redirection_considered']) +
+        (input_dict['prop_lvo'] *
+         input_dict['prop_lvo_redirection_considered'])
+    )
+    input_dict['prop_redirection_considered_nlvo'] = (
+        (input_dict['prop_nlvo'] *
+         input_dict['prop_nlvo_redirection_considered']) /
+        input_dict['prop_redirection_considered']
+    )
+    input_dict['prop_redirection_considered_lvo'] = (
+        (input_dict['prop_lvo'] *
+         input_dict['prop_lvo_redirection_considered']) /
+        input_dict['prop_redirection_considered']
+    )
 
     return input_dict
 
@@ -732,6 +769,9 @@ def set_up_colours(
     min times: 0.250 - 0.0300, > 0.300,
     max times: 0.250 - 0.300, > 0.300
 
+
+    colour scales sometimes bug out, return to default colourbar
+    when the precision here isn't enough decimal places.
     """
     # Define shared colour scales:
     cbar_dict = {
@@ -757,9 +797,9 @@ def set_up_colours(
                 'cmap_name': cmap_name
             },
             'diff': {
-                'vmin': -0.05,
-                'vmax': 0.05,
-                'step_size': 0.0125,
+                'vmin': -0.040,
+                'vmax': 0.040,
+                'step_size': 0.010,
                 'cmap_name': cmap_diff_name
             },
         },

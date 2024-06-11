@@ -203,6 +203,40 @@ class Geoprocessing(object):
             './data/lsoa_travel_time_matrix_calibrated.csv', index_col='LSOA')
         self.lsoa_travel_time.sort_index(inplace=True)
 
+        if self.limit_to_england:
+            # Find names of English LSOA:
+            lsoa_eng = self.admissions.index[self.admissions['England'] == 1]
+            # Only keep these LSOA:
+            self.admissions = self.admissions.loc[
+                self.admissions.index.isin(lsoa_eng)].copy()
+            self.lsoa_travel_time = self.lsoa_travel_time.loc[
+                self.lsoa_travel_time.index.isin(lsoa_eng)].copy()
+            # self.geodata = self.geodata.loc[mask].copy(deep=True)
+
+            # # Index shenanigans.
+            # # I don't know why, but it quietly breaks some of the LSOA
+            # # when the index is mostly range index integers but has
+            # # gaps where we've taken out the Welsh LSOA.
+            # # The affected English LSOAs get all None for their outcomes
+            # # and show up as blank in any maps.
+            # self.geodata.index.name = 'rubbish'
+            # self.geodata = self.geodata.reset_index()
+            # self.geodata = self.geodata.drop(['rubbish'], axis='columns')
+
+            # Find postcodes of English stroke units:
+            units_eng = self.hospitals.index[self.hospitals['country'] == 'England']
+            # Only keep these stroke units:
+            self.hospitals = self.hospitals.loc[
+                self.hospitals.index.isin(units_eng)].copy()
+            self.inter_hospital_time = self.inter_hospital_time.loc[
+                self.inter_hospital_time.index.isin(units_eng)].copy()
+            self.inter_hospital_time = self.inter_hospital_time[
+                [c for c in self.inter_hospital_time.columns if c in units_eng]
+                ].copy()
+
+
+
+
     def update_unit_services(self):
         hospitals = self.hospitals
         hospitals = hospitals.reset_index()

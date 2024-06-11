@@ -66,15 +66,112 @@ with container_inputs:
         # to multiple widgets at once.)
         submitted = st.form_submit_button('Submit')
 
+cols = st.columns([6, 4], gap='large')
+# Keep an empty middle column to adjust the gap between plots.
+with cols[0]:
+    container_timeline_plot = st.container()
+with cols[1]:
+    container_timeline_info = st.container()
+
+pie_cols = st.columns([1, 3])
+with pie_cols[0]:
+    container_occ = st.container()
+with pie_cols[1]:
+    container_sunburst = st.container()
+
+with container_occ:
+    population_dict = inputs.select_parameters_population_optimist()
+
 
 # #######################################
 # ########## MAIN CALCULATIONS ##########
 # #######################################
 
 # Process LSOA and calculate outcomes:
-df_lsoa, df_mrs = calc.calculate_outcomes(
-    pathway_dict, df_unit_services, use_msu=False, use_mothership=True)
+# df_lsoa, df_mrs = calc.calculate_outcomes(
+#     pathway_dict, df_unit_services)
+def main_calculations(input_dict, df_unit_services):
+    # Times to treatment:
+    geo = calc.calculate_geography(df_unit_services)
+    # Travel times for each LSOA:
+    df_travel_times = geo.combined_data[
+        [c for c in geo.combined_data.columns if 'time' in c] +
+        ['transfer_required', 'LSOA']
+        ]
+    df_travel_times = df_travel_times.set_index('LSOA')
 
+    # Add travel times to the pathway timings to get treatment times.
+    df_outcome_uc = calc.make_outcome_inputs_usual_care(
+        input_dict, df_travel_times)
+    df_outcome_ra = calc.make_outcome_inputs_redirection_approved(
+        input_dict, df_travel_times)
+    df_outcome_rr = calc.make_outcome_inputs_redirection_rejected(
+        input_dict, df_travel_times)
+    dict_outcome_inputs = {
+        'usual_care': df_outcome_uc,
+        'redirection_approved': df_outcome_ra,
+        'redirection_rejected': df_outcome_rr,
+    }
+
+    # Process LSOA and calculate outcomes:
+    df_lsoa, df_mrs = calc.calculate_outcomes(
+        dict_outcome_inputs, df_unit_services, geo.combined_data)
+
+    # Extra calculations for redirection:
+    # Combine redirection rejected and approved results in
+    # proportions given by specificity and sensitivity.
+    # This creates columns labelled "redirection_approved".
+    redirect_dict = {
+        'sensitivity': input_dict['sensitivity'],
+        'specificity': input_dict['specificity'],
+    }
+    df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
+    df_mrs = calc.combine_results_by_redirection(
+        df_mrs, redirect_dict, combine_mrs_dists=True)
+
+    # Make combined nLVO + LVO data in the proportions given:
+    # Combine for "usual care":
+    prop_dict = {
+        'nlvo': input_dict['prop_nlvo'],
+        'lvo': input_dict['prop_lvo']
+    }
+    df_lsoa = calc.combine_results_by_occlusion_type(
+        df_lsoa, prop_dict, scenario_list=['usual_care'])
+    df_mrs = calc.combine_results_by_occlusion_type(
+        df_mrs, prop_dict, combine_mrs_dists=True,
+        scenario_list=['usual_care'])
+    # Combine for redirection considered:
+    prop_dict = {
+        'nlvo': input_dict['prop_redirection_considered_nlvo'],
+        'lvo': input_dict['prop_redirection_considered_lvo']
+    }
+    df_lsoa = calc.combine_results_by_occlusion_type(
+        df_lsoa, prop_dict, scenario_list=['redirection_considered'])
+    df_mrs = calc.combine_results_by_occlusion_type(
+        df_mrs, prop_dict, combine_mrs_dists=True,
+        scenario_list=['redirection_considered'])
+    # Don't calculate the separate redirection approved/rejected bits.
+
+    # Calculate diff - redirect minus usual care:
+    df_lsoa = calc.combine_results_by_diff(
+        df_lsoa,
+        scenario_types=['redirection_considered', 'usual_care']
+        )
+    df_mrs = calc.combine_results_by_diff(
+        df_mrs,
+        scenario_types=['redirection_considered', 'usual_care'],
+        combine_mrs_dists=True
+        )
+
+    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+        df_lsoa, df_unit_services)
+
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
+
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = main_calculations(
+    pathway_dict | population_dict,
+    df_unit_services
+    )
 
 # ##############################
 # ########## TIMELINE ##########
@@ -226,12 +323,6 @@ timeline_display_dict = {
     },
     }
 
-cols = st.columns([6, 4], gap='large')
-# Keep an empty middle column to adjust the gap between plots.
-with cols[0]:
-    container_timeline_plot = st.container()
-with cols[1]:
-    container_timeline_info = st.container()
 
 
 def plot_timeline(time_dicts, timeline_display_dict, y_vals, y_labels):
@@ -411,8 +502,8 @@ use_discrete_cmap = False
 plot_the_maps_please = st.checkbox('Plot maps')
 if plot_the_maps_please:
     gdf_usual_ivt, colour_dict_usual_ivt = maps.create_colour_gdf_demog(
-        df_lsoa['drip_ship_ivt_time'],
-        'drip_ship_ivt_time',
+        df_lsoa['usual_care_ivt_time'],
+        'usual_care_ivt_time',
         tmin,
         tmax,
         tstep,
@@ -423,8 +514,8 @@ if plot_the_maps_please:
         use_discrete_cmap=use_discrete_cmap
         )
     gdf_usual_mt, colour_dict_usual_mt = maps.create_colour_gdf_demog(
-        df_lsoa['drip_ship_mt_time'],
-        'drip_ship_mt_time',
+        df_lsoa['usual_care_mt_time'],
+        'usual_care_mt_time',
         tmin,
         tmax,
         tstep,
@@ -435,8 +526,8 @@ if plot_the_maps_please:
         use_discrete_cmap=use_discrete_cmap
         )
     gdf_redirect_ivt, colour_dict_redirect_ivt = maps.create_colour_gdf_demog(
-        df_lsoa['mothership_ivt_time'],
-        'mothership_ivt_time',
+        df_lsoa['redirection_approved_ivt_time'],
+        'redirection_approved_ivt_time',
         tmin,
         tmax,
         tstep,
@@ -447,8 +538,8 @@ if plot_the_maps_please:
         use_discrete_cmap=use_discrete_cmap
         )
     gdf_redirect_mt, colour_dict_redirect_mt = maps.create_colour_gdf_demog(
-        df_lsoa['mothership_mt_time'],
-        'mothership_mt_time',
+        df_lsoa['redirection_approved_mt_time'],
+        'redirection_approved_mt_time',
         tmin,
         tmax,
         tstep,
@@ -485,10 +576,10 @@ def scatter_ivt_mt_times(df_lsoa):
     fig = go.Figure()
 
     # Add background diagonal line to show parity:
-    time_min = np.min([df_lsoa[['mothership_ivt_time', 'drip_ship_ivt_time',
-                                'mothership_mt_time', 'drip_ship_mt_time']]])
-    time_max = np.max([df_lsoa[['mothership_ivt_time', 'drip_ship_ivt_time',
-                                'mothership_mt_time', 'drip_ship_mt_time']]])
+    time_min = np.min([df_lsoa[['redirection_approved_ivt_time', 'usual_care_ivt_time',
+                                'redirection_approved_mt_time', 'usual_care_mt_time']]])
+    time_max = np.max([df_lsoa[['redirection_approved_ivt_time', 'usual_care_ivt_time',
+                                'redirection_approved_mt_time', 'usual_care_mt_time']]])
     fig.add_trace(go.Scatter(
         x=[time_min, time_max],
         y=[time_min, time_max],
@@ -500,17 +591,17 @@ def scatter_ivt_mt_times(df_lsoa):
 
 
     # Plot connecting lines from markers to diagonal line:
-    x_lines_ivt = np.stack((df_lsoa['drip_ship_ivt_time'],
-                            df_lsoa['drip_ship_ivt_time'],
+    x_lines_ivt = np.stack((df_lsoa['usual_care_ivt_time'],
+                            df_lsoa['usual_care_ivt_time'],
                             [None]*len(df_lsoa)), axis=-1).flatten()
-    y_lines_ivt = np.stack((df_lsoa['drip_ship_ivt_time'],
-                            df_lsoa['mothership_ivt_time'],
+    y_lines_ivt = np.stack((df_lsoa['usual_care_ivt_time'],
+                            df_lsoa['redirection_approved_ivt_time'],
                             [None]*len(df_lsoa)), axis=-1).flatten()
-    x_lines_mt = np.stack((df_lsoa['drip_ship_mt_time'],
-                        df_lsoa['drip_ship_mt_time'],
+    x_lines_mt = np.stack((df_lsoa['usual_care_mt_time'],
+                        df_lsoa['usual_care_mt_time'],
                         [None]*len(df_lsoa)), axis=-1).flatten()
-    y_lines_mt = np.stack((df_lsoa['drip_ship_mt_time'],
-                        df_lsoa['mothership_mt_time'],
+    y_lines_mt = np.stack((df_lsoa['usual_care_mt_time'],
+                        df_lsoa['redirection_approved_mt_time'],
                         [None]*len(df_lsoa)), axis=-1).flatten()
     fig.add_trace(go.Scatter(
         x=x_lines_ivt,
@@ -532,11 +623,11 @@ def scatter_ivt_mt_times(df_lsoa):
     ))
 
     # # Plot lines between IVT and MT:
-    # x_lines = np.stack((df_lsoa['drip_ship_ivt_time'],
-    #                     df_lsoa['drip_ship_mt_time'],
+    # x_lines = np.stack((df_lsoa['usual_care_ivt_time'],
+    #                     df_lsoa['usual_care_mt_time'],
     #                     [None]*len(df_lsoa)), axis=-1).flatten()
-    # y_lines = np.stack((df_lsoa['mothership_ivt_time'],
-    #                     df_lsoa['mothership_mt_time'],
+    # y_lines = np.stack((df_lsoa['redirection_approved_ivt_time'],
+    #                     df_lsoa['redirection_approved_mt_time'],
     #                     [None]*len(df_lsoa)), axis=-1).flatten()
     # fig.add_trace(go.Scatter(
     #     x=x_lines,
@@ -549,8 +640,8 @@ def scatter_ivt_mt_times(df_lsoa):
     # ))
     # Plot markers for IVT:
     fig.add_trace(go.Scatter(
-        x=df_lsoa['drip_ship_ivt_time'],
-        y=df_lsoa['mothership_ivt_time'],
+        x=df_lsoa['usual_care_ivt_time'],
+        y=df_lsoa['redirection_approved_ivt_time'],
         customdata=np.stack(
             (df_lsoa.index.values, df_lsoa['nearest_ivt_unit']), axis=-1),
         # customdata=[df_lsoa.index.values],
@@ -567,8 +658,8 @@ def scatter_ivt_mt_times(df_lsoa):
     ))
     # Plot markers for MT:
     fig.add_trace(go.Scatter(
-        x=df_lsoa['drip_ship_mt_time'],
-        y=df_lsoa['mothership_mt_time'],
+        x=df_lsoa['usual_care_mt_time'],
+        y=df_lsoa['redirection_approved_mt_time'],
         customdata=np.stack(
             (df_lsoa.index.values, df_lsoa['nearest_ivt_unit']), axis=-1),
         marker=dict(symbol='square', color='cyan',
@@ -635,15 +726,14 @@ def scatter_ivt_mt_times(df_lsoa):
 
     st.plotly_chart(fig)
 
-
 scatter_ivt_mt_times(df_lsoa)
 
 # --- Pick out some extreme values ---
 # Calculate time tradeoff:
-time_ivt_diff = (df_lsoa['mothership_ivt_time'] -
-                 df_lsoa['drip_ship_ivt_time'])
-time_mt_diff = (df_lsoa['mothership_mt_time'] -
-                df_lsoa['drip_ship_mt_time'])
+time_ivt_diff = (df_lsoa['redirection_approved_ivt_time'] -
+                 df_lsoa['usual_care_ivt_time'])
+time_mt_diff = (df_lsoa['redirection_approved_mt_time'] -
+                df_lsoa['usual_care_mt_time'])
 time_metric = time_ivt_diff + time_mt_diff
 # Redirection is best when time_ivt_diff is small (preferably zero) *and*
 # time_mt_diff is minimum (preferably below zero).
@@ -701,14 +791,14 @@ with cols[1]:
 
 # TO DO - adding on the extra diagnostic time shouldn't be necessary if the model is set up correctly ----------------------------------
 arr_times = [
-    [df_lsoa.loc[lsoa_name, 'drip_ship_ivt_time'],
-     df_lsoa.loc[lsoa_name, 'drip_ship_mt_time'],
+    [df_lsoa.loc[lsoa_name, 'usual_care_ivt_time'],
+     df_lsoa.loc[lsoa_name, 'usual_care_mt_time'],
      ],
-    [df_lsoa.loc[lsoa_name, 'drip_ship_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
-     df_lsoa.loc[lsoa_name, 'drip_ship_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+    [df_lsoa.loc[lsoa_name, 'usual_care_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     df_lsoa.loc[lsoa_name, 'usual_care_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
      ],
-    [df_lsoa.loc[lsoa_name, 'mothership_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
-     df_lsoa.loc[lsoa_name, 'mothership_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+    [df_lsoa.loc[lsoa_name, 'redirection_approved_ivt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
+     df_lsoa.loc[lsoa_name, 'redirection_approved_mt_time'] + pathway_dict['process_ambulance_on_scene_diagnostic_duration'],
      ],
     ]
 df_times = pd.DataFrame(
@@ -772,15 +862,15 @@ mrs_dists['nlvo_no_treatment'] = dist_dict['nlvo_no_treatment']
 mrs_dists['lvo_no_treatment_noncum'] = dist_dict['lvo_no_treatment_noncum']
 mrs_dists['lvo_no_treatment'] = dist_dict['lvo_no_treatment']
 # Usual care and redirect mRS dists:
-for sce in ['drip_ship', 'mothership']:
-    key = 'usual_care' if sce == 'drip_ship' else 'redirect'
+for sce in ['usual_care', 'redirection_approved']:
+    key = 'usual_care' if sce == 'usual_care' else 'redirect'
     for occ in ['nlvo', 'lvo']:
         for tre in ['ivt', 'mt', 'ivt_mt']:
             try:
-                dist = np.array(df_mrs.loc[lsoa_name, [f'{occ}_{sce}_{tre}_mrs_dists_{i}' for i in range(7)]].to_list())
-                dist_noncum = np.array(df_mrs.loc[lsoa_name, [f'{occ}_{sce}_{tre}_mrs_dists_noncum_{i}' for i in range(7)]].to_list())
-                mrs_dists[f'{occ}_{tre}_{key}_noncum'] = dist_noncum
-                mrs_dists[f'{occ}_{tre}_{key}'] = dist
+                dist = np.array(df_mrs.loc[lsoa_name, [f'{sce}_{occ}_{tre}_mrs_dists_{i}' for i in range(7)]].to_list())
+                dist_noncum = np.array(df_mrs.loc[lsoa_name, [f'{sce}_{occ}_{tre}_mrs_dists_noncum_{i}' for i in range(7)]].to_list())
+                mrs_dists[f'{key}_{occ}_{tre}_noncum'] = dist_noncum
+                mrs_dists[f'{key}_{occ}_{tre}'] = dist
             except KeyError:
                 pass
 
@@ -800,15 +890,15 @@ def plot_mrs_bars_here(occ, tre):
             'linestyle': 'dot',
         },
         display0: {
-            'noncum': mrs_dists[f'{occ}_{tre}_usual_care_noncum'],
-            'cum': mrs_dists[f'{occ}_{tre}_usual_care'],
+            'noncum': mrs_dists[f'usual_care_{occ}_{tre}_noncum'],
+            'cum': mrs_dists[f'usual_care_{occ}_{tre}'],
             'std': None,
             'colour': '#0072b2',
             'linestyle': 'dash',
         },
         display1: {
-            'noncum': mrs_dists[f'{occ}_{tre}_redirect_noncum'],
-            'cum': mrs_dists[f'{occ}_{tre}_redirect'],
+            'noncum': mrs_dists[f'redirect_{occ}_{tre}_noncum'],
+            'cum': mrs_dists[f'redirect_{occ}_{tre}'],
             'std': None,
             'colour': '#56b4e9',
             'linestyle': 'dashdot',
@@ -829,12 +919,12 @@ with cols[2]:
     plot_mrs_bars_here('lvo', 'mt')
 
 # Write which data the LVO with IVT & MT distribution uses.
-if (df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_mt_utility_shift'] == df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_utility_shift']):
+if (df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_mt_utility_shift'] == df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_utility_shift']):
     usual_care_ivt_mt_uses = 'IVT-only'
 else:
     usual_care_ivt_mt_uses = 'MT-only'
 
-if (df_lsoa.loc[lsoa_name, 'lvo_mothership_ivt_mt_utility_shift'] == df_lsoa.loc[lsoa_name, 'lvo_mothership_ivt_utility_shift']):
+if (df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_ivt_mt_utility_shift'] == df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_ivt_utility_shift']):
     redirect_ivt_mt_uses = 'IVT-only'
 else:
     redirect_ivt_mt_uses = 'MT-only'
@@ -862,14 +952,14 @@ def plot_average_utility(df_lsoa, lsoa_name):
     fig = go.Figure()
 
     cols_shift = [
-        'nlvo_drip_ship_ivt_utility_shift',
-        'lvo_drip_ship_ivt_utility_shift',
-        'lvo_drip_ship_mt_utility_shift',
-        'lvo_drip_ship_ivt_mt_utility_shift',
-        'nlvo_mothership_ivt_utility_shift',
-        'lvo_mothership_ivt_utility_shift',
-        'lvo_mothership_mt_utility_shift',
-        'lvo_mothership_ivt_mt_utility_shift',
+        'usual_care_nlvo_ivt_utility_shift',
+        'usual_care_lvo_ivt_utility_shift',
+        'usual_care_lvo_mt_utility_shift',
+        'usual_care_lvo_ivt_mt_utility_shift',
+        'redirection_approved_nlvo_ivt_utility_shift',
+        'redirection_approved_lvo_ivt_utility_shift',
+        'redirection_approved_lvo_mt_utility_shift',
+        'redirection_approved_lvo_ivt_mt_utility_shift',
     ]
     # Add background diagonal line to show parity:
     util_min = np.min(df_lsoa.loc[lsoa_name, cols_shift])
@@ -889,29 +979,29 @@ def plot_average_utility(df_lsoa, lsoa_name):
 
     # Plot markers:
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'nlvo_drip_ship_ivt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'nlvo_mothership_ivt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_nlvo_ivt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'redirection_approved_nlvo_ivt_utility_shift']],
         # marker=dict(symbol='circle', color='red', line=dict(color='black', width=0.5)),
         mode='markers',
         name='nLVO IVT',
     ))
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'lvo_mothership_ivt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_ivt_utility_shift']],
         # marker=dict(symbol='circle', color='red', line=dict(color='black', width=0.5)),
         mode='markers',
         name='LVO IVT',
     ))
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_mt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'lvo_mothership_mt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_mt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_mt_utility_shift']],
         # marker=dict(symbol='circle', color='red', line=dict(color='black', width=0.5)),
         mode='markers',
         name='LVO MT',
     ))
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_mt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'lvo_mothership_ivt_mt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_mt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_ivt_mt_utility_shift']],
         marker=dict(symbol='square', color='rgba(0, 0, 0, 0)',
                     size=10, line=dict(color='grey', width=1)),
         mode='markers',
@@ -920,30 +1010,30 @@ def plot_average_utility(df_lsoa, lsoa_name):
 
     # Plot connecting lines from markers to diagonal line:
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'nlvo_drip_ship_ivt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'nlvo_drip_ship_ivt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'nlvo_drip_ship_ivt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'nlvo_mothership_ivt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_nlvo_ivt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'usual_care_nlvo_ivt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'usual_care_nlvo_ivt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'redirection_approved_nlvo_ivt_utility_shift']],
         line_color='grey',
         mode='lines',
         showlegend=False,
         hoverinfo='skip'
     ))
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_ivt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'lvo_mothership_ivt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_ivt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_ivt_utility_shift']],
         line_color='grey',
         mode='lines',
         showlegend=False,
         hoverinfo='skip'
     ))
     fig.add_trace(go.Scatter(
-        x=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_mt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'lvo_drip_ship_mt_utility_shift']],
-        y=[df_lsoa.loc[lsoa_name, 'lvo_drip_ship_mt_utility_shift'],
-           df_lsoa.loc[lsoa_name, 'lvo_mothership_mt_utility_shift']],
+        x=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_mt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'usual_care_lvo_mt_utility_shift']],
+        y=[df_lsoa.loc[lsoa_name, 'usual_care_lvo_mt_utility_shift'],
+           df_lsoa.loc[lsoa_name, 'redirection_approved_lvo_mt_utility_shift']],
         line_color='grey',
         mode='lines',
         showlegend=False,
@@ -1003,29 +1093,12 @@ Inputs that affect this:
 '''
 )
 
-pie_cols = st.columns([1, 3])
-with pie_cols[0]:
-    container_occ = st.container()
-with pie_cols[1]:
-    container_sunburst = st.container()
-
-with container_occ:
-    population_dict = inputs.select_parameters_population_optimist()
-
-    st.markdown('### Bonus level')
-    # Made up these default numbers.
-    prop_nlvo_redirect_considered = st.number_input(
-        'nLVO proportion considered for redirection',
-        0.2345678901
-        )
-    prop_lvo_redirect_considered = st.number_input(
-        'nLVO proportion considered for redirection',
-        0.7890123456
-    )
-
 # Proportion nLVO and LVO:
 prop_nlvo = population_dict['prop_nlvo']
 prop_lvo = population_dict['prop_lvo']
+# Proportion of these who are considered for redirection:
+prop_nlvo_redirect_considered = population_dict['prop_nlvo_redirection_considered']
+prop_lvo_redirect_considered = population_dict['prop_lvo_redirection_considered']
 # Sensitivity and specificity:
 prop_lvo_redirected = population_dict['sensitivity']
 prop_nlvo_redirected = (1.0 - population_dict['specificity'])
@@ -1182,20 +1255,20 @@ st.markdown('Calculate benefit of redirection for each occlusion and treatment t
 
 
 mrs_dists['nlvo_ivt_combo_noncum'] = (
-    ((1.0 - prop_nlvo_redirected) * mrs_dists["nlvo_ivt_usual_care_noncum"]) +
-    (prop_nlvo_redirected * mrs_dists["nlvo_ivt_redirect_noncum"])
+    ((1.0 - prop_nlvo_redirected) * mrs_dists["usual_care_nlvo_ivt_noncum"]) +
+    (prop_nlvo_redirected * mrs_dists["redirect_nlvo_ivt_noncum"])
 )
 mrs_dists['lvo_ivt_combo_noncum'] = (
-    ((1.0 - prop_lvo_redirected) * mrs_dists["lvo_ivt_usual_care_noncum"]) +
-    (prop_lvo_redirected * mrs_dists["lvo_ivt_redirect_noncum"])
+    ((1.0 - prop_lvo_redirected) * mrs_dists["usual_care_lvo_ivt_noncum"]) +
+    (prop_lvo_redirected * mrs_dists["redirect_lvo_ivt_noncum"])
 )
 mrs_dists['lvo_mt_combo_noncum'] = (
-    ((1.0 - prop_lvo_redirected) * mrs_dists["lvo_mt_usual_care_noncum"]) +
-    (prop_lvo_redirected * mrs_dists["lvo_mt_redirect_noncum"])
+    ((1.0 - prop_lvo_redirected) * mrs_dists["usual_care_lvo_mt_noncum"]) +
+    (prop_lvo_redirected * mrs_dists["redirect_lvo_mt_noncum"])
 )
 mrs_dists['lvo_ivt_mt_combo_noncum'] = (
-    ((1.0 - prop_lvo_redirected) * mrs_dists["lvo_ivt_mt_usual_care_noncum"]) +
-    (prop_lvo_redirected * mrs_dists["lvo_ivt_mt_redirect_noncum"])
+    ((1.0 - prop_lvo_redirected) * mrs_dists["usual_care_lvo_ivt_mt_noncum"]) +
+    (prop_lvo_redirected * mrs_dists["redirect_lvo_ivt_mt_noncum"])
 )
 
 st.markdown('### Example: combining "usual care" and "redirected" data')
@@ -1206,12 +1279,12 @@ prop = prop_lvo_redirected if occ == 'lvo' else prop_nlvo_redirected
 
 plot_dists = {}
 # Step 1: Just the mRS dists.
-plot_dists['step1_usual'] = mrs_dists[f'{occ}_{tre}_usual_care_noncum']
-plot_dists['step1_redir'] = mrs_dists[f'{occ}_{tre}_redirect_noncum']
+plot_dists['step1_usual'] = mrs_dists[f'usual_care_{occ}_{tre}_noncum']
+plot_dists['step1_redir'] = mrs_dists[f'redirect_{occ}_{tre}_noncum']
 # Step 2: mRS dists scaled.
 plot_dists['step2_usual'] = (
-    (1.0 - prop) * mrs_dists[f'{occ}_{tre}_usual_care_noncum'])
-plot_dists['step2_redir'] = prop * mrs_dists[f'{occ}_{tre}_redirect_noncum']
+    (1.0 - prop) * mrs_dists[f'usual_care_{occ}_{tre}_noncum'])
+plot_dists['step2_redir'] = prop * mrs_dists[f'redirect_{occ}_{tre}_noncum']
 # Step 3: Place mRS dists side-by-side.
 plot_dists['step3'] = np.append(plot_dists['step2_usual'], plot_dists['step2_redir'])
 # Step 4: Rearrange the mRS bins.

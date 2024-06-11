@@ -71,8 +71,8 @@ def create_colour_gdf(
         else:
             treatment_type = scenario_dict['treatment_type']
         column_colours = '_'.join([
-                scenario_dict['stroke_type'],
                 scenario_type,
+                scenario_dict['stroke_type'],
                 treatment_type,
                 scenario_dict['outcome_type']
             ])

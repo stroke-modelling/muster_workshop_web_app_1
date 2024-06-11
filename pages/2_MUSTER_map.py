@@ -21,9 +21,39 @@ import utilities.container_inputs as inputs
 
 @st.cache_data
 def main_calculations(input_dict, df_unit_services):
+    # Times to treatment:
+    geo = calc.calculate_geography(df_unit_services)
+    # Travel times for each LSOA:
+    df_travel_times = geo.combined_data[
+        [c for c in geo.combined_data.columns if 'time' in c] +
+        ['transfer_required', 'LSOA']
+        ]
+    df_travel_times = df_travel_times.set_index('LSOA')
+
+    # Add travel times to the pathway timings to get treatment times.
+    df_outcome_uc = calc.make_outcome_inputs_usual_care(
+        input_dict, df_travel_times)
+    df_outcome_msu = calc.make_outcome_inputs_msu(
+        input_dict, df_travel_times)
+    dict_outcome_inputs = {
+        'usual_care': df_outcome_uc,
+        'msu': df_outcome_msu,
+    }
+
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(
-        input_dict, df_unit_services, use_msu=True, use_mothership=False)
+        dict_outcome_inputs, df_unit_services, geo.combined_data)
+
+    # Calculate diff - msu minus usual care:
+    df_lsoa = calc.combine_results_by_diff(
+        df_lsoa,
+        scenario_types=['msu', 'usual_care']
+        )
+    df_mrs = calc.combine_results_by_diff(
+        df_mrs,
+        scenario_types=['msu', 'usual_care'],
+        combine_mrs_dists=True
+        )
 
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)
@@ -190,9 +220,9 @@ with container_select_cmap:
 # #########################################
 # Which scenarios will be shown in the maps:
 # (in this order)
-scenario_types = ['drip_ship', 'diff_msu_minus_drip_ship']
+scenario_types = ['usual_care', 'diff_msu_minus_usual_care']
 # Which mRS distributions will be shown on the bars:
-scenario_mrs = ['drip_ship', 'msu']
+scenario_mrs = ['usual_care', 'msu']
 
 # Display names:
 subplot_titles = [

@@ -18,39 +18,31 @@ from utilities.maps import dissolve_polygons_by_value
 # Containers:
 
 
-@st.cache_data
-def calculate_outcomes(input_dict, df_unit_services,
-                       use_msu=True, use_mothership=True):
-    """
-
-    # Run the outcomes with the selected pathway:
-    """
-    # Feed input parameters into Scenario:
-    scenario = Scenario({
-        'name': 1,
-        'limit_to_england': True,
-        **input_dict
-    })
-
+def calculate_geography(df_unit_services):
     # Process and save geographic data (only needed when hospital data changes)
     geo = Geoprocessing(
-        df_unit_services=df_unit_services
+        df_unit_services=df_unit_services,
+        limit_to_england=True
         )
     geo.run()
 
     # Reset index because Model expects a column named 'lsoa':
     geo.combined_data = geo.combined_data.reset_index()
+    return geo
 
+
+@st.cache_data
+def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
+    """
+
+    # Run the outcomes with the selected pathway:
+    """
     # Set up model
-    model = Model(
-        scenario=scenario,
-        geodata=geo.combined_data,
-        use_msu_bool=use_msu,
-        use_mothership_bool=use_mothership
-        )
-
+    model = Model(dict_outcome_inputs, geodata)
     # Run model
     model.run()
+
+    # TO DO - merge in the geographical data to the outcome results.
 
     df_lsoa = model.full_results.copy()
     df_lsoa.index.names = ['lsoa']
@@ -158,6 +150,230 @@ def calculate_outcomes(input_dict, df_unit_services,
     #     df_mrs[cols_nlvo] = dist
 
     return df_lsoa, df_mrs
+
+
+# ##########################################
+# ##### BUILD INPUTS FOR OUTCOME MODEL #####
+# ##########################################
+def make_outcome_inputs_usual_care(pathway_dict, df_travel_times):
+    # Time to IVT:
+    time_to_ivt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['process_time_arrival_to_needle']
+        )
+
+    # Separate MT timings required depending on whether transfer
+    # needed. Mask for which rows of data need a transfer:
+    mask_transfer = np.where(df_travel_times['transfer_required'].values)
+    # Timings for units needing transfers:
+    mt_transfer = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['transfer_time_delay'] +
+        df_travel_times['transfer_time'].values +
+        pathway_dict['process_time_transfer_arrival_to_puncture']
+        )
+    # Timings for units that do not need transfers:
+    mt_no_transfer = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['process_time_arrival_to_puncture']
+        )
+    # Combine the two sets of MT times:
+    time_to_mt = mt_no_transfer
+    time_to_mt[mask_transfer] = mt_transfer[mask_transfer]
+
+    # Set up input table for stroke outcome package.
+    outcome_inputs_df = pd.DataFrame()
+    # Provide a dummy stroke type code for now -
+    # it will be overwritten when the outcomes are calculated so that
+    # both nLVO and LVO results are calculated from one scenario.
+    outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(df_travel_times))
+    # Set everyone to receive both treatment types.
+    outcome_inputs_df['ivt_chosen_bool'] = 1
+    outcome_inputs_df['mt_chosen_bool'] = 1
+    # And include the times we've just calculated:
+    outcome_inputs_df['onset_to_needle_mins'] = time_to_ivt
+    outcome_inputs_df['onset_to_puncture_mins'] = time_to_mt
+    # Also store LSOA name - not needed by outcome model,
+    # but useful later for matching these results to their LSOA.
+    outcome_inputs_df['LSOA'] = df_travel_times.index
+
+    return outcome_inputs_df
+
+
+def make_outcome_inputs_redirection_rejected(pathway_dict, df_travel_times):
+    """
+    These timings are the same as for usual care but with the extra
+    time for diagnostic.
+    """
+    # Time to IVT:
+    time_to_ivt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        pathway_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['process_time_arrival_to_needle']
+        )
+
+    # Separate MT timings required depending on whether transfer
+    # needed. Mask for which rows of data need a transfer:
+    mask_transfer = np.where(df_travel_times['transfer_required'].values)
+    # Timings for units needing transfers:
+    mt_transfer = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        pathway_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['transfer_time_delay'] +
+        df_travel_times['transfer_time'].values +
+        pathway_dict['process_time_transfer_arrival_to_puncture']
+        )
+    # Timings for units that do not need transfers:
+    mt_no_transfer = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        pathway_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        df_travel_times['nearest_ivt_time'].values +
+        pathway_dict['process_time_arrival_to_puncture']
+        )
+    # Combine the two sets of MT times:
+    time_to_mt = mt_no_transfer
+    time_to_mt[mask_transfer] = mt_transfer[mask_transfer]
+
+    # Set up input table for stroke outcome package.
+    outcome_inputs_df = pd.DataFrame()
+    # Provide a dummy stroke type code for now -
+    # it will be overwritten when the outcomes are calculated so that
+    # both nLVO and LVO results are calculated from one scenario.
+    outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(df_travel_times))
+    # Set everyone to receive both treatment types.
+    outcome_inputs_df['ivt_chosen_bool'] = 1
+    outcome_inputs_df['mt_chosen_bool'] = 1
+    # And include the times we've just calculated:
+    outcome_inputs_df['onset_to_needle_mins'] = time_to_ivt
+    outcome_inputs_df['onset_to_puncture_mins'] = time_to_mt
+    # Also store LSOA name - not needed by outcome model,
+    # but useful later for matching these results to their LSOA.
+    outcome_inputs_df['LSOA'] = df_travel_times.index
+
+    return outcome_inputs_df
+
+
+def make_outcome_inputs_redirection_approved(pathway_dict, df_travel_times):
+    """
+    """
+    # Time to IVT:
+    time_to_ivt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        pathway_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        df_travel_times['nearest_mt_time'].values +
+        pathway_dict['process_time_arrival_to_needle']
+        )
+
+    # Time to MT: this time nobody has a transfer.
+    time_to_mt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_time_ambulance_response'] +
+        pathway_dict['process_ambulance_on_scene_duration'] +
+        pathway_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        df_travel_times['nearest_mt_time'].values +
+        pathway_dict['process_time_arrival_to_puncture']
+        )
+
+    # Set up input table for stroke outcome package.
+    outcome_inputs_df = pd.DataFrame()
+    # Provide a dummy stroke type code for now -
+    # it will be overwritten when the outcomes are calculated so that
+    # both nLVO and LVO results are calculated from one scenario.
+    outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(df_travel_times))
+    # Set everyone to receive both treatment types.
+    outcome_inputs_df['ivt_chosen_bool'] = 1
+    outcome_inputs_df['mt_chosen_bool'] = 1
+    # And include the times we've just calculated:
+    outcome_inputs_df['onset_to_needle_mins'] = time_to_ivt
+    outcome_inputs_df['onset_to_puncture_mins'] = time_to_mt
+    # Also store LSOA name - not needed by outcome model,
+    # but useful later for matching these results to their LSOA.
+    outcome_inputs_df['LSOA'] = df_travel_times.index
+
+    return outcome_inputs_df
+
+
+def make_outcome_inputs_msu(pathway_dict, df_travel_times):
+    # Time to IVT:
+    time_to_ivt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_msu_dispatch'] +
+        (df_travel_times['nearest_msu_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_msu_thrombolysis']
+        )
+
+    # Time to MT:
+    # If required, everyone goes directly to the nearest MT unit.
+    time_to_mt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_msu_dispatch'] +
+        (df_travel_times['nearest_msu_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_msu_thrombolysis']  +
+        pathway_dict['process_msu_on_scene_post_thrombolysis']  +
+        (df_travel_times['nearest_mt_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_time_msu_arrival_to_puncture']
+        )
+
+    # Bonus times - not needed for outcome model but calculated anyway.
+    msu_occupied_treatment = (
+        pathway_dict['process_msu_dispatch'] +
+        (df_travel_times['nearest_msu_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_msu_thrombolysis'] +
+        pathway_dict['process_msu_on_scene_post_thrombolysis'] +
+        (df_travel_times['nearest_mt_time'].values *
+         pathway_dict['scale_msu_travel_times'])
+        )
+
+    msu_occupied_no_treatment = (
+        pathway_dict['process_msu_dispatch'] +
+        (df_travel_times['nearest_msu_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_msu_on_scene_no_thrombolysis']
+        )
+
+    # Set up input table for stroke outcome package.
+    outcome_inputs_df = pd.DataFrame()
+    # Provide a dummy stroke type code for now -
+    # it will be overwritten when the outcomes are calculated so that
+    # both nLVO and LVO results are calculated from one scenario.
+    outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(df_travel_times))
+    # Set everyone to receive both treatment types.
+    outcome_inputs_df['ivt_chosen_bool'] = 1
+    outcome_inputs_df['mt_chosen_bool'] = 1
+    # And include the times we've just calculated:
+    outcome_inputs_df['onset_to_needle_mins'] = time_to_ivt
+    outcome_inputs_df['onset_to_puncture_mins'] = time_to_mt
+    # Also store LSOA name - not needed by outcome model,
+    # but useful later for matching these results to their LSOA.
+    outcome_inputs_df['LSOA'] = df_travel_times.index
+    # Also store bonus times:
+    outcome_inputs_df['msu_occupied_treatment'] = msu_occupied_treatment
+    outcome_inputs_df['msu_occupied_no_treatment'] = msu_occupied_no_treatment
+
+    return outcome_inputs_df
 
 
 # ###########################
@@ -427,7 +643,11 @@ def group_mrs_dists_by_column(df_lsoa, col_region='', col_vals=[]):
 # ##### AVERAGE RESULTS #####
 # ###########################
 def combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, combine_mrs_dists=False):
+        df_lsoa,
+        prop_dict,
+        combine_mrs_dists=False,
+        scenario_list=[]
+        ):
     """
     Make two new dataframes, one with all the column 1 data
     and one with all the column 2 data, and with the same column
@@ -448,7 +668,10 @@ def combine_results_by_occlusion_type(
 
     # Don't combine treatment types for now
     # (no nLVO with MT data).
-    scenario_list = ['drip_ship', 'mothership', 'redirect']
+    if len(scenario_list) > 0:
+        pass
+    else:
+        scenario_list = ['drip_ship', 'mothership', 'redirect']
     treatment_list = ['ivt', 'mt', 'ivt_mt']
     if combine_mrs_dists:
         outcome_list = ['mrs_dists_noncum']  # not cumulative
@@ -462,11 +685,11 @@ def combine_results_by_occlusion_type(
         for t in treatment_list:
             for o in outcome_list:
                 if combine_mrs_dists:
-                    cols_mrs_lvo = [f'lvo_{s}_{t}_{o}_{i}' for i in range(7)]
+                    cols_mrs_lvo = [f'{s}_lvo_{t}_{o}_{i}' for i in range(7)]
 
                     if t == 'mt':
                         cols_mrs_nlvo = [
-                            f'nlvo_{s}_{t}_{o}_{i}' for i in range(7)]
+                            f'{s}_nlvo_{t}_{o}_{i}' for i in range(7)]
                         if 'noncum' in o:
                             dist = dist_dict['nlvo_no_treatment_noncum']
                         else:
@@ -475,7 +698,7 @@ def combine_results_by_occlusion_type(
                         df_lsoa_to_update[cols_mrs_nlvo] = dist
                     else:
                         cols_mrs_nlvo = [
-                            f'nlvo_{s}_ivt_{o}_{i}' for i in range(7)]
+                            f'{s}_nlvo_ivt_{o}_{i}' for i in range(7)]
                     try:
                         data_nlvo = df_lsoa_to_update[cols_mrs_nlvo]
                         data_exists = True
@@ -491,15 +714,15 @@ def combine_results_by_occlusion_type(
                 else:
                     if t == 'mt':
                         if o in ['mrs_shift', 'utility_shift']:
-                            col_nlvo = f'nlvo_{s}_ivt_{o}'
+                            col_nlvo = f'{s}_nlvo_ivt_{o}'
                             df_lsoa_to_update[col_nlvo] = 0.0
                         else:
                             col_nlvo = f'nlvo_no_treatment_{o}'
                     else:
-                        col_nlvo = f'nlvo_{s}_ivt_{o}'
+                        col_nlvo = f'{s}_nlvo_ivt_{o}'
 
                     # col_nlvo = f'nlvo_{s}_{t}_{o}'
-                    col_lvo = f'lvo_{s}_{t}_{o}'
+                    col_lvo = f'{s}_lvo_{t}_{o}'
                     try:
                         data_nlvo = df_lsoa_to_update[col_nlvo]
                         data_exists = True
@@ -507,7 +730,7 @@ def combine_results_by_occlusion_type(
                         data_exists = False
 
                     if data_exists:
-                        cols_combo.append(f'{s}_{t}_{o}')
+                        cols_combo.append(f'{s}_combo_{t}_{o}')
                         cols_nlvo.append(col_nlvo)
                         cols_lvo.append(col_lvo)
 
@@ -540,8 +763,10 @@ def combine_results_by_occlusion_type(
     dp = 3
     for col in combo_data.columns:
         combo_data[col] = np.round(combo_data[col], dp)
-    # Update column names to mark them as combined:
-    combo_data.columns = [f'combo_{col}' for col in combo_data.columns]
+    # # Update column names to mark them as combined:
+    # combo_data.columns = [
+    #     '_'.join(col.split('_')[0], 'combo', col.split('_')[1:])
+    #     f'combo_{col}' for col in combo_data.columns]
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
 
@@ -549,7 +774,10 @@ def combine_results_by_occlusion_type(
 
 
 def combine_results_by_redirection(
-        df_lsoa, redirect_dict, combine_mrs_dists=False):
+        df_lsoa,
+        redirect_dict,
+        combine_mrs_dists=False
+        ):
     # Simple addition: x% of column 1 plus y% of column 2.
 
     prop_lvo_redirected = redirect_dict['sensitivity']
@@ -572,45 +800,45 @@ def combine_results_by_redirection(
     for v in occlusion_list:
         # Column names for these new DataFrames:
         cols_combo = []
-        cols_drip_ship = []
-        cols_mothership = []
+        cols_rr = []
+        cols_ra = []
         prop = prop_dict[v]
         for t in treatment_list:
             for o in outcome_list:
                 if combine_mrs_dists:
-                    cols_mrs_drip_ship = [
-                        f'{v}_drip_ship_{t}_{o}_{i}' for i in range(7)]
-                    cols_mrs_mothership = [
-                        f'{v}_mothership_{t}_{o}_{i}' for i in range(7)]
+                    cols_mrs_rr = [
+                        f'redirection_rejected_{v}_{t}_{o}_{i}' for i in range(7)]
+                    cols_mrs_ra = [
+                        f'redirection_approved_{v}_{t}_{o}_{i}' for i in range(7)]
                     try:
-                        data_nlvo = df_lsoa[cols_mrs_drip_ship]
+                        data_nlvo = df_lsoa[cols_mrs_rr]
                         data_exists = True
                     except KeyError:
                         data_exists = False
 
                     if data_exists:
                         cols_here = [
-                            f'{v}_redirect_{t}_{o}_{i}' for i in range(7)]
+                            f'redirection_considered_{v}_{t}_{o}_{i}' for i in range(7)]
                         cols_combo += cols_here
-                        cols_drip_ship += cols_mrs_drip_ship
-                        cols_mothership += cols_mrs_mothership
+                        cols_rr += cols_mrs_rr
+                        cols_ra += cols_mrs_ra
                 else:
-                    col_drip_ship = f'{v}_drip_ship_{t}_{o}'
-                    col_mothership = f'{v}_mothership_{t}_{o}'
+                    col_rr = f'redirection_rejected_{v}_{t}_{o}'
+                    col_ra = f'redirection_approved_{v}_{t}_{o}'
                     try:
-                        df_lsoa[col_drip_ship]
+                        df_lsoa[col_rr]
                         data_exists = True
                     except KeyError:
                         data_exists = False
 
                     if data_exists:
-                        cols_combo.append(f'{v}_redirect_{t}_{o}')
-                        cols_drip_ship.append(col_drip_ship)
-                        cols_mothership.append(col_mothership)
+                        cols_combo.append(f'redirection_considered_{v}_{t}_{o}')
+                        cols_rr.append(col_rr)
+                        cols_ra.append(col_ra)
 
         # Pick out the data from the original dataframe:
-        df1 = df_lsoa[cols_drip_ship].copy()
-        df2 = df_lsoa[cols_mothership].copy()
+        df1 = df_lsoa[cols_rr].copy()
+        df2 = df_lsoa[cols_ra].copy()
         # Rename columns so they match:
         df1.columns = cols_combo
         df2.columns = cols_combo
@@ -645,7 +873,11 @@ def combine_results_by_redirection(
     return df_lsoa
 
 
-def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
+def combine_results_by_diff(
+        df_lsoa,
+        scenario_types,
+        combine_mrs_dists=False
+        ):
     df1 = pd.DataFrame(index=df_lsoa.index)
     df2 = pd.DataFrame(index=df_lsoa.index)
     # Column names for these new DataFrames:
@@ -653,7 +885,7 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
     cols_scen1 = []
     cols_scen2 = []
 
-    scenario_types = ['redirect', 'drip_ship']
+    # scenario_types = ['redirect', 'drip_ship']
     occlusion_types = ['nlvo', 'lvo', 'combo']
     treatment_types = ['ivt', 'mt', 'ivt_mt']
     if combine_mrs_dists:
@@ -666,10 +898,10 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
             for out in outcome_types:
                 if combine_mrs_dists:
                     cols_mrs_scen1 = [
-                        f'{occ}_{scenario_types[0]}_{tre}_{out}_{i}'
+                        f'{scenario_types[0]}_{occ}_{tre}_{out}_{i}'
                         for i in range(7)]
                     cols_mrs_scen2 = [
-                        f'{occ}_{scenario_types[1]}_{tre}_{out}_{i}'
+                        f'{scenario_types[1]}_{occ}_{tre}_{out}_{i}'
                         for i in range(7)]
                     try:
                         data_nlvo = df_lsoa[cols_mrs_scen1]
@@ -685,8 +917,8 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
                         cols_scen2 += cols_mrs_scen2
                 else:
                     # Existing column names:
-                    col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
-                    col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
+                    col_scen1 = f'{scenario_types[0]}_{occ}_{tre}_{out}'
+                    col_scen2 = f'{scenario_types[1]}_{occ}_{tre}_{out}'
                     # New column name for the diff data:
                     col_diff = f'{occ}_{tre}_{out}'
                     try:
@@ -735,9 +967,9 @@ def combine_results_by_diff(df_lsoa, combine_mrs_dists=False):
     # Update column names to mark them as combined:
     combo_cols = [
         ''.join([
-            f"{col.split('_')[0]}_",
+            # f"{col.split('_')[0]}_",
             f'diff_{scenario_types[0]}_minus_{scenario_types[1]}_',
-            f"{'_'.join(col.split('_')[1:])}"
+            f"{'_'.join(col.split('_'))}"
             ])
         for col in combo_data.columns]
     combo_data.columns = combo_cols

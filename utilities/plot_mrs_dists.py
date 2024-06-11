@@ -41,8 +41,8 @@ def setup_for_mrs_dist_bars(
     occ_type = scenario_dict['stroke_type']
     treat_type = scenario_dict['treatment_type']
 
-    col = f'{occ_type}_{scenarios[0]}_{treat_type}_mrs_dists'
-    col2 = f'{occ_type}_{scenarios[1]}_{treat_type}_mrs_dists'
+    col = f'{scenarios[0]}_{occ_type}_{treat_type}_mrs_dists'
+    col2 = f'{scenarios[1]}_{occ_type}_{treat_type}_mrs_dists'
 
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
@@ -90,23 +90,35 @@ def setup_for_mrs_dist_bars(
             dist2_std = None
         else:
             # Use IVT-only data.
-            col = f'{occ_type}_{scenarios[0]}_ivt_mrs_dists'
-            col2 = f'{occ_type}_{scenarios[1]}_ivt_mrs_dists'
+            col = f'{scenarios[0]}_{occ_type}_ivt_mrs_dists'
+            col2 = f'{scenarios[1]}_{occ_type}_ivt_mrs_dists'
             # Selected region:
-            dist_noncum = df.loc[str_selected_region,
-                                [f'{col}_noncum_{i}' for i in range(7)]].values
-            dist_cum = df.loc[str_selected_region,
-                            [f'{col}_{i}' for i in range(7)]].values
-            dist_std = df.loc[str_selected_region,
-                            [f'{col}_noncum_std_{i}' for i in range(7)]].values
+            dist_noncum = df.loc[
+                str_selected_region,
+                [f'{col}_noncum_{i}' for i in range(7)]
+                ].values
+            dist_cum = df.loc[
+                str_selected_region,
+                [f'{col}_{i}' for i in range(7)]
+                ].values
+            dist_std = df.loc[
+                str_selected_region,
+                [f'{col}_noncum_std_{i}' for i in range(7)]
+                ].values
 
             # Redirect:
-            dist2_noncum = df.loc[str_selected_region,
-                                [f'{col2}_noncum_{i}' for i in range(7)]].values
-            dist2_cum = df.loc[str_selected_region,
-                            [f'{col2}_{i}' for i in range(7)]].values
-            dist2_std = df.loc[str_selected_region,
-                            [f'{col2}_noncum_std_{i}' for i in range(7)]].values
+            dist2_noncum = df.loc[
+                str_selected_region,
+                [f'{col2}_noncum_{i}' for i in range(7)]
+                ].values
+            dist2_cum = df.loc[
+                str_selected_region,
+                [f'{col2}_{i}' for i in range(7)]
+                ].values
+            dist2_std = df.loc[
+                str_selected_region,
+                [f'{col2}_noncum_std_{i}' for i in range(7)]
+                ].values
 
     # Display names for the data:
     display_name_dict = {

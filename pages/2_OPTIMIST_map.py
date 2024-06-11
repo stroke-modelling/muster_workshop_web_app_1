@@ -21,18 +21,36 @@ import utilities.container_inputs as inputs
 
 @st.cache_data
 def main_calculations(input_dict, df_unit_services):
+    # Times to treatment:
+    geo = calc.calculate_geography(df_unit_services)
+    # Travel times for each LSOA:
+    df_travel_times = geo.combined_data[
+        [c for c in geo.combined_data.columns if 'time' in c] +
+        ['transfer_required', 'LSOA']
+        ]
+    df_travel_times = df_travel_times.set_index('LSOA')
+
+    # Add travel times to the pathway timings to get treatment times.
+    df_outcome_uc = calc.make_outcome_inputs_usual_care(
+        input_dict, df_travel_times)
+    df_outcome_ra = calc.make_outcome_inputs_redirection_approved(
+        input_dict, df_travel_times)
+    df_outcome_rr = calc.make_outcome_inputs_redirection_rejected(
+        input_dict, df_travel_times)
+    dict_outcome_inputs = {
+        'usual_care': df_outcome_uc,
+        'redirection_approved': df_outcome_ra,
+        'redirection_rejected': df_outcome_rr,
+    }
+
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(
-        input_dict, df_unit_services, use_msu=False, use_mothership=True)
-
-    # Remove the MSU data:
-    cols_to_remove = [c for c in df_lsoa.columns if 'msu' in c]
-    df_lsoa = df_lsoa.drop(cols_to_remove, axis='columns')
-    # Current setup means that MSU data is calculated with default
-    # values even if we don't explicitly give it any parameters.
+        dict_outcome_inputs, df_unit_services, geo.combined_data)
 
     # Extra calculations for redirection:
-    # Combine drip-and-ship and mothership results in proportions given:
+    # Combine redirection rejected and approved results in
+    # proportions given by specificity and sensitivity.
+    # This creates columns labelled "redirection_considered".
     redirect_dict = {
         'sensitivity': input_dict['sensitivity'],
         'specificity': input_dict['specificity'],
@@ -42,17 +60,38 @@ def main_calculations(input_dict, df_unit_services):
         df_mrs, redirect_dict, combine_mrs_dists=True)
 
     # Make combined nLVO + LVO data in the proportions given:
+    # Combine for "usual care":
     prop_dict = {
         'nlvo': input_dict['prop_nlvo'],
         'lvo': input_dict['prop_lvo']
     }
-    df_lsoa = calc.combine_results_by_occlusion_type(df_lsoa, prop_dict)
+    df_lsoa = calc.combine_results_by_occlusion_type(
+        df_lsoa, prop_dict, scenario_list=['usual_care'])
     df_mrs = calc.combine_results_by_occlusion_type(
-        df_mrs, prop_dict, combine_mrs_dists=True)
+        df_mrs, prop_dict, combine_mrs_dists=True,
+        scenario_list=['usual_care'])
+    # Combine for redirection considered:
+    prop_dict = {
+        'nlvo': input_dict['prop_redirection_considered_nlvo'],
+        'lvo': input_dict['prop_redirection_considered_lvo']
+    }
+    df_lsoa = calc.combine_results_by_occlusion_type(
+        df_lsoa, prop_dict, scenario_list=['redirection_considered'])
+    df_mrs = calc.combine_results_by_occlusion_type(
+        df_mrs, prop_dict, combine_mrs_dists=True,
+        scenario_list=['redirection_considered'])
+    # Don't calculate the separate redirection approved/rejected bits.
 
-    # Calculate diff - redirect minus drip-ship:
-    df_lsoa = calc.combine_results_by_diff(df_lsoa)
-    df_mrs = calc.combine_results_by_diff(df_mrs, combine_mrs_dists=True)
+    # Calculate diff - redirect minus usual care:
+    df_lsoa = calc.combine_results_by_diff(
+        df_lsoa,
+        scenario_types=['redirection_considered', 'usual_care']
+        )
+    df_mrs = calc.combine_results_by_diff(
+        df_mrs,
+        scenario_types=['redirection_considered', 'usual_care'],
+        combine_mrs_dists=True
+        )
 
     df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
         df_lsoa, df_unit_services)
@@ -269,9 +308,9 @@ with container_select_cmap:
 # #########################################
 # Which scenarios will be shown in the maps:
 # (in this order)
-scenario_types = ['drip_ship', 'diff_redirect_minus_drip_ship']
+scenario_types = ['usual_care', 'diff_redirection_considered_minus_usual_care']
 # Which mRS distributions will be shown on the bars:
-scenario_mrs = ['drip_ship', 'redirect']
+scenario_mrs = ['usual_care', 'redirection_considered']
 
 # Display names:
 subplot_titles = [
