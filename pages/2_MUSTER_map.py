@@ -104,14 +104,14 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-container_map, container_mrs_dists = st.columns([2, 1])
+container_map, container_mrs_dists_etc = st.columns([2, 1])
 # Convert the map container to empty so that the placeholder map
 # is replaced once the real map is ready.
 with container_map:
     container_map = st.empty()
 # Convert mRS dists to empty so that re-running a fragment replaces
 # the bars rather than displays the new plot in addition.
-with container_mrs_dists:
+with container_mrs_dists_etc:
     container_mrs_dists = st.empty()
 container_map_inputs = st.container(border=True)
 with container_map_inputs:
@@ -286,6 +286,24 @@ with container_results_tables:
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
 
+# Limit the mRS data to only LSOA that benefit from an MSU,
+# i.e. remove anything where the added utility of MSU is not better
+# than the added utility of usual care.
+c1 = ''.join([
+    'diff_msu_minus_usual_care_',
+    f'{scenario_dict["stroke_type"]}_',
+    f'{scenario_dict["treatment_type"]}_utility_shift'
+])
+lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+
+with container_mrs_dists_etc:
+    st.markdown(''.join([
+        'mRS distributions shown for only LSOA who would benefit ',
+        'from an MSU (i.e. "added utility" for "MSU" scenario ',
+        'is better than for "usual care" scenario).'
+        ]))
+
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
 @st.experimental_fragment
@@ -299,7 +317,7 @@ def display_mrs_dists():
             bar_option,
             scenario_dict,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-            df_mrs,
+            df_mrs_to_plot,
             scenarios=scenario_mrs
             ))
 

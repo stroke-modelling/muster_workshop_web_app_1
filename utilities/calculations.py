@@ -706,7 +706,7 @@ def combine_results_by_occlusion_type(
                         data_exists = False
 
                     if data_exists:
-                        cols_here = [f'{s}_{t}_{o}_{i}' for i in range(7)]
+                        cols_here = [f'{s}_combo_{t}_{o}_{i}' for i in range(7)]
                         cols_combo += cols_here
                         cols_nlvo += cols_mrs_nlvo
                         cols_lvo += cols_mrs_lvo

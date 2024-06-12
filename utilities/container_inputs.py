@@ -150,6 +150,10 @@ def select_parameters_map():
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
             'default': 60
         },
+        'process_msu_on_scene_no_thrombolysis': {
+            'name': 'MSU on scene post IVT time',
+            'default': 15
+        },
         'scale_msu_travel_times': {
             'name': 'Scale factor for MSU travel speed',
             'default': 1.0
@@ -465,38 +469,39 @@ def select_parameters_pathway_optimist():
 
 def select_parameters_population_optimist():
     inputs_occlusion = {
+        # MADE UP these default values
         'prop_nlvo': {
-            'name': 'Proportion of population with nLVO',
-            'default': 0.65,
+            'name': 'Proportion of population considered for redirection who have nLVO',
+            'default': 0.10,  # INVENTED
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
         },
         'prop_lvo': {
-            'name': 'Proportion of population with LVO',
-            'default': 0.35,
+            'name': 'Proportion of population considered for redirection who have LVO',
+            'default': 0.90,  # INVENTED
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
         }
     }
-    inputs_redirection_considered = {
-        # Made up these default numbers.
-        'prop_nlvo_redirection_considered': {
-            'name': 'nLVO proportion considered for redirection',
-            'default': 0.42,  # INVENTED
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-        },
-        'prop_lvo_redirection_considered': {
-            'name': 'LVO proportion considered for redirection',
-            'default': 0.42,  # INVENTED
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-        },
-    }
+    # inputs_redirection_considered = {
+    #     # Made up these default numbers.
+    #     'prop_nlvo_redirection_considered': {
+    #         'name': 'nLVO proportion considered for redirection',
+    #         'default': 0.42,  # INVENTED
+    #         'min_value': 0.0,
+    #         'max_value': 1.0,
+    #         'step': 0.01,
+    #     },
+    #     'prop_lvo_redirection_considered': {
+    #         'name': 'LVO proportion considered for redirection',
+    #         'default': 0.42,  # INVENTED
+    #         'min_value': 0.0,
+    #         'max_value': 1.0,
+    #         'step': 0.01,
+    #     },
+    # }
     inputs_redirection = {
         'sensitivity': {
             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
@@ -516,7 +521,7 @@ def select_parameters_population_optimist():
 
     dicts = {
         'Occlusion types': inputs_occlusion,
-        'Redirection considered': inputs_redirection_considered,
+        # 'Redirection considered': inputs_redirection_considered,
         'Redirection approved': inputs_redirection
         }
 
@@ -534,24 +539,24 @@ def select_parameters_population_optimist():
                 key=key
                 )
 
-    # Now calculate the proportions of the "redirection considered" group
-    # that are nLVO and LVO.
-    input_dict['prop_redirection_considered'] = (
-        (input_dict['prop_nlvo'] *
-         input_dict['prop_nlvo_redirection_considered']) +
-        (input_dict['prop_lvo'] *
-         input_dict['prop_lvo_redirection_considered'])
-    )
-    input_dict['prop_redirection_considered_nlvo'] = (
-        (input_dict['prop_nlvo'] *
-         input_dict['prop_nlvo_redirection_considered']) /
-        input_dict['prop_redirection_considered']
-    )
-    input_dict['prop_redirection_considered_lvo'] = (
-        (input_dict['prop_lvo'] *
-         input_dict['prop_lvo_redirection_considered']) /
-        input_dict['prop_redirection_considered']
-    )
+    # # Now calculate the proportions of the "redirection considered" group
+    # # that are nLVO and LVO.
+    # input_dict['prop_redirection_considered'] = (
+    #     (input_dict['prop_nlvo'] *
+    #      input_dict['prop_nlvo_redirection_considered']) +
+    #     (input_dict['prop_lvo'] *
+    #      input_dict['prop_lvo_redirection_considered'])
+    # )
+    # input_dict['prop_redirection_considered_nlvo'] = (
+    #     (input_dict['prop_nlvo'] *
+    #      input_dict['prop_nlvo_redirection_considered']) /
+    #     input_dict['prop_redirection_considered']
+    # )
+    # input_dict['prop_redirection_considered_lvo'] = (
+    #     (input_dict['prop_lvo'] *
+    #      input_dict['prop_lvo_redirection_considered']) /
+    #     input_dict['prop_redirection_considered']
+    # )
 
     return input_dict
 

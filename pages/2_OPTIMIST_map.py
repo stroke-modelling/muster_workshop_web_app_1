@@ -71,10 +71,10 @@ def main_calculations(input_dict, df_unit_services):
         df_mrs, prop_dict, combine_mrs_dists=True,
         scenario_list=['usual_care'])
     # Combine for redirection considered:
-    prop_dict = {
-        'nlvo': input_dict['prop_redirection_considered_nlvo'],
-        'lvo': input_dict['prop_redirection_considered_lvo']
-    }
+    # prop_dict = {
+    #     'nlvo': input_dict['prop_redirection_considered_nlvo'],
+    #     'lvo': input_dict['prop_redirection_considered_lvo']
+    # }
     df_lsoa = calc.combine_results_by_occlusion_type(
         df_lsoa, prop_dict, scenario_list=['redirection_considered'])
     df_mrs = calc.combine_results_by_occlusion_type(
@@ -186,7 +186,7 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-container_map, container_mrs_dists = st.columns([2, 1])
+container_map, container_mrs_dists_etc = st.columns([2, 1])
 # Convert the map container to empty so that the placeholder map
 # is replaced once the real map is ready.
 with container_map:
@@ -202,7 +202,7 @@ with container_input_mrs_region:
     container_input_mrs_region = st.empty()
 # Convert mRS dists to empty so that re-running a fragment replaces
 # the bars rather than displays the new plot in addition.
-with container_mrs_dists:
+with container_mrs_dists_etc:
     container_mrs_dists = st.empty()
 with st.expander('Full data tables'):
     container_results_tables = st.container()
@@ -374,6 +374,19 @@ with container_results_tables:
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
 
+# Limit the mRS data to only LSOA that are in the redirection zone,
+# i.e. remove anything that has the same nearest IVT unit and
+# nearest MT unit.
+mask_redir = (df_lsoa['nearest_ivt_unit'] != df_lsoa['nearest_mt_unit'])
+lsoa_to_keep = df_lsoa.index[mask_redir]
+df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+
+with container_mrs_dists_etc:
+    st.markdown(''.join([
+        'mRS distributions shown for only LSOA whose nearest ',
+        'stroke unit does not offer MT.'
+        ]))
+
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
 @st.experimental_fragment
@@ -387,7 +400,7 @@ def display_mrs_dists():
             bar_option,
             scenario_dict,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-            df_mrs,
+            df_mrs_to_plot,
             scenarios=scenario_mrs
             ))
 

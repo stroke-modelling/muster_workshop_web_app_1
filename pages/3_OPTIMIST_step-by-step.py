@@ -141,10 +141,10 @@ def main_calculations(input_dict, df_unit_services):
         df_mrs, prop_dict, combine_mrs_dists=True,
         scenario_list=['usual_care'])
     # Combine for redirection considered:
-    prop_dict = {
-        'nlvo': input_dict['prop_redirection_considered_nlvo'],
-        'lvo': input_dict['prop_redirection_considered_lvo']
-    }
+    # prop_dict = {
+    #     'nlvo': input_dict['prop_redirection_considered_nlvo'],
+    #     'lvo': input_dict['prop_redirection_considered_lvo']
+    # }
     df_lsoa = calc.combine_results_by_occlusion_type(
         df_lsoa, prop_dict, scenario_list=['redirection_considered'])
     df_mrs = calc.combine_results_by_occlusion_type(
@@ -1096,9 +1096,9 @@ Inputs that affect this:
 # Proportion nLVO and LVO:
 prop_nlvo = population_dict['prop_nlvo']
 prop_lvo = population_dict['prop_lvo']
-# Proportion of these who are considered for redirection:
-prop_nlvo_redirect_considered = population_dict['prop_nlvo_redirection_considered']
-prop_lvo_redirect_considered = population_dict['prop_lvo_redirection_considered']
+# # Proportion of these who are considered for redirection:
+# prop_nlvo_redirect_considered = population_dict['prop_nlvo_redirection_considered']
+# prop_lvo_redirect_considered = population_dict['prop_lvo_redirection_considered']
 # Sensitivity and specificity:
 prop_lvo_redirected = population_dict['sensitivity']
 prop_nlvo_redirected = (1.0 - population_dict['specificity'])
@@ -1163,58 +1163,58 @@ pie_dict = {
         'colour': colour_lvo,
         'label': 'LVO',
     },
-    'nLVO - usual care': {
-        'value': prop_nlvo * (1.0 - prop_nlvo_redirect_considered),
-        'parent': 'nLVO',
-        'pattern_shape': '',
-        'colour': colour_nlvo,
-        'label': 'Usual care',
-    },
-    'nLVO - redirection considered': {
-        'value': prop_nlvo * prop_nlvo_redirect_considered,
-        'parent': 'nLVO',
-        'pattern_shape': '.',
-        'colour': 'LimeGreen',
-        'label': 'Redirection<br>considered',
-    },
+    # 'nLVO - usual care': {
+    #     'value': prop_nlvo * (1.0 - prop_nlvo_redirect_considered),
+    #     'parent': 'nLVO',
+    #     'pattern_shape': '',
+    #     'colour': colour_nlvo,
+    #     'label': 'Usual care',
+    # },
+    # 'nLVO - redirection considered': {
+    #     'value': prop_nlvo * prop_nlvo_redirect_considered,
+    #     'parent': 'nLVO',
+    #     'pattern_shape': '.',
+    #     'colour': 'LimeGreen',
+    #     'label': 'Redirection<br>considered',
+    # },
     'nLVO - redirection approved': {
-        'value': prop_nlvo * prop_nlvo_redirect_considered * prop_nlvo_redirected,
-        'parent': 'nLVO - redirection considered',
+        'value': prop_nlvo * prop_nlvo_redirected,  #  * prop_nlvo_redirect_considered
+        'parent': 'nLVO',  # 'nLVO - redirection considered',
         'pattern_shape': '.',
         'colour': colour_nlvo,
         'label': 'Approved',
     },
     'nLVO - redirection rejected': {
-        'value': prop_nlvo * prop_nlvo_redirect_considered * (1.0 - prop_nlvo_redirected),
-        'parent': 'nLVO - redirection considered',
+        'value': prop_nlvo * (1.0 - prop_nlvo_redirected),  #  * prop_nlvo_redirect_considered
+        'parent': 'nLVO',  # 'nLVO - redirection considered',
         'pattern_shape': '',
         'colour': colour_nlvo,
         'label': 'Rejected',
     },
-    'LVO - usual care': {
-        'value': prop_lvo * (1.0 - prop_lvo_redirect_considered),
-        'parent': 'LVO',
-        'pattern_shape': '',
-        'colour': colour_lvo,
-        'label': 'Usual care',
-    },
-    'LVO - redirection considered': {
-        'value': prop_lvo * prop_lvo_redirect_considered,
-        'parent': 'LVO',
-        'pattern_shape': '.',
-        'colour': 'LimeGreen',
-        'label': 'Redirection<br>considered',
-    },
+    # 'LVO - usual care': {
+    #     'value': prop_lvo * (1.0 - prop_lvo_redirect_considered),
+    #     'parent': 'LVO',
+    #     'pattern_shape': '',
+    #     'colour': colour_lvo,
+    #     'label': 'Usual care',
+    # },
+    # 'LVO - redirection considered': {
+    #     'value': prop_lvo * prop_lvo_redirect_considered,
+    #     'parent': 'LVO',
+    #     'pattern_shape': '.',
+    #     'colour': 'LimeGreen',
+    #     'label': 'Redirection<br>considered',
+    # },
     'LVO - redirection approved': {
-        'value': prop_lvo * prop_lvo_redirect_considered * prop_lvo_redirected,
-        'parent': 'LVO - redirection considered',
+        'value': prop_lvo * prop_lvo_redirected,  # * prop_lvo_redirect_considered
+        'parent': 'LVO',  # 'LVO - redirection considered',
         'pattern_shape': '.',
         'colour': colour_lvo,
         'label': 'Approved',
     },
     'LVO - redirection rejected': {
-        'value': prop_lvo * prop_lvo_redirect_considered * (1.0 - prop_lvo_redirected),
-        'parent': 'LVO - redirection considered',
+        'value': prop_lvo * (1.0 - prop_lvo_redirected),  # * prop_lvo_redirect_considered
+        'parent': 'LVO',  # 'LVO - redirection considered',
         'pattern_shape': '',
         'colour': colour_lvo,
         'label': 'Rejected',
