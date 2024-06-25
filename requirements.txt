@@ -1,7 +1,7 @@
 cmasher
 geopandas==0.14.2
 matplotlib
-numpy
+numpy==1.24.0
 pandas
 plotly
 pyproj
