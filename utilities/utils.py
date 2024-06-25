@@ -2,6 +2,7 @@ import numpy as np
 from itertools import product
 import pandas as pd
 from importlib_resources import files
+import stroke_outcome  # for reference dists
 
 
 def find_multiindex_column_names(gdf, **kwargs):
@@ -253,3 +254,57 @@ def make_outline_msoa_from_lsoa():
 
     # Save:
     gdf.to_file(f'data/outline_{col}s.geojson')
+
+
+def make_outline_lsoa_limit_to_england():
+    """
+    
+    For consistency - ISDN and ICB outlines are best made from LSOA,
+    so make the MSOA outlines from the same LSOA outlines
+    to prevent gaps appearing where there are differences.
+    """
+    import streamlit as st
+    from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+
+    # # All msoa shapes:
+    # gdf = import_geojson(
+    #     'LSOA11NM',
+    #     path_to_file=os.path.join('data', 'LSOA_V3_reduced_simplified.geojson')
+    #     )
+    import geopandas
+    gdf = geopandas.read_file(os.path.join('data', 'LSOA_V3_reduced_simplified.geojson'))
+    # gdf = geopandas.read_file(os.path.join('data', 'LSOA.geojson'))
+    st.write(gdf.crs)
+    gdf = gdf.set_index('LSOA11CD')
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Save:
+    gdf.to_file(f'data/outline_lsoa11cds.geojson')
+
+
+def load_reference_mrs_dists():
+    mrs_dists_ref, mrs_dists_ref_notes = (
+        stroke_outcome.outcome_utilities.import_mrs_dists_from_file())
+
+    nlvo_no_treatment = mrs_dists_ref.loc['no_treatment_nlvo'].values
+    nlvo_no_treatment_noncum = np.diff(nlvo_no_treatment, prepend=0.0)
+
+    lvo_no_treatment = mrs_dists_ref.loc['no_treatment_lvo'].values
+    lvo_no_treatment_noncum = np.diff(lvo_no_treatment, prepend=0.0)
+
+    dist_dict = {
+        'nlvo_no_treatment': nlvo_no_treatment,
+        'nlvo_no_treatment_noncum': nlvo_no_treatment_noncum,
+        'lvo_no_treatment': lvo_no_treatment,
+        'lvo_no_treatment_noncum': lvo_no_treatment_noncum,
+    }
+    return dist_dict
