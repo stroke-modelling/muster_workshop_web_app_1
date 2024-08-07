@@ -33,6 +33,8 @@ st.set_page_config(
     layout='wide'
     )
 
+st.warning('Work in progress', icon='🧹')
+
 st.markdown('# OPTIMIST app step-by-step')
 st.markdown(
 '''
@@ -163,12 +165,12 @@ def main_calculations(input_dict, df_unit_services):
         combine_mrs_dists=True
         )
 
-    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
 
-    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = main_calculations(
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = main_calculations(
     pathway_dict | population_dict,
     df_unit_services
     )

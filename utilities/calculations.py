@@ -391,6 +391,7 @@ def group_results_by_region(df_lsoa, df_unit_services):
     # Load region info for each LSOA:
     # Relative import from package files:
     df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
+    df_lsoa_regions = df_lsoa_regions.reset_index()
     df_lsoa = pd.merge(
         df_lsoa, df_lsoa_regions,
         left_on='lsoa', right_on='lsoa', how='left'
@@ -405,6 +406,15 @@ def group_results_by_region(df_lsoa, df_unit_services):
         df_lsoa, df_regions,
         left_on='region_code', right_on='region_code', how='left'
         )
+
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    df_lsoa_ambo = df_lsoa_ambo.reset_index()
+    # Merge in:
+    df_lsoa = pd.merge(
+        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo21']],
+        left_on='lsoa', right_on='LSOA11NM', how='left'
+        ).drop('LSOA11NM', axis='columns')
 
     # Replace some zeros with NaN:
     mask = df_lsoa['transfer_required']
@@ -433,8 +443,9 @@ def group_results_by_region(df_lsoa, df_unit_services):
     df_nearest_ivt = group_results_by_nearest_ivt(df_lsoa, df_unit_services)
     df_icb = group_results_by_icb(df_lsoa)
     df_isdn = group_results_by_isdn(df_lsoa)
+    df_ambo = group_results_by_ambo(df_lsoa)
 
-    return df_icb, df_isdn, df_nearest_ivt
+    return df_icb, df_isdn, df_nearest_ivt, df_ambo
 
 
 def group_results_by_icb(df_lsoa):
@@ -449,7 +460,8 @@ def group_results_by_icb(df_lsoa):
         'region_type',
         'region_code',
         'icb_code',
-        'isdn'
+        'isdn',
+        'ambo21',
         ], axis='columns')
     # Average:
     df_icb = df_icb.groupby('icb').mean()
@@ -482,7 +494,8 @@ def group_results_by_isdn(df_lsoa):
         'region_type',
         'region_code',
         'icb',
-        'icb_code'
+        'icb_code',
+        'ambo21',
         ], axis='columns')
     # Average:
     df_isdn = df_isdn.groupby('isdn').mean()
@@ -503,6 +516,40 @@ def group_results_by_isdn(df_lsoa):
     return df_isdn
 
 
+def group_results_by_ambo(df_lsoa):
+    # Glob results by ISDN:
+    df_ambo = df_lsoa.copy()
+    # Remove string columns:
+    # (temporary - I don't know how else to groupby a df with
+    # some object columns)
+    df_ambo = df_ambo.drop([
+        'nearest_ivt_unit',
+        'region',
+        'region_type',
+        'region_code',
+        'icb',
+        'icb_code',
+        'isdn',
+        ], axis='columns')
+    # Average:
+    df_ambo = df_ambo.groupby('ambo21').mean()
+
+    # Round the values.
+    # Outcomes:
+    cols_outcome = [c for c in df_ambo.columns if (
+        (c.endswith('utility_shift')) |
+        (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
+        )]
+    for col in cols_outcome:
+        df_ambo[col] = np.round(df_ambo[col], 3)
+
+    # Times:
+    cols_time = [c for c in df_ambo.columns if 'time' in c]
+    for col in cols_time:
+        df_ambo[col] = np.round(df_ambo[col], 2)
+    return df_ambo
+
+
 def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     # Glob results by nearest IVT unit:
     df_nearest_ivt = df_lsoa.copy()
@@ -516,6 +563,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
         'icb',
         'icb_code',
         'isdn',
+        'ambo21',
         ], axis='columns')
     # Average:
     df_nearest_ivt = df_nearest_ivt.groupby('nearest_ivt_unit').mean()
@@ -568,6 +616,15 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units, **kwargs):
         df_lsoa, df_regions,
         left_on='region_code', right_on='region_code', how='left'
         )
+
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    df_lsoa_ambo = df_lsoa_ambo.reset_index()
+    # Merge in:
+    df_lsoa = pd.merge(
+        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo21']],
+        left_on='lsoa', right_on='LSOA11NM', how='left'
+        ).drop('LSOA11NM', axis='columns')
 
     # Merge in nearest IVT units:
     df_lsoa = pd.merge(df_lsoa, nearest_ivt_units,
@@ -998,6 +1055,10 @@ def load_or_calculate_region_outlines(outline_name, df_lsoa):
         load_gdf_catchment = True
         outline_file = './data/outline_icbs.geojson'
         outline_names_col = 'icb'  # to display
+    elif outline_name == 'Ambulance service':
+        load_gdf_catchment = True
+        outline_file = './data/outline_ambo21s.geojson'
+        outline_names_col = 'ambo21'  # to display
     elif outline_name == 'Nearest service':
         load_gdf_catchment = False
         outline_names_col = 'Nearest service'

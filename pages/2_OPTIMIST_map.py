@@ -93,10 +93,10 @@ def main_calculations(input_dict, df_unit_services):
         combine_mrs_dists=True
         )
 
-    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
 
-    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
 
 # ###########################
@@ -145,11 +145,12 @@ st.set_page_config(
 # st.stop()
 
 # import utilities.utils as utils
-# utils.make_outline_lsoa_limit_to_england()
-# # utils.make_outline_msoa_from_lsoa()
-# # utils.make_outline_icbs('icb')
-# # utils.make_outline_icbs('isdn')
-# # utils.make_outline_england_wales()
+# utils.make_outline_ambo()
+# # utils.make_outline_lsoa_limit_to_england()
+# # # utils.make_outline_msoa_from_lsoa()
+# # # utils.make_outline_icbs('icb')
+# # # utils.make_outline_icbs('isdn')
+# # # utils.make_outline_england_wales()
 # st.stop()
 
 
@@ -249,7 +250,7 @@ input_dict = pathway_dict | population_dict
 with container_map:
     plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
     main_calculations(input_dict, df_unit_services))
 
 
@@ -280,7 +281,7 @@ scenario_dict['stroke_type'] = stroke_type
 with container_input_region_type:
     outline_name = st.radio(
         'Region type to draw on maps',
-        ['None', 'ISDN', 'ICB', 'Nearest service']#, 'Ambulance service']
+        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
         )
 
 # Select mRS distribution region.
@@ -344,13 +345,14 @@ with container_results_tables:
         'Results by IVT unit catchment',
         'Results by ISDN',
         'Results by ICB',
+        'Results by ambulance service',
         'Full results by LSOA'
         ])
 
     # Set some columns to bool for nicer display:
     cols_bool = ['transfer_required', 'England']
     for col in cols_bool:
-        for df in [df_icb, df_isdn, df_nearest_ivt, df_lsoa]:
+        for df in [df_icb, df_isdn, df_nearest_ivt, df_ambo, df_lsoa]:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
@@ -369,6 +371,10 @@ with container_results_tables:
         st.dataframe(df_icb)
 
     with results_tabs[3]:
+        st.markdown('Results are the mean values of all LSOA in each ambulance service.')
+        st.dataframe(df_ambo)
+
+    with results_tabs[4]:
         st.dataframe(df_lsoa)
 
 

@@ -1110,6 +1110,13 @@ def load_region_lists(df_unit_services_full):
     icb_list = sorted(list(set(df_regions['icb'])))
     isdn_list = sorted(list(set(df_regions['isdn'])))
 
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    # List of ambulance services without repeats:
+    ambo_list = sorted(list(set(df_lsoa_ambo['ambo21'])))
+    # Drop Wales:
+    ambo_list.remove('WAST')
+
     # Find list of units offering IVT.
     # Use names not postcodes here to match ICB and ISDN names
     # and have nicer display on the app.
@@ -1120,7 +1127,8 @@ def load_region_lists(df_unit_services_full):
     region_options_dict = {
         'ISDN': isdn_list,
         'ICB': icb_list,
-        'Nearest unit': nearest_ivt_unit_names_list
+        'Nearest unit': nearest_ivt_unit_names_list,
+        'Ambulance service': ambo_list
     }
 
     return region_options_dict

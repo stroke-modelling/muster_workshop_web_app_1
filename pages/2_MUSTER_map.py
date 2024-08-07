@@ -55,9 +55,10 @@ def main_calculations(input_dict, df_unit_services):
         combine_mrs_dists=True
         )
 
-    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
-    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
+
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
 
 # ###########################
@@ -162,7 +163,7 @@ with container_inputs:
 with container_map:
     plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
     main_calculations(input_dict, df_unit_services))
 
 # ###########################################
@@ -190,8 +191,10 @@ scenario_dict['stroke_type'] = stroke_type
 
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
-    outline_name = st.radio('Region type to draw on maps',
-                            ['None', 'ISDN', 'ICB', 'Nearest service'])
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
+        )
 
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,
@@ -254,13 +257,14 @@ with container_results_tables:
         'Results by IVT unit catchment',
         'Results by ISDN',
         'Results by ICB',
+        'Results by ambulance service',
         'Full results by LSOA'
         ])
 
     # Set some columns to bool for nicer display:
     cols_bool = ['transfer_required', 'England']
     for col in cols_bool:
-        for df in [df_icb, df_isdn, df_nearest_ivt, df_lsoa]:
+        for df in [df_icb, df_isdn, df_nearest_ivt, df_ambo, df_lsoa]:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
@@ -279,6 +283,10 @@ with container_results_tables:
         st.dataframe(df_icb)
 
     with results_tabs[3]:
+        st.markdown('Results are the mean values of all LSOA in each ambulance service.')
+        st.dataframe(df_ambo)
+
+    with results_tabs[4]:
         st.dataframe(df_lsoa)
 
 
