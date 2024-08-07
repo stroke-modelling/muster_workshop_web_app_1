@@ -21,13 +21,44 @@ import utilities.container_inputs as inputs
 
 @st.cache_data
 def main_calculations(input_dict, df_unit_services):
+    # Times to treatment:
+    geo = calc.calculate_geography(df_unit_services)
+    # Travel times for each LSOA:
+    df_travel_times = geo.combined_data[
+        [c for c in geo.combined_data.columns if 'time' in c] +
+        ['transfer_required', 'LSOA']
+        ]
+    df_travel_times = df_travel_times.set_index('LSOA')
+
+    # Add travel times to the pathway timings to get treatment times.
+    df_outcome_uc = calc.make_outcome_inputs_usual_care(
+        input_dict, df_travel_times)
+    df_outcome_msu = calc.make_outcome_inputs_msu(
+        input_dict, df_travel_times)
+    dict_outcome_inputs = {
+        'usual_care': df_outcome_uc,
+        'msu': df_outcome_msu,
+    }
+
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(
-        input_dict, df_unit_services, use_msu=True, use_mothership=False)
+        dict_outcome_inputs, df_unit_services, geo.combined_data)
 
-    df_icb, df_isdn, df_nearest_ivt = calc.group_results_by_region(
+    # Calculate diff - msu minus usual care:
+    df_lsoa = calc.combine_results_by_diff(
+        df_lsoa,
+        scenario_types=['msu', 'usual_care']
+        )
+    df_mrs = calc.combine_results_by_diff(
+        df_mrs,
+        scenario_types=['msu', 'usual_care'],
+        combine_mrs_dists=True
+        )
+
+    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
-    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt
+
+    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
 
 # ###########################
@@ -74,14 +105,14 @@ container_intro = st.container()
 with st.sidebar:
     container_inputs = st.container()
     container_unit_services = st.container()
-container_map, container_mrs_dists = st.columns([2, 1])
+container_map, container_mrs_dists_etc = st.columns([2, 1])
 # Convert the map container to empty so that the placeholder map
 # is replaced once the real map is ready.
 with container_map:
     container_map = st.empty()
 # Convert mRS dists to empty so that re-running a fragment replaces
 # the bars rather than displays the new plot in addition.
-with container_mrs_dists:
+with container_mrs_dists_etc:
     container_mrs_dists = st.empty()
 container_map_inputs = st.container(border=True)
 with container_map_inputs:
@@ -132,7 +163,7 @@ with container_inputs:
 with container_map:
     plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt = (
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
     main_calculations(input_dict, df_unit_services))
 
 # ###########################################
@@ -160,8 +191,10 @@ scenario_dict['stroke_type'] = stroke_type
 
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
-    outline_name = st.radio('Region type to draw on maps',
-                            ['None', 'ISDN', 'ICB', 'Nearest service'])
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
+        )
 
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,
@@ -190,9 +223,9 @@ with container_select_cmap:
 # #########################################
 # Which scenarios will be shown in the maps:
 # (in this order)
-scenario_types = ['drip_ship', 'diff_msu_minus_drip_ship']
+scenario_types = ['usual_care', 'diff_msu_minus_usual_care']
 # Which mRS distributions will be shown on the bars:
-scenario_mrs = ['drip_ship', 'msu']
+scenario_mrs = ['usual_care', 'msu']
 
 # Display names:
 subplot_titles = [
@@ -224,13 +257,14 @@ with container_results_tables:
         'Results by IVT unit catchment',
         'Results by ISDN',
         'Results by ICB',
+        'Results by ambulance service',
         'Full results by LSOA'
         ])
 
     # Set some columns to bool for nicer display:
     cols_bool = ['transfer_required', 'England']
     for col in cols_bool:
-        for df in [df_icb, df_isdn, df_nearest_ivt, df_lsoa]:
+        for df in [df_icb, df_isdn, df_nearest_ivt, df_ambo, df_lsoa]:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
@@ -249,12 +283,34 @@ with container_results_tables:
         st.dataframe(df_icb)
 
     with results_tabs[3]:
+        st.markdown('Results are the mean values of all LSOA in each ambulance service.')
+        st.dataframe(df_ambo)
+
+    with results_tabs[4]:
         st.dataframe(df_lsoa)
 
 
 # #########################################
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
+
+# Limit the mRS data to only LSOA that benefit from an MSU,
+# i.e. remove anything where the added utility of MSU is not better
+# than the added utility of usual care.
+c1 = ''.join([
+    'diff_msu_minus_usual_care_',
+    f'{scenario_dict["stroke_type"]}_',
+    f'{scenario_dict["treatment_type"]}_utility_shift'
+])
+lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+
+with container_mrs_dists_etc:
+    st.markdown(''.join([
+        'mRS distributions shown for only LSOA who would benefit ',
+        'from an MSU (i.e. "added utility" for "MSU" scenario ',
+        'is better than for "usual care" scenario).'
+        ]))
 
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
@@ -268,7 +324,8 @@ def display_mrs_dists():
             bar_option,
             scenario_dict,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-            df_mrs,
+            df_mrs_to_plot,
+            input_dict,
             scenarios=scenario_mrs
             ))
 

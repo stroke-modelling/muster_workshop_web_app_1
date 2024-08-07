@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt  # for colour maps
 import cmasher as cmr  # for additional colour maps
 from importlib_resources import files
 
-from stroke_maps.catchment import Catchment  # for unit services
+import stroke_maps.load_data
 
 
 def select_parameters():
@@ -150,6 +150,10 @@ def select_parameters_map():
             'name': 'Hospital arrival to MT time (for MSU arrivals)',
             'default': 60
         },
+        'process_msu_on_scene_no_thrombolysis': {
+            'name': 'MSU on scene post IVT time',
+            'default': 15
+        },
         'scale_msu_travel_times': {
             'name': 'Scale factor for MSU travel speed',
             'default': 1.0
@@ -190,180 +194,180 @@ def select_parameters_map():
     return input_dict
 
 
-def select_parameters_optimist():
-    """
+# def select_parameters_optimist():
+#     """
 
-    TO DO another day - set these reference values up in fixed_params.
-    Default values from median onset to arrival times document
-    (Mike Allen, 23rd April 2024):
-    onset_to_call: 79,
-    call_to_ambulance_arrival_time: 18,
-    ambulance_on_scene_time: 29,
-    """
-    cols = st.columns([1, 1, 1, 5, 1])
+#     TO DO another day - set these reference values up in fixed_params.
+#     Default values from median onset to arrival times document
+#     (Mike Allen, 23rd April 2024):
+#     onset_to_call: 79,
+#     call_to_ambulance_arrival_time: 18,
+#     ambulance_on_scene_time: 29,
+#     """
+#     cols = st.columns([1, 1, 1, 5, 1])
 
-    with cols[0]:
-        container_shared = st.container(border=True)
-    with cols[1]:
-        container_on_scene = st.container(border=True)
-    with cols[2]:
-        container_diagnostic = st.container(border=True)
-    with cols[3]:
-        container_unit = st.container(border=True)
-    with cols[4]:
-        container_transfer = st.container(border=True)
+#     with cols[0]:
+#         container_shared = st.container(border=True)
+#     with cols[1]:
+#         container_on_scene = st.container(border=True)
+#     with cols[2]:
+#         container_diagnostic = st.container(border=True)
+#     with cols[3]:
+#         container_unit = st.container(border=True)
+#     with cols[4]:
+#         container_transfer = st.container(border=True)
 
-    container_occ = st.container()
+#     container_occ = st.container()
 
 
-    input_dict = {}
-    # Set up scenarios
-    with container_shared:
-        st.markdown('Shared')
-        input_dict['process_time_call_ambulance'] = st.number_input(
-            'Time to call ambulance',
-            value=79,
-            help=f"Reference value: {79}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     input_dict = {}
+#     # Set up scenarios
+#     with container_shared:
+#         st.markdown('Shared')
+#         input_dict['process_time_call_ambulance'] = st.number_input(
+#             'Time to call ambulance',
+#             value=79,
+#             help=f"Reference value: {79}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_on_scene:
-        st.markdown('On scene')
-        input_dict['process_time_ambulance_response'] = st.number_input(
-            'Ambulance response time',
-            value=18,
-            help=f"Reference value: {18}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
-        input_dict['process_ambulance_on_scene_duration'] = st.number_input(
-            'Time ambulance is on scene',
-            value=29,
-            help=f"Reference value: {29}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_on_scene:
+#         st.markdown('On scene')
+#         input_dict['process_time_ambulance_response'] = st.number_input(
+#             'Ambulance response time',
+#             value=18,
+#             help=f"Reference value: {18}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
+#         input_dict['process_ambulance_on_scene_duration'] = st.number_input(
+#             'Time ambulance is on scene',
+#             value=29,
+#             help=f"Reference value: {29}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_diagnostic:
-        st.markdown('Diagnostic')
-        input_dict['process_ambulance_on_scene_diagnostic_duration'] = st.number_input(
-            'Extra time on scene for diagnostic',
-            value=10,
-            help=f"Reference value: {10}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_diagnostic:
+#         st.markdown('Diagnostic')
+#         input_dict['process_ambulance_on_scene_diagnostic_duration'] = st.number_input(
+#             'Extra time on scene for diagnostic',
+#             value=10,
+#             help=f"Reference value: {10}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    with container_unit:
-        st.markdown('Unit')
-        cols_unit = st.columns(3)
-        with cols_unit[0]:
-            input_dict['process_time_arrival_to_needle'] = st.number_input(
-                'Hospital arrival to IVT time',
-                value=30,
-                help=f"Reference value: {30}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
-        with cols_unit[1]:
-            container_unit_with_mt = st.container(border=True)
-        with container_unit_with_mt:
-            input_dict['process_time_arrival_to_puncture'] = st.number_input(
-                'Hospital arrival to MT time (for in-hospital IVT+MT)',
-                value=60,
-                help=f"Reference value: {60}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
-        with cols_unit[2]:
-            container_unit_without_mt = st.container(border=True)
-        with container_unit_without_mt:
-            input_dict['transfer_time_delay'] = st.number_input(
-                'Door-in to door-out (for transfer to MT)',
-                value=60,
-                help=f"Reference value: {60}",
-                min_value=0,
-                max_value=1440,
-                step=1
-                )
+#     with container_unit:
+#         st.markdown('Unit')
+#         cols_unit = st.columns(3)
+#         with cols_unit[0]:
+#             input_dict['process_time_arrival_to_needle'] = st.number_input(
+#                 'Hospital arrival to IVT time',
+#                 value=30,
+#                 help=f"Reference value: {30}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
+#         with cols_unit[1]:
+#             container_unit_with_mt = st.container(border=True)
+#         with container_unit_with_mt:
+#             input_dict['process_time_arrival_to_puncture'] = st.number_input(
+#                 'Hospital arrival to MT time (for in-hospital IVT+MT)',
+#                 value=60,
+#                 help=f"Reference value: {60}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
+#         with cols_unit[2]:
+#             container_unit_without_mt = st.container(border=True)
+#         with container_unit_without_mt:
+#             input_dict['transfer_time_delay'] = st.number_input(
+#                 'Door-in to door-out (for transfer to MT)',
+#                 value=60,
+#                 help=f"Reference value: {60}",
+#                 min_value=0,
+#                 max_value=1440,
+#                 step=1
+#                 )
 
-    with container_transfer:
-        st.markdown('Transfer unit')
-        input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
-            'Hospital arrival to MT time (for transfers)',
-            value=60,
-            help=f"Reference value: {60}",
-            min_value=0,
-            max_value=1440,
-            step=1
-            )
+#     with container_transfer:
+#         st.markdown('Transfer unit')
+#         input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
+#             'Hospital arrival to MT time (for transfers)',
+#             value=60,
+#             help=f"Reference value: {60}",
+#             min_value=0,
+#             max_value=1440,
+#             step=1
+#             )
 
-    inputs_occlusion = {
-        'prop_nlvo': {
-            'name': 'Proportion of population with nLVO',
-            'default': 0.65,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-        'prop_lvo': {
-            'name': 'Proportion of population with LVO',
-            'default': 0.35,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        }
-    }
-    inputs_redirection = {
-        'sensitivity': {
-            'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
-            'default': 0.66,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-        'specificity': {
-            'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
-            'default': 0.87,
-            'min_value': 0.0,
-            'max_value': 1.0,
-            'step': 0.01,
-            'container': container_occ
-        },
-    }
+#     inputs_occlusion = {
+#         'prop_nlvo': {
+#             'name': 'Proportion of population with nLVO',
+#             'default': 0.65,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#         'prop_lvo': {
+#             'name': 'Proportion of population with LVO',
+#             'default': 0.35,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         }
+#     }
+#     inputs_redirection = {
+#         'sensitivity': {
+#             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
+#             'default': 0.66,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#         'specificity': {
+#             'name': 'Specificity (proportion of nLVO diagnosed as nLVO)',
+#             'default': 0.87,
+#             'min_value': 0.0,
+#             'max_value': 1.0,
+#             'step': 0.01,
+#             'container': container_occ
+#         },
+#     }
 
-    dicts = {
-        'Occlusion types': inputs_occlusion,
-        'Redirection': inputs_redirection
-        }
+#     dicts = {
+#         'Occlusion types': inputs_occlusion,
+#         'Redirection': inputs_redirection
+#         }
 
-    with container_occ:
-        for heading, i_dict in dicts.items():
-            st.markdown(f'### {heading}')
-            for key, s_dict in i_dict.items():
-                    input_dict[key] = st.number_input(
-                        s_dict['name'],
-                        value=s_dict['default'],
-                        help=f"Reference value: {s_dict['default']}",
-                        min_value=s_dict['min_value'],
-                        max_value=s_dict['max_value'],
-                        step=s_dict['step'],
-                        key=key
-                        )
+#     with container_occ:
+#         for heading, i_dict in dicts.items():
+#             st.markdown(f'### {heading}')
+#             for key, s_dict in i_dict.items():
+#                     input_dict[key] = st.number_input(
+#                         s_dict['name'],
+#                         value=s_dict['default'],
+#                         help=f"Reference value: {s_dict['default']}",
+#                         min_value=s_dict['min_value'],
+#                         max_value=s_dict['max_value'],
+#                         step=s_dict['step'],
+#                         key=key
+#                         )
 
-    return input_dict
+#     return input_dict
 
-def select_parameters_optimist_OLD():
+def select_parameters_pathway_optimist():
     """
     This version creates a long list of number inputs.
 
@@ -440,22 +444,64 @@ def select_parameters_optimist_OLD():
             'step': 1,
         },
     }
+    dicts = {
+        'Shared': inputs_shared,
+        'Standard pathway': inputs_standard,
+        'Transfer required': inputs_transfer,
+        }
+
+    input_dict = {}
+    for heading, i_dict in dicts.items():
+        st.markdown(f'## {heading}')
+        for key, s_dict in i_dict.items():
+            input_dict[key] = st.number_input(
+                s_dict['name'],
+                value=s_dict['default'],
+                help=f"Reference value: {s_dict['default']}",
+                min_value=s_dict['min_value'],
+                max_value=s_dict['max_value'],
+                step=s_dict['step'],
+                key=key
+                )
+
+    return input_dict
+
+
+def select_parameters_population_optimist():
     inputs_occlusion = {
+        # MADE UP these default values
         'prop_nlvo': {
-            'name': 'Proportion of population with nLVO',
-            'default': 0.65,
+            'name': 'Proportion of population considered for redirection who have nLVO',
+            'default': 0.10,  # INVENTED
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
         },
         'prop_lvo': {
-            'name': 'Proportion of population with LVO',
-            'default': 0.35,
+            'name': 'Proportion of population considered for redirection who have LVO',
+            'default': 0.90,  # INVENTED
             'min_value': 0.0,
             'max_value': 1.0,
             'step': 0.01,
         }
     }
+    # inputs_redirection_considered = {
+    #     # Made up these default numbers.
+    #     'prop_nlvo_redirection_considered': {
+    #         'name': 'nLVO proportion considered for redirection',
+    #         'default': 0.42,  # INVENTED
+    #         'min_value': 0.0,
+    #         'max_value': 1.0,
+    #         'step': 0.01,
+    #     },
+    #     'prop_lvo_redirection_considered': {
+    #         'name': 'LVO proportion considered for redirection',
+    #         'default': 0.42,  # INVENTED
+    #         'min_value': 0.0,
+    #         'max_value': 1.0,
+    #         'step': 0.01,
+    #     },
+    # }
     inputs_redirection = {
         'sensitivity': {
             'name': 'Sensitivity (proportion of LVO diagnosed as LVO)',
@@ -474,11 +520,9 @@ def select_parameters_optimist_OLD():
     }
 
     dicts = {
-        'Shared': inputs_shared,
-        'Standard pathway': inputs_standard,
-        'Transfer required': inputs_transfer,
         'Occlusion types': inputs_occlusion,
-        'Redirection': inputs_redirection
+        # 'Redirection considered': inputs_redirection_considered,
+        'Redirection approved': inputs_redirection
         }
 
     input_dict = {}
@@ -494,6 +538,25 @@ def select_parameters_optimist_OLD():
                 step=s_dict['step'],
                 key=key
                 )
+
+    # # Now calculate the proportions of the "redirection considered" group
+    # # that are nLVO and LVO.
+    # input_dict['prop_redirection_considered'] = (
+    #     (input_dict['prop_nlvo'] *
+    #      input_dict['prop_nlvo_redirection_considered']) +
+    #     (input_dict['prop_lvo'] *
+    #      input_dict['prop_lvo_redirection_considered'])
+    # )
+    # input_dict['prop_redirection_considered_nlvo'] = (
+    #     (input_dict['prop_nlvo'] *
+    #      input_dict['prop_nlvo_redirection_considered']) /
+    #     input_dict['prop_redirection_considered']
+    # )
+    # input_dict['prop_redirection_considered_lvo'] = (
+    #     (input_dict['prop_lvo'] *
+    #      input_dict['prop_lvo_redirection_considered']) /
+    #     input_dict['prop_redirection_considered']
+    # )
 
     return input_dict
 
@@ -561,36 +624,33 @@ def select_stroke_unit_services(use_msu=True):
 
 def import_stroke_unit_services(use_msu=True):
     # Set up stroke unit services (IVT, MT, MSU).
-    catchment = Catchment()
-    df_unit_services = catchment.get_unit_services()
+    df_unit_services = stroke_maps.load_data.stroke_unit_region_lookup()
+    # Limit to England:
+    mask = df_unit_services['country'] == 'England'
+    df_unit_services = df_unit_services.loc[mask].copy()
     # Remove Wales:
-    df_unit_services = df_unit_services.loc[df_unit_services['region_type'] != 'LHB'].copy()
+    df_unit_services = df_unit_services.loc[
+        df_unit_services['region_type'] != 'LHB'].copy()
     df_unit_services_full = df_unit_services.copy()
     # Limit which columns to show:
     cols_to_keep = [
         'stroke_team',
         'use_ivt',
         'use_mt',
-        # 'use_msu',
-        # 'transfer_unit_postcode',  # to add back in later if stroke-maps replaces geography_processing class
         # 'region',
         # 'icb',
         'isdn'
     ]
-    if use_msu:
-        cols_to_keep.append('use_msu')
     df_unit_services = df_unit_services[cols_to_keep]
     # Change 1/0 columns to bool for formatting:
     cols_use = ['use_ivt', 'use_mt']
     if use_msu:
+        df_unit_services['use_msu'] = df_unit_services['use_mt'].copy()
         cols_use.append('use_msu')
     df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values('isdn')
 
-    # Update James Cook University Hospital to have MSU by default:
-    if 'use_msu' in df_unit_services.columns:
-        df_unit_services.at['TS43BW', 'use_msu'] = True
     return df_unit_services, df_unit_services_full, cols_use
 
 
@@ -711,6 +771,9 @@ def set_up_colours(
     min times: 0.250 - 0.0300, > 0.300,
     max times: 0.250 - 0.300, > 0.300
 
+
+    colour scales sometimes bug out, return to default colourbar
+    when the precision here isn't enough decimal places.
     """
     # Define shared colour scales:
     cbar_dict = {
@@ -736,9 +799,9 @@ def set_up_colours(
                 'cmap_name': cmap_name
             },
             'diff': {
-                'vmin': -0.05,
-                'vmax': 0.05,
-                'step_size': 0.025,
+                'vmin': -0.040,
+                'vmax': 0.040,
+                'step_size': 0.010,
                 'cmap_name': cmap_diff_name
             },
         },
@@ -858,6 +921,113 @@ def set_up_colours(
     return colour_dict
 
 
+def set_up_colours_demog(
+        v_min,
+        v_max,
+        step_size,
+        use_diverging=False,
+        cmap_name='inferno',
+        v_name='v',
+        use_discrete=True
+        ):
+
+    if cmap_name.endswith('_r_r'):
+        # Remove the double reverse reverse.
+        cmap_name = cmap_name[:-4]
+
+    # Make a new column for the colours.
+    v_bands = np.arange(v_min, v_max + step_size, step_size)
+    if use_diverging:
+        # Remove existing zero:
+        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
+        if len(ind_z) > 0:
+            ind_z = ind_z[0]
+            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
+        # Add a zero-ish band.
+        ind = np.where(v_bands >= -0.0)[0][0]
+        zero_size = step_size * 0.01
+        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
+        v_bands_z = np.append(v_bands_z, v_bands[ind:])
+        v_bands = v_bands_z
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
+        # Update zeroish name:
+        v_bands_str[ind+1] = '0.0'
+    else:
+        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+
+    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
+
+    # Link bands to colours via v_bands_str:
+    colours = []
+    for v in v_bands_str:
+        colours.append(colour_map[v])
+
+    # Add an extra bound at either end (for the "to infinity" bit):
+    v_bands_for_cs = np.append(v_min - step_size, v_bands)
+    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
+    # Normalise the data bounds:
+    bounds = (
+        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
+        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
+    )
+    # Add extra bounds so that there's a tiny space at either end
+    # for the under/over colours.
+    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
+    bounds_for_cs = bounds
+
+    # Need separate data values and colourbar values.
+    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
+
+    # Create a colour scale from these colours.
+    # To get the discrete colourmap (i.e. no continuous gradient of
+    # colour made between the defined colours),
+    # double up the bounds so that colour A explicitly ends where
+    # colour B starts.
+    if use_discrete:
+        colourscale = []
+        for i in range(len(colours)):
+            colourscale += [
+                [bounds_for_cs[i], colours[i]],
+                [bounds_for_cs[i+1], colours[i]]
+                ]
+    else:
+        # Make a "continuous" colour map in the same way as before
+        # because plotly cannot access all cmaps and sometimes they
+        # differ from matplotlib (e.g. inferno gets a pink end).
+        colour_map_cont = make_colour_map_dict(
+            np.arange(100).astype(str), cmap_name)
+        colours_cont = list(colour_map_cont.values())
+        bounds_for_cs_cont = np.linspace(0.0, 1.0, len(colours_cont)+1)
+
+        colourscale = []
+        for i in range(len(colours_cont)):
+            colourscale += [
+                [bounds_for_cs_cont[i], colours_cont[i]],
+                [bounds_for_cs_cont[i+1], colours_cont[i]]
+                ]
+        # Remove the "to infinity" bits from bounds:
+        # v_bands = v_bands[1:-1]
+        # v_bands_str = v_bands_str[1:-1]
+        bounds_for_cs = np.linspace(0.0, 1.0, len(v_bands))#bounds_for_cs[1:-1]
+
+    colour_dict = {
+        'diverging': use_diverging,
+        'v_min': v_min,
+        'v_max': v_max,
+        'step_size': step_size,
+        'cmap_name': cmap_name,
+        'v_bands': v_bands,
+        'v_bands_str': v_bands_str,
+        'colour_map': colour_map,
+        'colour_scale': colourscale,
+        'bounds_for_colour_scale': bounds_for_cs,
+        # 'zero_label': '0.0',
+        # 'zero_colour': 
+    }
+    return colour_dict
+
+
 def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
     # Get colour values:
     try:
@@ -930,8 +1100,8 @@ def load_region_lists(df_unit_services_full):
     """
 
     # Load region data:
-    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
-    df_regions = pd.read_csv(path_to_file)
+    df_regions = stroke_maps.load_data.region_lookup()
+    df_regions = df_regions.reset_index()
     # Only keep English regions:
     mask = df_regions['region_code'].str.contains('E')
     df_regions = df_regions.loc[mask]
@@ -939,6 +1109,13 @@ def load_region_lists(df_unit_services_full):
     # Lists of ICBs and ISDNs without repeats:
     icb_list = sorted(list(set(df_regions['icb'])))
     isdn_list = sorted(list(set(df_regions['isdn'])))
+
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    # List of ambulance services without repeats:
+    ambo_list = sorted(list(set(df_lsoa_ambo['ambo21'])))
+    # Drop Wales:
+    ambo_list.remove('WAST')
 
     # Find list of units offering IVT.
     # Use names not postcodes here to match ICB and ISDN names
@@ -950,7 +1127,8 @@ def load_region_lists(df_unit_services_full):
     region_options_dict = {
         'ISDN': isdn_list,
         'ICB': icb_list,
-        'Nearest unit': nearest_ivt_unit_names_list
+        'Nearest unit': nearest_ivt_unit_names_list,
+        'Ambulance service': ambo_list
     }
 
     return region_options_dict

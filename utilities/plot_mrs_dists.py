@@ -4,6 +4,7 @@ Set up and plot mRS distributions.
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import numpy as np
 
 import utilities.calculations as calc
 from utilities.utils import load_reference_mrs_dists
@@ -14,6 +15,7 @@ def setup_for_mrs_dist_bars(
         scenario_dict,
         df_nearest_units,
         df_mrs,
+        input_dict,
         scenarios=['drip_ship', 'redirect']
         ):
     # Set up where the data should come from -
@@ -25,6 +27,9 @@ def setup_for_mrs_dist_bars(
     elif bar_option.startswith('ICB: '):
         str_selected_region = bar_option.split('ICB: ')[-1]
         col_region = 'icb'
+    elif bar_option.startswith('Ambulance service: '):
+        str_selected_region = bar_option.split('Ambulance service: ')[-1]
+        col_region = 'ambo21'
     elif bar_option.startswith('Nearest unit: '):
         str_selected_region = bar_option.split('Nearest unit: ')[-1]
         col_region = 'nearest_ivt_unit_name'
@@ -41,8 +46,8 @@ def setup_for_mrs_dist_bars(
     occ_type = scenario_dict['stroke_type']
     treat_type = scenario_dict['treatment_type']
 
-    col = f'{occ_type}_{scenarios[0]}_{treat_type}_mrs_dists'
-    col2 = f'{occ_type}_{scenarios[1]}_{treat_type}_mrs_dists'
+    col = f'{scenarios[0]}_{occ_type}_{treat_type}_mrs_dists'
+    col2 = f'{scenarios[1]}_{occ_type}_{treat_type}_mrs_dists'
 
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
@@ -55,9 +60,20 @@ def setup_for_mrs_dist_bars(
     if 'nlvo' in occ_type:
         dist_ref_noncum = dist_dict['nlvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['nlvo_no_treatment']
-    else:
+    elif 'lvo' in occ_type:
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
+    else:
+        # Combined stroke types.
+        # Scale and sum the nLVO and LVO dists.
+        scale_nlvo = input_dict['prop_nlvo']
+        scale_lvo = input_dict['prop_lvo']
+
+        dist_ref_noncum = (
+            (dist_dict['nlvo_no_treatment_noncum'] * scale_nlvo) +
+            (dist_dict['lvo_no_treatment_noncum'] * scale_lvo)
+        )
+        dist_ref_cum = np.cumsum(dist_ref_noncum)
 
     # Gather mRS distributions.
     try:
@@ -90,23 +106,35 @@ def setup_for_mrs_dist_bars(
             dist2_std = None
         else:
             # Use IVT-only data.
-            col = f'{occ_type}_{scenarios[0]}_ivt_mrs_dists'
-            col2 = f'{occ_type}_{scenarios[1]}_ivt_mrs_dists'
+            col = f'{scenarios[0]}_{occ_type}_ivt_mrs_dists'
+            col2 = f'{scenarios[1]}_{occ_type}_ivt_mrs_dists'
             # Selected region:
-            dist_noncum = df.loc[str_selected_region,
-                                [f'{col}_noncum_{i}' for i in range(7)]].values
-            dist_cum = df.loc[str_selected_region,
-                            [f'{col}_{i}' for i in range(7)]].values
-            dist_std = df.loc[str_selected_region,
-                            [f'{col}_noncum_std_{i}' for i in range(7)]].values
+            dist_noncum = df.loc[
+                str_selected_region,
+                [f'{col}_noncum_{i}' for i in range(7)]
+                ].values
+            dist_cum = df.loc[
+                str_selected_region,
+                [f'{col}_{i}' for i in range(7)]
+                ].values
+            dist_std = df.loc[
+                str_selected_region,
+                [f'{col}_noncum_std_{i}' for i in range(7)]
+                ].values
 
             # Redirect:
-            dist2_noncum = df.loc[str_selected_region,
-                                [f'{col2}_noncum_{i}' for i in range(7)]].values
-            dist2_cum = df.loc[str_selected_region,
-                            [f'{col2}_{i}' for i in range(7)]].values
-            dist2_std = df.loc[str_selected_region,
-                            [f'{col2}_noncum_std_{i}' for i in range(7)]].values
+            dist2_noncum = df.loc[
+                str_selected_region,
+                [f'{col2}_noncum_{i}' for i in range(7)]
+                ].values
+            dist2_cum = df.loc[
+                str_selected_region,
+                [f'{col2}_{i}' for i in range(7)]
+                ].values
+            dist2_std = df.loc[
+                str_selected_region,
+                [f'{col2}_noncum_std_{i}' for i in range(7)]
+                ].values
 
     # Display names for the data:
     display_name_dict = {

@@ -4,6 +4,8 @@ import pandas as pd
 from importlib_resources import files
 import stroke_outcome  # for reference dists
 
+import stroke_maps.load_data
+
 
 def find_multiindex_column_names(gdf, **kwargs):
     """
@@ -204,6 +206,44 @@ def make_outline_icbs(col='icb'):
 
     # Save:
     gdf.to_file(f'data/outline_{col}s.geojson')
+
+
+def make_outline_ambo():
+    """Similar to stroke-maps."""
+    import streamlit as st
+    # from stroke_maps.geo import import_geojson
+    import os
+    from shapely.validation import make_valid  # for fixing dodgy polygons
+
+    # # All msoa shapes:
+    # gdf = import_geojson(
+    #     'LSOA11NM',
+    #     path_to_file=os.path.join('data', 'LSOA_V3_reduced_simplified.geojson')
+    #     )
+    import geopandas
+    gdf = geopandas.read_file(os.path.join('data', 'outline_lsoa11cds.geojson'))
+    # gdf = geopandas.read_file(os.path.join('data', 'LSOA.geojson'))
+    st.write(gdf.crs)
+    gdf = gdf.set_index('LSOA11CD')
+    # Limit to England:
+    mask = gdf.index.str.startswith('E')
+    gdf = gdf.loc[mask].copy()
+    # Make geometry valid:
+    gdf['geometry'] = [
+        make_valid(g) if g is not None else g
+        for g in gdf['geometry'].values
+        ]
+
+    # Load LSOA-ambulance lookup:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    gdf = pd.merge(gdf, df_lsoa_ambo.reset_index().drop('LSOA11CD', axis='columns'),
+                   on='LSOA11NM', how='left')
+
+    # Combine:
+    gdf = gdf.dissolve(by='ambo21')
+
+    # Save:
+    gdf.to_file(f'data/outline_ambo21s.geojson')
 
 
 def make_outline_msoa_from_lsoa():

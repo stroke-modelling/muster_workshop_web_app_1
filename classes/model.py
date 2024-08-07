@@ -23,34 +23,12 @@ class Model(object):
         Pandas DataFrame of geographic data.
     """
 
-    def __init__(self, scenario, geodata, use_msu_bool=True, use_mothership_bool=True):
+    def __init__(self, dict_outcome_inputs, geodata):
         """
         Constructor class for Model.
         """
-
-        # Scenario
-        self.scenario = scenario
-
-        # Geodata
+        self.dict_outcome_inputs = dict_outcome_inputs
         self.geodata = geodata
-
-        # Which scenarios to run:
-        self.use_msu = use_msu_bool
-        self.use_mothership = use_mothership_bool
-
-        if self.scenario.limit_to_england:
-            mask = self.geodata['England'] == 1
-            self.geodata = self.geodata.loc[mask].copy(deep=True)
-
-            # Index shenanigans.
-            # I don't know why, but it quietly breaks some of the LSOA
-            # when the index is mostly range index integers but has
-            # gaps where we've taken out the Welsh LSOA.
-            # The affected English LSOAs get all None for their outcomes
-            # and show up as blank in any maps.
-            self.geodata.index.name = 'rubbish'
-            self.geodata = self.geodata.reset_index()
-            self.geodata = self.geodata.drop(['rubbish'], axis='columns')
 
     def run(self):
         """
@@ -64,18 +42,22 @@ class Model(object):
         self.full_mrs_dists = self.geodata[
             ['LSOA', 'Admissions']].copy(deep=True)
 
-        self.add_drip_ship()
-
-        if self.use_mothership:
-            self.add_mothership()
-
-        if self.use_msu:
-            self.add_msu()
-            self.add_diff_msu_minus_drip_ship()
+        for scen, df_outcome_inputs in self.dict_outcome_inputs.items():
+            scenario_results, scenario_mrs = self.add_scenario(
+                df_outcome_inputs, scen)
+            self.full_results = pd.merge(
+                self.full_results, scenario_results,
+                left_on='LSOA', right_on='LSOA', how='left')
+            self.full_mrs_dists = pd.merge(
+                self.full_mrs_dists, scenario_mrs,
+                left_on='LSOA', right_on='LSOA', how='left')
 
         # Make non-cumulative mRS distributions:
         cols = self.full_mrs_dists.columns.values
-        cols = sorted(list(set(['_'.join(c.split('_')[:-1]) for c in cols if c not in ['LSOA', 'Admissions']])))
+        cols = sorted(list(set(
+            ['_'.join(c.split('_')[:-1]) for c in cols
+             if c not in ['LSOA', 'Admissions']]
+             )))
         for c in cols:
             cols_cumsum = [f'{c}_{i}' for i in range(7)]
             cols_noncum = [f'{c}_noncum_{i}' for i in range(7)]
@@ -93,450 +75,175 @@ class Model(object):
         self.full_mrs_dists.set_index('LSOA', inplace=True)
         self.summary_results = self.full_results.describe().T
 
-        self.save_results()
+        # self.save_results()
+
+    def add_scenario(self, outcome_inputs_df, scenario_name='scen'):
+        """
+        Add Drip and ship times to IVT & MT, and clinical benefit
 
 
-    def add_drip_ship(self):
-        """Add Drip and ship times to IVT & MT, and clinical benefit"""
-
-        # Set up outcome object
-        continuous_outcome = Continuous_outcome()
-
-        # Add drip and ship times
-        self.full_results['drip_ship_ivt_time'] = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_time_ambulance_response +
-            self.scenario.process_ambulance_on_scene_duration +
-            self.full_results['nearest_ivt_time'] +
-            self.scenario.process_time_arrival_to_needle)
-
-        # Separate MT timings required depending on whether transfer
-        # needed. Mask for which rows of data need a transfer:
-        mask_transfer = self.full_results['transfer_required']
-
-        # Timings for units needing transfers:
-        mt_transfer = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_time_ambulance_response +
-            self.scenario.process_ambulance_on_scene_duration +
-            self.full_results['nearest_ivt_time'] +
-            self.scenario. transfer_time_delay +
-            self.full_results['transfer_time'] +
-            self.scenario.process_time_transfer_arrival_to_puncture)
-
-        # Timings for units that do not need transfers:
-        mt_no_transfer = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_time_ambulance_response +
-            self.scenario.process_ambulance_on_scene_duration +
-            self.full_results['nearest_ivt_time'] +
-            self.scenario.process_time_arrival_to_puncture)
-
-        self.full_results['drip_ship_mt_time'] = mt_transfer
-        self.full_results.loc[
-            ~mask_transfer, 'drip_ship_mt_time'] = mt_no_transfer
-
-
-        # Add clinical benefit for nLVO outcome (stroke type = 1)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['drip_ship_ivt_time']
-        outcome_inputs_df['ivt_chosen_bool'] = 0
-        outcome_inputs_df['onset_to_puncture_mins'] = 999999
-        outcome_inputs_df['mt_chosen_bool'] = 0
-        # Outcome without treatment
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-        self.full_results['nlvo_no_treatment_mrs_0-2'] = \
-            continuous_outcome.mrs_distribution_probs['no_treatment_nlvo'][2]
-        self.full_results['nlvo_no_treatment_utility'] = \
-            outcomes_by_stroke_type['nlvo_ivt_utility_not_treated']
-        self.full_results['lvo_no_treatment_mrs_0-2'] = \
-            continuous_outcome.mrs_distribution_probs['no_treatment_lvo'][2]
-        self.full_results['lvo_no_treatment_utility'] = \
-            outcomes_by_stroke_type['lvo_ivt_utility_not_treated']
-
-        # Outcome with treatment
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-        self.full_results['nlvo_drip_ship_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['nlvo_drip_ship_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_shift']
-        # self.full_results['nlvo_drip_ship_ivt_utility'] = \
-        #     outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['nlvo_drip_ship_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_shift']
-        # # One list of mRS values per row (patient) in the data.
-        col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs = outcomes_by_stroke_type[col].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'nlvo_drip_ship_ivt_mrs_dists_{i}' for i in range(7)]] = outs
-
-        # Add clinical benefit for LVO outcome (stroke type = 2)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(2, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['drip_ship_ivt_time']
-        outcome_inputs_df['onset_to_puncture_mins'] = self.full_results['drip_ship_mt_time']
-        # Outcome with treatment (IVT then IVT+MT)
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        outcome_inputs_df['mt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-
-        # LVO IVT
-        self.full_results['lvo_drip_ship_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_drip_ship_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_shift'] 
-        # self.full_results['lvo_drip_ship_ivt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['lvo_drip_ship_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_utility_shift']
-        # LVO MT
-        self.full_results['lvo_drip_ship_mt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_drip_ship_mt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_shift']  
-        # self.full_results['lvo_drip_ship_mt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_mt_each_patient_utility_post_stroke']
-        self.full_results['lvo_drip_ship_mt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_utility_shift']
-        # LVO IVT + MT
-        self.full_results['lvo_drip_ship_ivt_mt_mrs_0-2'] = self.full_results[
-            ['lvo_drip_ship_ivt_mrs_0-2', 'lvo_drip_ship_mt_mrs_0-2']].max(axis=1)
-        self.full_results['lvo_drip_ship_ivt_mt_mrs_shift'] = self.full_results[
-            ['lvo_drip_ship_ivt_mrs_shift', 'lvo_drip_ship_mt_mrs_shift']].min(axis=1)
-        # self.full_results['lvo_drip_ship_ivt_mt_utility'] = self.full_results[
-        #     ['lvo_drip_ship_ivt_utility', 'lvo_drip_ship_mt_utility']].max(axis=1)
-        self.full_results['lvo_drip_ship_ivt_mt_utility_shift'] = self.full_results[
-            ['lvo_drip_ship_ivt_utility_shift', 'lvo_drip_ship_mt_utility_shift']].max(axis=1)
-
-        # One list of mRS values per row (patient) in the data.
-        outs = outcomes_by_stroke_type[
-            'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_drip_ship_ivt_mrs_dists_{i}' for i in range(7)]] = outs
-
-        outs = outcomes_by_stroke_type[
-            'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_drip_ship_mt_mrs_dists_{i}' for i in range(7)]] = outs
-
-        # Pick the treatment that causes more mRS 0-2:
-        inds = self.full_results[
-            ['lvo_drip_ship_ivt_mrs_0-2', 'lvo_drip_ship_mt_mrs_0-2']].idxmax(axis=1)
-        # Pick out IVT and MT results:
-        col = 'lvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs_ivt = outcomes_by_stroke_type[col].copy()
-        col = 'lvo_mt_each_patient_mrs_dist_post_stroke'
-        outs_mt = outcomes_by_stroke_type[col].copy()
-
-        # Initially copy over all the IVT data...
-        outs = outs_ivt.copy()
-        # ... then update with MT data where necessary:
-        mask = np.where(inds.str.contains('_mt_'))
-        outs[mask, :] = outs_mt[mask, :].copy()
-        # Reshape as normal:
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_drip_ship_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
-
-
-
-    def add_mothership(self):
-        """Add Mothership times to IVT & MT, and clinical benefit"""
+        Define column name variables to make the lines shorter.
+        Used to also find 'utility' outcomes.
+        """
 
         # Set up outcome object
         continuous_outcome = Continuous_outcome()
 
-        # Add mothership times
-        self.full_results['mothership_ivt_time'] = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_time_ambulance_response +
-            self.scenario.process_ambulance_on_scene_duration +
-            self.full_results['nearest_mt_time'] +
-            self.scenario.process_time_arrival_to_needle)
+        # Run the outcome model twice - once with only nLVO patients
+        # and once with only LVO patients. Take the relevant columns
+        # of each set of results and store them in one master df.
+        outcomes_by_stroke_type = {}
+        outcome_inputs_df = outcome_inputs_df.copy()
+        for occ_code, occ in enumerate(['nlvo', 'lvo']):
+            # Stroke type code is 1 for nLVO, 2 for LVO.
+            outcome_inputs_df['stroke_type_code'] = occ_code + 1
+            # If any patients have nLVO and yes to MT, the outcome
+            # model returns NaN. So overwrite the values here:
+            if occ == 'nlvo':
+                outcome_inputs_df['mt_chosen_bool'] = 0
+            else:
+                outcome_inputs_df['mt_chosen_bool'] = 1
+            continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
+            patient_data_dict, outcomes_dict, full_cohort_outcomes = (
+                continuous_outcome.calculate_outcomes())
+            # Columns for this stroke type:
+            if occ == 'nlvo':
+                cols = [c for c in list(outcomes_dict.keys())
+                        if occ in c]
+            else:
+                cols = [c for c in list(outcomes_dict.keys())
+                        if ((occ in c) & ('nlvo' not in c))]
+            # Store a copy of the results for this stroke type:
+            for c in cols:
+                outcomes_by_stroke_type[c] = outcomes_dict[c]
+        # # Are there any columns that do not contain 'lvo'?
+        # cols = [c for c in list(outcomes_dict.keys()) if 'lvo' not in c]
+        # for c in cols:
+        #     outcomes_by_stroke_type[c] = outcomes_dict[c]
 
-        self.full_results['mothership_mt_time'] = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_time_ambulance_response +
-            self.scenario.process_ambulance_on_scene_duration +
-            self.full_results['nearest_mt_time'] +
-            self.scenario.process_time_arrival_to_puncture)
+        # Add new columns for the proportion with mRS<=2:
+        for occ in ['lvo', 'nlvo']:
+            for tre in ['ivt', 'mt']:
+                try:
+                    c1 = f'{occ}_{tre}_each_patient_mrs_0-2'
+                    c2 = f'{occ}_{tre}_each_patient_mrs_dist_post_stroke'
+                    outcomes_by_stroke_type[c1] = (
+                        outcomes_by_stroke_type[c2][:, 2])
+                except KeyError:
+                    pass
 
-        # Add clinical benefit for nLVO outcome (stroke type = 1)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['mothership_ivt_time']
-        outcome_inputs_df['ivt_chosen_bool'] = 0
-        outcome_inputs_df['onset_to_puncture_mins'] = 999999
-        outcome_inputs_df['mt_chosen_bool'] = 0
-        # Outcome with treatment
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-        self.full_results['nlvo_mothership_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['nlvo_mothership_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_shift']        
-        # self.full_results['nlvo_mothership_ivt_utility'] = \
-        #     outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['nlvo_mothership_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_shift']
-        # # One list of mRS values per row (patient) in the data.
-        col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs = outcomes_by_stroke_type[col].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'nlvo_mothership_ivt_mrs_dists_{i}' for i in range(7)]] = outs
+        # Store results in here. Outcomes...
+        scenario_results = pd.DataFrame()
+        # ... and mRS distributions:
+        scenario_mrs_dists = pd.DataFrame()
+        # Include LSOA names:
+        scenario_results['LSOA'] = outcome_inputs_df['LSOA']
+        scenario_mrs_dists['LSOA'] = outcome_inputs_df['LSOA']
+        # Include treatment times:
+        scenario_results[f'{scenario_name}_ivt_time'] = (
+            outcome_inputs_df['onset_to_needle_mins'])
+        scenario_results[f'{scenario_name}_mt_time'] = (
+            outcome_inputs_df['onset_to_puncture_mins'])
+        # Include any bonus columns:
+        bonus_cols = outcome_inputs_df.columns
+        cols_to_remove = [
+            'LSOA', 'onset_to_needle_mins', 'onset_to_puncture_mins',
+            'stroke_type_code', 'ivt_chosen_bool', 'mt_chosen_bool'
+            ]
+        bonus_cols = [c for c in bonus_cols if c not in cols_to_remove]
+        scenario_results[bonus_cols] = outcome_inputs_df[bonus_cols]
 
-        # Add clinical benefit for LVO outcome (stroke type = 2)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(2, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['mothership_ivt_time']
-        outcome_inputs_df['ivt_chosen_bool'] = 0
-        outcome_inputs_df['onset_to_puncture_mins'] = self.full_results['mothership_mt_time']
-        outcome_inputs_df['mt_chosen_bool'] = 0
-        # Outcome with treatment (IVT then IVT+MT)
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        outcome_inputs_df['mt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
+        cols_before = []
+        cols_after = []
+        for occ in ['lvo', 'nlvo']:
+            for tre in ['ivt', 'mt']:
+                if occ == 'nlvo' and tre == 'mt':
+                    pass
+                else:
+                    # --- Outcome results ---
+                    cols_before += [
+                        f'{occ}_{tre}_each_patient_mrs_0-2',
+                        f'{occ}_{tre}_each_patient_mrs_shift',
+                        f'{occ}_{tre}_each_patient_utility_shift'
+                    ]
+                    cols_after += [
+                        f'{scenario_name}_{occ}_{tre}_mrs_0-2',
+                        f'{scenario_name}_{occ}_{tre}_mrs_shift',
+                        f'{scenario_name}_{occ}_{tre}_utility_shift'
+                    ]
 
-        # LVO IVT
-        self.full_results['lvo_mothership_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_mothership_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_shift']  
-        # self.full_results['lvo_mothership_ivt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['lvo_mothership_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_utility_shift']
-        # LVO MT
-        self.full_results['lvo_mothership_mt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_mothership_mt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_shift']  
-        # self.full_results['lvo_mothership_mt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_mt_each_patient_utility_post_stroke']
-        self.full_results['lvo_mothership_mt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_utility_shift']
-        # LVO IVT + MT
-        self.full_results['lvo_mothership_ivt_mt_mrs_0-2'] = self.full_results[
-            ['lvo_mothership_ivt_mrs_0-2', 'lvo_mothership_mt_mrs_0-2']].max(axis=1)
-        self.full_results['lvo_mothership_ivt_mt_mrs_shift'] = self.full_results[
-            ['lvo_mothership_ivt_mrs_shift', 'lvo_mothership_mt_mrs_shift']].min(axis=1)
-        # self.full_results['lvo_mothership_ivt_mt_utility'] = self.full_results[
-        #     ['lvo_mothership_ivt_utility', 'lvo_mothership_mt_utility']].max(axis=1)
-        self.full_results['lvo_mothership_ivt_mt_utility_shift'] = self.full_results[
-            ['lvo_mothership_ivt_utility_shift', 'lvo_mothership_mt_utility_shift']].max(axis=1)
+                    # --- mRS distributions ---
+                    # One list of mRS values per row (patient) in the data.
+                    # Give each mRS band its own column...
+                    c1 = [f'{scenario_name}_{occ}_{tre}_mrs_dists_{i}'
+                          for i in range(7)]
+                    # ... but in the original data it's just one column:
+                    c2 = f'{occ}_{tre}_each_patient_mrs_dist_post_stroke'
+                    # Round the mRS values to remove unnecessary precision:
+                    outs = outcomes_by_stroke_type[c2].copy()
+                    outs = np.round(outs, 5).tolist()
+                    scenario_mrs_dists[c1] = outs
 
-        # One list of mRS values per row (patient) in the data.
-        outs = outcomes_by_stroke_type[
-            'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_mothership_ivt_mrs_dists_{i}' for i in range(7)]] = outs
+        for c, cb in enumerate(cols_before):
+            scenario_results[cols_after[c]] = outcomes_by_stroke_type[cb]
 
-        outs = outcomes_by_stroke_type[
-            'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_mothership_mt_mrs_dists_{i}' for i in range(7)]] = outs
+        # --- IVT & MT results ---
+        for occ in ['lvo']:
+            # The results for IVT & MT use whichever is the better of
+            # the separate IVT-only and MT-only results.
+            # Which is better may be different for each patient.
+            # Here, define "better" as more patients in the mRS<=2 band.
+            # Find which is better:
+            inds = scenario_results[
+                [f'{scenario_name}_{occ}_ivt_mrs_0-2',
+                 f'{scenario_name}_{occ}_mt_mrs_0-2'
+                 ]].idxmax(axis=1)
+            # "inds" has one value per patient and the value is either
+            # the string (not the mRS value, not the index)
+            # f'{scenario_name}_{occ}_ivt_mrs_0-2' or
+            # f'{scenario_name}_{occ}_mt_mrs_0-2' depending.
 
-        # Pick the treatment that causes more mRS 0-2:
-        inds = self.full_results[
-            ['lvo_mothership_ivt_mrs_0-2', 'lvo_mothership_mt_mrs_0-2']].idxmax(axis=1)
-        # Pick out IVT and MT results:
-        col = 'lvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs_ivt = outcomes_by_stroke_type[col].copy()
-        col = 'lvo_mt_each_patient_mrs_dist_post_stroke'
-        outs_mt = outcomes_by_stroke_type[col].copy()
+            # Patients where MT is better than IVT:
+            mask = np.where(inds.str.contains('_mt_'))
 
-        # Initially copy over all the IVT data...
-        outs = outs_ivt.copy()
-        # ... then update with MT data where necessary:
-        mask = np.where(inds.str.contains('_mt_'))
-        outs[mask, :] = outs_mt[mask, :].copy()
-        # Reshape as normal:
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_mothership_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
+            # --- Outcome results ---
+            for out in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+                c1 = f'{scenario_name}_{occ}_ivt_{out}'
+                c2 = f'{scenario_name}_{occ}_mt_{out}'
+                outs_ivt = scenario_results[c1].values.copy()
+                outs_mt = scenario_results[c2].values.copy()
+                # Initially copy over all the IVT data,
+                # then update with MT data where necessary:
+                outs = outs_ivt.copy()
+                outs[mask] = outs_mt[mask].copy()
+                # Place into the results df:
+                c3 = f'{scenario_name}_{occ}_ivt_mt_{out}'
+                scenario_results[c3] = outs
 
-    def add_msu(self):
-        """Add MSU times to IVT & MT, clinical benefit, and utilised time"""
+            # --- mRS distributions ---
+            # Pick out IVT and MT results:
+            c1 = f'{occ}_ivt_each_patient_mrs_dist_post_stroke'
+            c2 = f'{occ}_mt_each_patient_mrs_dist_post_stroke'
+            outs_ivt = outcomes_by_stroke_type[c1].copy()
+            outs_mt = outcomes_by_stroke_type[c2].copy()
+            # Initially copy over all the IVT data,
+            # then update with MT data where necessary:
+            outs = outs_ivt.copy()
+            outs[mask, :] = outs_mt[mask, :].copy()
+            # Reshape as normal:
+            outs = np.round(outs, 5).tolist()
+            # Place each mRS band in its own column in the new results:
+            cols_mrs = [f'{scenario_name}_{occ}_ivt_mt_mrs_dists_{i}'
+                        for i in range(7)]
+            scenario_mrs_dists[cols_mrs] = outs
 
-        # Set up outcome object
-        continuous_outcome = Continuous_outcome()
+        # Sort columns alphabetically to group similar results:
+        scenario_mrs_dists = scenario_mrs_dists[
+            sorted(scenario_mrs_dists.columns.tolist())]
+        scenario_results = scenario_results[
+            sorted(scenario_results.columns.tolist())]
 
-        # Add MSU times
-        self.full_results['msu_ivt_time'] = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_msu_dispatch +
-            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
-            self.scenario.process_msu_thrombolysis
-            )
-
-        self.full_results['msu_mt_time'] = (
-            self.scenario.process_time_call_ambulance +
-            self.scenario.process_msu_dispatch +
-            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
-            self.scenario.process_msu_thrombolysis +
-            self.scenario.process_msu_on_scene_post_thrombolysis +
-            (self.full_results['nearest_mt_time']  * self.scenario.scale_msu_travel_times) +
-            self.scenario.process_time_msu_arrival_to_puncture
-            )
-
-        self.full_results['msu_occupied_treatment'] = (
-            self.scenario.process_msu_dispatch +
-            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
-            self.scenario.process_msu_thrombolysis +
-            self.scenario.process_msu_on_scene_post_thrombolysis +
-            (self.full_results['nearest_mt_time']  * self.scenario.scale_msu_travel_times)
-            )
-
-        self.full_results['msu_occupied_no_treatment'] = (
-            self.scenario.process_msu_dispatch +
-            (self.full_results['nearest_msu_time'] * self.scenario.scale_msu_travel_times) +
-            self.scenario.process_msu_on_scene_no_thrombolysis
-            )
-
-        # Add clinical benefit for nLVO outcome (stroke type = 1)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(1, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['msu_ivt_time']
-        outcome_inputs_df['ivt_chosen_bool'] = 0
-        outcome_inputs_df['onset_to_puncture_mins'] = 999999
-        outcome_inputs_df['mt_chosen_bool'] = 0
-        # Outcome with treatment
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-        self.full_results['nlvo_msu_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['nlvo_msu_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_mrs_shift']        
-        # self.full_results['nlvo_msu_ivt_utility'] = \
-        #     outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['nlvo_msu_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['nlvo_ivt_each_patient_utility_shift']
-        # # One list of mRS values per row (patient) in the data.
-        col = 'nlvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs = outcomes_by_stroke_type[col].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'nlvo_msu_ivt_mrs_dists_{i}' for i in range(7)]] = outs
-
-        # Add clinical benefit for LVO outcome (stroke type = 2)
-        # Set up input table for stroke outcome package
-        outcome_inputs_df = pd.DataFrame()
-        outcome_inputs_df['stroke_type_code'] = np.repeat(2, len(self.full_results))
-        outcome_inputs_df['onset_to_needle_mins'] = self.full_results['msu_ivt_time']
-        outcome_inputs_df['ivt_chosen_bool'] = 0
-        outcome_inputs_df['onset_to_puncture_mins'] = self.full_results['msu_mt_time']
-        # Outcome with treatment (IVT then IVT+MT)
-        outcome_inputs_df['ivt_chosen_bool'] = 1
-        outcome_inputs_df['mt_chosen_bool'] = 1
-        continuous_outcome.assign_patients_to_trial(outcome_inputs_df)
-        patient_data_dict, outcomes_by_stroke_type, full_cohort_outcomes = (
-            continuous_outcome.calculate_outcomes())
-        # LVO IVT
-        self.full_results['lvo_msu_ivt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_msu_ivt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_mrs_shift']  
-        # self.full_results['lvo_msu_ivt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_ivt_each_patient_utility_post_stroke']
-        self.full_results['lvo_msu_ivt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_ivt_each_patient_utility_shift']
-        # LVO MT
-        self.full_results['lvo_msu_mt_mrs_0-2'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_dist_post_stroke'][:,2]
-        self.full_results['lvo_msu_mt_mrs_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_mrs_shift']  
-        # self.full_results['lvo_msu_mt_utility'] = \
-        #     outcomes_by_stroke_type['lvo_mt_each_patient_utility_post_stroke']
-        self.full_results['lvo_msu_mt_utility_shift'] = \
-            outcomes_by_stroke_type['lvo_mt_each_patient_utility_shift']
-        # LVO IVT + MT
-        self.full_results['lvo_msu_ivt_mt_mrs_0-2'] = self.full_results[
-            ['lvo_msu_ivt_mrs_0-2', 'lvo_msu_mt_mrs_0-2']].max(axis=1)
-        self.full_results['lvo_msu_ivt_mt_mrs_shift'] = self.full_results[
-            ['lvo_msu_ivt_mrs_shift', 'lvo_msu_mt_mrs_shift']].min(axis=1)
-        # self.full_results['lvo_msu_ivt_mt_utility'] = self.full_results[
-        #     ['lvo_msu_ivt_utility', 'lvo_msu_mt_utility']].max(axis=1)
-        self.full_results['lvo_msu_ivt_mt_utility_shift'] = self.full_results[
-            ['lvo_msu_ivt_utility_shift', 'lvo_msu_mt_utility_shift']].max(axis=1)
-
-        # One list of mRS values per row (patient) in the data.
-        outs = outcomes_by_stroke_type[
-            'lvo_ivt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_msu_ivt_mrs_dists_{i}' for i in range(7)]] = outs
-
-        outs = outcomes_by_stroke_type[
-            'lvo_mt_each_patient_mrs_dist_post_stroke'].copy()
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_msu_mt_mrs_dists_{i}' for i in range(7)]] = outs
-    
-        # Pick the treatment that causes more mRS 0-2:
-        inds = self.full_results[
-            ['lvo_msu_ivt_mrs_0-2', 'lvo_msu_mt_mrs_0-2']].idxmax(axis=1)
-        # Pick out IVT and MT results:
-        col = 'lvo_ivt_each_patient_mrs_dist_post_stroke'
-        outs_ivt = outcomes_by_stroke_type[col].copy()
-        col = 'lvo_mt_each_patient_mrs_dist_post_stroke'
-        outs_mt = outcomes_by_stroke_type[col].copy()
-
-        # Initially copy over all the IVT data...
-        outs = outs_ivt.copy()
-        # ... then update with MT data where necessary:
-        mask = np.where(inds.str.contains('_mt_'))
-        outs[mask, :] = outs_mt[mask, :].copy()
-        # Reshape as normal:
-        outs = np.round(outs, 5).tolist()
-        self.full_mrs_dists[[f'lvo_msu_ivt_mt_mrs_dists_{i}' for i in range(7)]] = outs
-
-    def add_diff_msu_minus_drip_ship(self):
-
-        scenario_types = ['msu', 'drip_ship']
-        occlusion_types = ['nlvo', 'lvo']
-        treatment_types = ['ivt', 'mt', 'ivt_mt']
-        outcome_types = ['mrs_0-2', 'mrs_shift', 'utility', 'utility_shift']
-
-        for occ in occlusion_types:
-            for tre in treatment_types:
-                for out in outcome_types:
-                    # Existing column names:
-                    col_scen1 = f'{occ}_{scenario_types[0]}_{tre}_{out}'
-                    col_scen2 = f'{occ}_{scenario_types[1]}_{tre}_{out}'
-                    # New column name for the diff data:
-                    col_diff = ''.join([
-                        f'{occ}_',
-                        f'diff_{scenario_types[0]}_minus_{scenario_types[1]}',
-                        f'_{tre}_{out}'
-                    ])
-                    try:
-                        data_scen1 = self.full_results[col_scen1]
-                        data_scen2 = self.full_results[col_scen2]
-                        data_exists = True
-                    except KeyError:
-                        # This combination doesn't exist
-                        # (e.g. nLVO with MT).
-                        data_exists = False
-
-                    if data_exists:
-                        data_diff = data_scen1 - data_scen2
-                        self.full_results[col_diff] = data_diff
-                    else:
-                        pass
+        return scenario_results, scenario_mrs_dists
 
     def save_results(self):
         """Save results to output folder"""
