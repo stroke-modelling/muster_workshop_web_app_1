@@ -278,8 +278,10 @@ scenario_dict['stroke_type'] = stroke_type
 
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
-    outline_name = st.radio('Region type to draw on maps',
-                            ['None', 'ISDN', 'ICB', 'Nearest service'])
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        ['None', 'ISDN', 'ICB', 'Nearest service']#, 'Ambulance service']
+        )
 
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,

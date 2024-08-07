@@ -7,6 +7,9 @@ import numpy as np
 from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
 import geopandas
 
+# Load region shapes:
+import stroke_maps.load_data
+
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
 from classes.model import Model
@@ -387,16 +390,15 @@ def group_results_by_region(df_lsoa, df_unit_services):
 
     # Load region info for each LSOA:
     # Relative import from package files:
-    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
-    df_lsoa_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
     df_lsoa = pd.merge(
         df_lsoa, df_lsoa_regions,
         left_on='lsoa', right_on='lsoa', how='left'
         )
 
     # Load further region data linking SICBL to other regions:
-    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
-    df_regions = pd.read_csv(path_to_file)  # , index_col=[0, 1])
+    df_regions = stroke_maps.load_data.region_lookup()
+    df_regions = df_regions.reset_index()
     # Drop columns already in df_lsoa:
     df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
     df_lsoa = pd.merge(
@@ -550,16 +552,16 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units, **kwargs):
 
     # Load region info for each LSOA:
     # Relative import from package files:
-    path_to_file = files('stroke_maps.data').joinpath('regions_lsoa_ew.csv')
-    df_lsoa_regions = pd.read_csv(path_to_file)
+    df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
+    df_lsoa_regions = df_lsoa_regions.reset_index()
     df_lsoa = pd.merge(
         df_lsoa, df_lsoa_regions,
         left_on='lsoa', right_on='lsoa', how='left'
         )
 
     # Load further region data linking SICBL to other regions:
-    path_to_file = files('stroke_maps.data').joinpath('regions_ew.csv')
-    df_regions = pd.read_csv(path_to_file)
+    df_regions = stroke_maps.load_data.region_lookup()
+    df_regions = df_regions.reset_index()
     # Drop columns already in df_lsoa:
     df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
     df_lsoa = pd.merge(
@@ -982,6 +984,10 @@ def combine_results_by_diff(
 
 
 def load_or_calculate_region_outlines(outline_name, df_lsoa):
+    """
+    Don't replace these outlines with stroke-maps!
+    These versions match the simplified LSOA shapes.
+    """
     # Load in another gdf:
 
     if outline_name == 'ISDN':

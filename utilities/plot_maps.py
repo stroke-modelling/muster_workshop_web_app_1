@@ -5,14 +5,15 @@ import streamlit as st
 import numpy as np
 import os
 import geopandas
+import pandas as pd
 
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from utilities.maps import convert_shapely_polys_into_xy
 
-from stroke_maps.utils import find_multiindex_column_names
-from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
-from stroke_maps.catchment import Catchment
+# from stroke_maps.utils import find_multiindex_column_names
+# from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
+import stroke_maps.load_data
 
 
 def create_stroke_team_markers(df_units=None):
@@ -37,42 +38,50 @@ def create_stroke_team_markers(df_units=None):
 
     # Add stroke team markers.
     if df_units is None:
-        catchment = Catchment()
-        df_units = catchment.get_unit_services()
+        df_units = stroke_maps.load_data.stroke_unit_region_lookup()
+        # Limit to England:
+        mask = df_units['country'] == 'England'
+        df_units = df_units.loc[mask].copy()
     else:
         pass
     # Build geometry:
-    df_units = check_scenario_level(df_units)
-    gdf_points_units = _load_geometry_stroke_units(df_units)
+    gdf_points_units = stroke_maps.load_data.stroke_unit_coordinates()
+    # Limit to units in df_units:
+    mask_units = gdf_points_units.index.isin(df_units.index)
+    gdf_points_units = gdf_points_units.loc[mask_units].copy()
+
+    # Merge in services:
+    gdf_points_units = pd.merge(
+        gdf_points_units, df_units,
+        left_index=True, right_index=True,
+        how='right'
+    )
 
     # # Convert to British National Grid.
     # The geometry column should be BNG on import, so just overwrite
     # the longitude and latitude columns that are by default long/lat.
-    col_geo = find_multiindex_column_names(
-        gdf_points_units, property=['geometry'])
+    col_geo = 'geometry'
     # gdf_points_units = gdf_points_units.set_crs(
     #     'EPSG:27700', allow_override=True)
-
-    # Overwrite long and lat:
-    gdf_points_units[('Longitude', 'any')] = gdf_points_units[col_geo].x
-    gdf_points_units[('Latitude', 'any')] = gdf_points_units[col_geo].y
+    # # Overwrite long and lat:
+    # gdf_points_units[('Longitude', 'any')] = gdf_points_units[col_geo].x
+    # gdf_points_units[('Latitude', 'any')] = gdf_points_units[col_geo].y
 
     # Set up markers using a new column in DataFrame.
     # Set everything to the IVT marker:
     markers = np.full(len(gdf_points_units), 'circle', dtype=object)
     # Update MT units:
-    col_use_mt = find_multiindex_column_names(
-        gdf_points_units, property=['use_mt'])
+    col_use_mt = 'use_mt'
     mask_mt = (gdf_points_units[col_use_mt] == 1)
     markers[mask_mt] = 'square'
     # Store in the DataFrame:
-    gdf_points_units[('marker', 'any')] = markers
+    gdf_points_units['marker'] = markers
 
     # Add markers in separate traces for the sake of legend entries.
     # Pick out which stroke unit types are where in the gdf:
-    col_ivt = ('use_ivt', 'scenario')
-    col_mt = ('use_mt', 'scenario')
-    col_msu = ('use_msu', 'scenario')
+    col_ivt = 'use_ivt'
+    col_mt = 'use_mt'
+    col_msu = 'use_msu'
     mask_ivt = gdf_points_units[col_ivt] == 1
     mask_mt = gdf_points_units[col_mt] == 1
     mask_msu = gdf_points_units[col_msu] == 1
@@ -108,8 +117,8 @@ def create_stroke_team_markers(df_units=None):
         mask = s_dict['mask']
 
         trace = go.Scatter(
-            x=gdf_points_units.loc[mask, ('Longitude', 'any')],
-            y=gdf_points_units.loc[mask, ('Latitude', 'any')],
+            x=gdf_points_units.loc[mask, 'BNG_E'],
+            y=gdf_points_units.loc[mask, 'BNG_N'],
             mode='markers',
             marker={
                 'symbol': s_dict['marker'],
@@ -119,7 +128,7 @@ def create_stroke_team_markers(df_units=None):
             },
             name=s_dict['label'],
             customdata=np.stack(
-                [gdf_points_units.loc[mask, ('ssnap_name', 'scenario')]],
+                [gdf_points_units.loc[mask, 'ssnap_name']],
                 axis=-1
                 ),
             hovertemplate=(
@@ -142,6 +151,8 @@ def plotly_blank_maps(subplot_titles: list = None, n_blank: int = 2):
     subplot_titles - list or None. Titles for the subplots.
     n_blank        - int. How many subplots to create.
     """
+    # Don't replace this with stroke-maps!
+    # This uses the same simplified LSOA shapes as plotted.
     path_to_file = os.path.join('data', 'outline_england.geojson')
     gdf_ew = geopandas.read_file(path_to_file)
 
@@ -281,6 +292,8 @@ def plotly_many_maps(
         )
 
     # Add a blank outline of England:
+    # Don't replace this with stroke-maps! This one matches
+    # the simplified LSOA shapes.
     path_to_file = os.path.join('data', 'outline_england.geojson')
     gdf_ew = geopandas.read_file(path_to_file)
 

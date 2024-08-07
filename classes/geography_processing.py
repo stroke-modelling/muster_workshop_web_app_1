@@ -3,6 +3,7 @@ Processing of raw geographic data for model
 """
 
 import pandas as pd
+import stroke_maps.load_data
 
 
 class Geoprocessing(object):
@@ -173,12 +174,7 @@ class Geoprocessing(object):
         """
         Load raw geographic data.
         """
-        # self.hospitals = pd.read_csv(
-        #     './data/stroke_hospitals.csv', index_col='Postcode')
-
-        from stroke_maps.catchment import Catchment
-        catchment = Catchment()
-        self.hospitals = catchment.get_unit_services()
+        self.hospitals = stroke_maps.load_data.stroke_unit_region_lookup()
 
         # Rename columns to match what the rest of the model here wants.
         self.hospitals.index.name = 'Postcode'
