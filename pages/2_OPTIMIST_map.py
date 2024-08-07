@@ -392,8 +392,7 @@ with container_mrs_dists_etc:
 @st.experimental_fragment
 def display_mrs_dists():
     # User input:
-    with container_input_mrs_region:
-        bar_option = st.selectbox('Region for mRS distributions', bar_options)
+    bar_option = st.selectbox('Region for mRS distributions', bar_options)
 
     mrs_lists_dict, region_selected, col_pretty = (
         mrs.setup_for_mrs_dist_bars(
@@ -404,12 +403,12 @@ def display_mrs_dists():
             scenarios=scenario_mrs
             ))
 
-    with container_mrs_dists:
-        mrs.plot_mrs_bars(
-            mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+    mrs.plot_mrs_bars(
+        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
 
 
-display_mrs_dists()
+with container_mrs_dists:
+    display_mrs_dists()
 
 
 # ####################################
