@@ -317,6 +317,7 @@ def display_mrs_dists():
             scenario_dict,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
             df_mrs_to_plot,
+            input_dict,
             scenarios=scenario_mrs
             ))
 

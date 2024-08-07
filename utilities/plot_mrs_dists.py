@@ -4,6 +4,7 @@ Set up and plot mRS distributions.
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import numpy as np
 
 import utilities.calculations as calc
 from utilities.utils import load_reference_mrs_dists
@@ -14,6 +15,7 @@ def setup_for_mrs_dist_bars(
         scenario_dict,
         df_nearest_units,
         df_mrs,
+        input_dict,
         scenarios=['drip_ship', 'redirect']
         ):
     # Set up where the data should come from -
@@ -55,9 +57,20 @@ def setup_for_mrs_dist_bars(
     if 'nlvo' in occ_type:
         dist_ref_noncum = dist_dict['nlvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['nlvo_no_treatment']
-    else:
+    elif 'lvo' in occ_type:
         dist_ref_noncum = dist_dict['lvo_no_treatment_noncum']
         dist_ref_cum = dist_dict['lvo_no_treatment']
+    else:
+        # Combined stroke types.
+        # Scale and sum the nLVO and LVO dists.
+        scale_nlvo = input_dict['prop_nlvo']
+        scale_lvo = input_dict['prop_lvo']
+
+        dist_ref_noncum = (
+            (dist_dict['nlvo_no_treatment_noncum'] * scale_nlvo) +
+            (dist_dict['lvo_no_treatment_noncum'] * scale_lvo)
+        )
+        dist_ref_cum = np.cumsum(dist_ref_noncum)
 
     # Gather mRS distributions.
     try:
