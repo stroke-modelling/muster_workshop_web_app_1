@@ -332,7 +332,7 @@ def make_outline_lsoa_limit_to_england():
 
 
 def load_reference_mrs_dists():
-    mrs_dists_ref, mrs_dists_ref_notes = (
+    mrs_dists_ref = (
         stroke_outcome.outcome_utilities.import_mrs_dists_from_file())
 
     nlvo_no_treatment = mrs_dists_ref.loc['no_treatment_nlvo'].values
