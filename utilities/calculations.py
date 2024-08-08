@@ -412,7 +412,7 @@ def group_results_by_region(df_lsoa, df_unit_services):
     df_lsoa_ambo = df_lsoa_ambo.reset_index()
     # Merge in:
     df_lsoa = pd.merge(
-        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo21']],
+        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo22']],
         left_on='lsoa', right_on='LSOA11NM', how='left'
         ).drop('LSOA11NM', axis='columns')
 
@@ -461,7 +461,7 @@ def group_results_by_icb(df_lsoa):
         'region_code',
         'icb_code',
         'isdn',
-        'ambo21',
+        'ambo22',
         ], axis='columns')
     # Average:
     df_icb = df_icb.groupby('icb').mean()
@@ -495,7 +495,7 @@ def group_results_by_isdn(df_lsoa):
         'region_code',
         'icb',
         'icb_code',
-        'ambo21',
+        'ambo22',
         ], axis='columns')
     # Average:
     df_isdn = df_isdn.groupby('isdn').mean()
@@ -532,7 +532,7 @@ def group_results_by_ambo(df_lsoa):
         'isdn',
         ], axis='columns')
     # Average:
-    df_ambo = df_ambo.groupby('ambo21').mean()
+    df_ambo = df_ambo.groupby('ambo22').mean()
 
     # Round the values.
     # Outcomes:
@@ -563,7 +563,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
         'icb',
         'icb_code',
         'isdn',
-        'ambo21',
+        'ambo22',
         ], axis='columns')
     # Average:
     df_nearest_ivt = df_nearest_ivt.groupby('nearest_ivt_unit').mean()
@@ -622,7 +622,7 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units, **kwargs):
     df_lsoa_ambo = df_lsoa_ambo.reset_index()
     # Merge in:
     df_lsoa = pd.merge(
-        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo21']],
+        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo22']],
         left_on='lsoa', right_on='LSOA11NM', how='left'
         ).drop('LSOA11NM', axis='columns')
 
@@ -1057,8 +1057,8 @@ def load_or_calculate_region_outlines(outline_name, df_lsoa):
         outline_names_col = 'icb'  # to display
     elif outline_name == 'Ambulance service':
         load_gdf_catchment = True
-        outline_file = './data/outline_ambo21s.geojson'
-        outline_names_col = 'ambo21'  # to display
+        outline_file = './data/outline_ambo22s.geojson'
+        outline_names_col = 'ambo22'  # to display
     elif outline_name == 'Nearest service':
         load_gdf_catchment = False
         outline_names_col = 'Nearest service'
