@@ -240,10 +240,11 @@ def make_outline_ambo():
                    on='LSOA11NM', how='left')
 
     # Combine:
-    gdf = gdf.dissolve(by='ambo21')
+    # note ambulance service year is selected here.
+    gdf = gdf.dissolve(by='ambo22')
 
     # Save:
-    gdf.to_file(f'data/outline_ambo21s.geojson')
+    gdf.to_file(f'data/outline_ambo22s.geojson')
 
 
 def make_outline_msoa_from_lsoa():

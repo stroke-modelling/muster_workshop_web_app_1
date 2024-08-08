@@ -1113,7 +1113,7 @@ def load_region_lists(df_unit_services_full):
     # Load ambulance service data:
     df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
     # List of ambulance services without repeats:
-    ambo_list = sorted(list(set(df_lsoa_ambo['ambo21'])))
+    ambo_list = sorted(list(set(df_lsoa_ambo['ambo22'])))
     # Drop Wales:
     ambo_list.remove('WAST')
 

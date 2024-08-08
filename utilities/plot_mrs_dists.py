@@ -29,7 +29,7 @@ def setup_for_mrs_dist_bars(
         col_region = 'icb'
     elif bar_option.startswith('Ambulance service: '):
         str_selected_region = bar_option.split('Ambulance service: ')[-1]
-        col_region = 'ambo21'
+        col_region = 'ambo22'
     elif bar_option.startswith('Nearest unit: '):
         str_selected_region = bar_option.split('Nearest unit: ')[-1]
         col_region = 'nearest_ivt_unit_name'
