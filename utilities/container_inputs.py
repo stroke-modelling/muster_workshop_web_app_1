@@ -622,9 +622,58 @@ def select_stroke_unit_services(use_msu=True):
     return df_unit_services, df_unit_services_full
 
 
+def select_stroke_unit_services_broad(use_msu=True):
+    df_unit_services, df_unit_services_full, cols_use = (
+        import_stroke_unit_services(use_msu))
+
+    # First overwrite all MSU options:
+    df_unit_services['use_msu'] = 0
+    # Select either:
+    # + MSU at all IVT-only units
+    # + MSU at all MT units
+    # + MSU at all IVT and/or MT units
+    unit_option = st.radio(
+        'Which units can provide MSUs?',
+        options=['IVT-only units', 'MT units', 'IVT and/or MT units'],
+        index=1  # index of default option
+    )
+    if unit_option == 'IVT-only units':
+        # Pick out IVT-only units and set 'use_msu' column to 1.
+        units_bool = (
+            (df_unit_services['use_ivt'] == 1) &
+            (df_unit_services['use_mt'] == 0)
+        )
+        df_unit_services.loc[units_bool, 'use_msu'] = 1
+    elif unit_option == 'MT units':
+        # Pick out MT units and set 'use_msu' column to 1.
+        units_bool = (
+            (df_unit_services['use_mt'] == 1)
+        )
+        df_unit_services.loc[units_bool, 'use_msu'] = 1
+    else:
+        # Pick out units with either service and set 'use_msu' column to 1.
+        units_bool = (
+            (df_unit_services['use_ivt'] == 1) |
+            (df_unit_services['use_mt'] == 1)
+        )
+        df_unit_services.loc[units_bool, 'use_msu'] = 1
+    # For display:
+    df_unit_services['use_msu'] = df_unit_services['use_msu'].astype(bool)
+
+    df_unit_services, df_unit_services_full = update_stroke_unit_services(
+        df_unit_services, df_unit_services_full, cols_use)
+    return df_unit_services, df_unit_services_full
+
+
 def import_stroke_unit_services(use_msu=True):
     # Set up stroke unit services (IVT, MT, MSU).
     df_unit_services = stroke_maps.load_data.stroke_unit_region_lookup()
+    # Remove stroke units that don't offer IVT or MT:
+    mask = (
+        (df_unit_services['use_ivt'] == 1) |
+        (df_unit_services['use_mt'] == 1)
+    )
+    df_unit_services = df_unit_services.loc[mask].copy()
     # Limit to England:
     mask = df_unit_services['country'] == 'England'
     df_unit_services = df_unit_services.loc[mask].copy()
