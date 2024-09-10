@@ -99,33 +99,33 @@ def select_parameters_map():
         # Shared
         'process_time_call_ambulance': {
             'name': 'Time to call ambulance',
-            'default': 79
+            'default': 60
         },
     }
     inputs_standard = {
         # Standard ambulance pathway
         'process_time_ambulance_response': {
             'name': 'Ambulance response time',
-            'default': 18
+            'default': 20
         },
         'process_ambulance_on_scene_duration': {
             'name': 'Time ambulance is on scene',
-            'default': 29
+            'default': 30
         },
         'process_time_arrival_to_needle': {
             'name': 'Hospital arrival to IVT time',
-            'default': 30
+            'default': 40
         },
         'process_time_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 60
+            'default': 90
         },
     }
     inputs_transfer = {
         # Transfer required
         'transfer_time_delay': {
             'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 60
+            'default': 90
         },
         'process_time_transfer_arrival_to_puncture': {
             'name': 'Hospital arrival to MT time (for transfers)',

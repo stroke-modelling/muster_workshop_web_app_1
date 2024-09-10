@@ -338,7 +338,7 @@ with container_mrs_dists_etc:
 
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
-@st.experimental_fragment
+@st.fragment
 def display_mrs_dists():
     # User input:
     bar_option = st.selectbox('Region for mRS distributions', bar_options)

@@ -2,20 +2,26 @@ name: muster_app_dev
 channels:
   - defaults
 dependencies:
-  - geopandas
+  - fiona=1.9.5
+  - geopandas=0.14.2
   - joblib
   - jupyter
   - jupyterlab
   - matplotlib
-  - numpy
+  - numpy=1.24
   - pandas
   - plotly
   - pip
   - pyproj
   - pytest
   - python=3.10
+  - pyyaml
   - scipy
+  - shapely=2.0.1
+  - statsmodels
   - streamlit
   - pip:
+    - cmasher
     - stroke-outcome
+    - stroke-maps
 
