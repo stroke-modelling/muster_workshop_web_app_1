@@ -302,8 +302,32 @@ c1 = ''.join([
     f'{scenario_dict["stroke_type"]}_',
     f'{scenario_dict["treatment_type"]}_utility_shift'
 ])
-lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
-df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+try:
+    lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+    df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+except KeyError:
+    # Looking up data that doesn't exist, e.g. nLVO with MT.
+    if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+        # Use no-treatment data:
+        c1 = ''.join([
+            'diff_msu_minus_usual_care_',
+            f'{scenario_dict["stroke_type"]}_',
+            f'utility_shift'
+        ])
+        lsoa_to_keep = []  # df_lsoa.index[(df_lsoa[c1] > 0.0)]
+        df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+    elif ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
+        # Use IVT-only data:
+        c1 = ''.join([
+            'diff_msu_minus_usual_care_',
+            f'{scenario_dict["stroke_type"]}_',
+            f'ivt_utility_shift'
+        ])
+        lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+        df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+    else:
+        # This shouldn't happen!
+        pass
 
 with container_mrs_dists_etc:
     st.markdown(''.join([
