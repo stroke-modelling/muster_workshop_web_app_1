@@ -634,7 +634,7 @@ def select_stroke_unit_services_broad(use_msu=True):
     # + MSU at all IVT and/or MT units
     unit_option = st.radio(
         'Which units can provide MSUs?',
-        options=['IVT-only units', 'MT units', 'IVT and/or MT units'],
+        options=['IVT-only units', 'MT units', 'All units'],
         index=1  # index of default option
     )
     if unit_option == 'IVT-only units':
