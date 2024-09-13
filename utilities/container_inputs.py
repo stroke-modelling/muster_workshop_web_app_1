@@ -622,47 +622,55 @@ def select_stroke_unit_services(use_msu=True):
     return df_unit_services, df_unit_services_full
 
 
-def select_stroke_unit_services_broad(use_msu=True):
-    df_unit_services, df_unit_services_full, cols_use = (
-        import_stroke_unit_services(use_msu))
+# def select_stroke_unit_services_broad(use_msu=True):
+# WORK IN PROGRESS AND BROKEN!!
+#     df_unit_services, df_unit_services_full, cols_use = (
+#         import_stroke_unit_services(use_msu))
 
-    # First overwrite all MSU options:
-    df_unit_services['use_msu'] = 0
-    # Select either:
-    # + MSU at all IVT-only units
-    # + MSU at all MT units
-    # + MSU at all IVT and/or MT units
-    unit_option = st.radio(
-        'Which units can provide MSUs?',
-        options=['IVT-only units', 'MT units', 'All units'],
-        index=1  # index of default option
-    )
-    if unit_option == 'IVT-only units':
-        # Pick out IVT-only units and set 'use_msu' column to 1.
-        units_bool = (
-            (df_unit_services['use_ivt'] == 1) &
-            (df_unit_services['use_mt'] == 0)
-        )
-        df_unit_services.loc[units_bool, 'use_msu'] = 1
-    elif unit_option == 'MT units':
-        # Pick out MT units and set 'use_msu' column to 1.
-        units_bool = (
-            (df_unit_services['use_mt'] == 1)
-        )
-        df_unit_services.loc[units_bool, 'use_msu'] = 1
-    else:
-        # Pick out units with either service and set 'use_msu' column to 1.
-        units_bool = (
-            (df_unit_services['use_ivt'] == 1) |
-            (df_unit_services['use_mt'] == 1)
-        )
-        df_unit_services.loc[units_bool, 'use_msu'] = 1
-    # For display:
-    df_unit_services['use_msu'] = df_unit_services['use_msu'].astype(bool)
+#     # Display and store any changes from the user:
+#     df_unit_services = st.data_editor(
+#         df_unit_services,
+#         disabled=['postcode', 'stroke_team', 'isdn'],
+#         height=180  # limit height to show fewer rows
+#         )
+    
+#     # Select either:
+#     # + MSU at all IVT-only units
+#     # + MSU at all MT units
+#     # + MSU at all IVT and/or MT units
+#     add_all_ivt = st.button('Place MSU at all IVT-only units')
+#     add_all_mt = st.button('Place MSU at all MT units')
+#     add_all = st.button('Place MSU at all units')
+#     remove_all_ivt = st.button('Remove MSU from all IVT-only units')
+#     remove_all_mt = st.button('Remove MSU from all MT units')
+#     remove_all = st.button('Remove MSU from all units')
 
-    df_unit_services, df_unit_services_full = update_stroke_unit_services(
-        df_unit_services, df_unit_services_full, cols_use)
-    return df_unit_services, df_unit_services_full
+#     units_ivt_bool = (
+#         (df_unit_services['use_ivt'] == 1) &
+#         (df_unit_services['use_mt'] == 0)
+#     )
+#     units_mt_bool = (
+#         (df_unit_services['use_mt'] == 1)
+#     )
+#     if add_all_ivt:
+#         df_unit_services.loc[units_ivt_bool, 'use_msu'] = 1
+#     if add_all_mt:
+#         df_unit_services.loc[units_mt_bool, 'use_msu'] = 1
+#     if add_all:
+#         df_unit_services['use_msu'] = 1
+#     if remove_all_ivt:
+#         df_unit_services.loc[units_ivt_bool, 'use_msu'] = 0
+#     if remove_all_mt:
+#         df_unit_services.loc[units_mt_bool, 'use_msu'] = 0
+#     if remove_all:
+#         df_unit_services['use_msu'] = 0
+
+#     # For display:
+#     df_unit_services['use_msu'] = df_unit_services['use_msu'].astype(bool)
+
+#     df_unit_services, df_unit_services_full = update_stroke_unit_services(
+#         df_unit_services, df_unit_services_full, cols_use)
+#     return df_unit_services, df_unit_services_full
 
 
 def import_stroke_unit_services(use_msu=True):

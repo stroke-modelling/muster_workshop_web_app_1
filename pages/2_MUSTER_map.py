@@ -147,7 +147,7 @@ with container_inputs:
         st.header('Stroke unit services')
         st.markdown('Update which services the stroke units provide:')
         df_unit_services, df_unit_services_full = (
-            inputs.select_stroke_unit_services_broad())
+            inputs.select_stroke_unit_services())
 
         # Button for completing the form
         # (so script only re-runs once it is pressed, allows changes
