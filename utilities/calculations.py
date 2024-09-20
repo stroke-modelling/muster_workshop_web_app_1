@@ -13,7 +13,6 @@ import stroke_maps.load_data
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
 from classes.model import Model
-from classes.scenario import Scenario
 
 # Custom functions:
 from utilities.utils import load_reference_mrs_dists
@@ -333,7 +332,7 @@ def make_outcome_inputs_msu(pathway_dict, df_travel_times):
         (df_travel_times['nearest_msu_time'].values *
          pathway_dict['scale_msu_travel_times']) +
         pathway_dict['process_msu_thrombolysis']  +
-        pathway_dict['process_msu_on_scene_post_thrombolysis']  +
+        pathway_dict['process_msu_on_scene_post_thrombolysis'] +
         (df_travel_times['nearest_mt_time'].values *
          pathway_dict['scale_msu_travel_times']) +
         pathway_dict['process_time_msu_arrival_to_puncture']

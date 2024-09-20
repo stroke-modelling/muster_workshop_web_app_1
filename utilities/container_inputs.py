@@ -79,7 +79,7 @@ def select_parameters_map():
             'default': 60
         },
         'process_msu_on_scene_no_thrombolysis': {
-            'name': 'MSU on scene post IVT time',
+            'name': 'MSU on scene (no thrombolysis given)',
             'default': 15
         },
         'scale_msu_travel_times': {
