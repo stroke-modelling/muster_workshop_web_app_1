@@ -9,6 +9,7 @@ done in functions stored in files named container_(something).py
 """
 # ----- Imports -----
 import streamlit as st
+import pandas as pd
 
 # Custom functions:
 import utilities.calculations as calc
@@ -54,6 +55,23 @@ def main_calculations(input_dict, df_unit_services):
         scenario_types=['msu', 'usual_care'],
         combine_mrs_dists=True
         )
+
+    # Place probabilities of death into df_lsoa data
+    # so that they are displayed in the results tables.
+    cols_probs_of_death = [
+        'usual_care_lvo_ivt_mrs_dists_noncum_6',
+        'usual_care_lvo_ivt_mt_mrs_dists_noncum_6',
+        'usual_care_lvo_mt_mrs_dists_noncum_6',
+        'usual_care_nlvo_ivt_mrs_dists_noncum_6',
+        'msu_lvo_ivt_mrs_dists_noncum_6',
+        'msu_lvo_ivt_mt_mrs_dists_noncum_6',
+        'msu_lvo_mt_mrs_dists_noncum_6',
+        'msu_nlvo_ivt_mrs_dists_noncum_6',
+    ]
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs[cols_probs_of_death],
+        left_index=True, right_index=True, how='left'
+    )
 
     df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
