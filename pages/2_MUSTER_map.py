@@ -383,20 +383,127 @@ with container_mrs_dists:
 # ####################################
 # Keep this below the results above because the map creation is slow.
 
-gdf_lhs, colour_dict = maps.create_colour_gdf(
-    df_lsoa,
-    scenario_dict,
-    scenario_type=scenario_types[0],
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    )
-gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
-    df_lsoa,
-    scenario_dict,
-    scenario_type=scenario_types[1],
-    cmap_diff_name=cmap_diff_name,
-    cbar_title=cmap_titles[1],
-    )
+# gdf_lhs, colour_dict = maps.create_colour_gdf(
+#     df_lsoa,
+#     scenario_dict,
+#     scenario_type=scenario_types[0],
+#     cmap_name=cmap_name,
+#     cbar_title=cmap_titles[0],
+#     )
+# gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
+#     df_lsoa,
+#     scenario_dict,
+#     scenario_type=scenario_types[1],
+#     cmap_diff_name=cmap_diff_name,
+#     cbar_title=cmap_titles[1],
+#     )
+
+# Pick out which columns of data to show:
+
+# Find the names of the columns that contain the data
+# that will be shown in the colour maps.
+if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+    # Use no-treatment data.
+    treatment_type = ''
+    column_colours = None
+    column_colours_diff = None
+else:
+    if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
+        # Use IVT-only data.
+        treatment_type = 'ivt'
+    else:
+        treatment_type = scenario_dict['treatment_type']
+    column_colours = '_'.join([
+        scenario_types[0],
+        scenario_dict['stroke_type'],
+        treatment_type,
+        scenario_dict['outcome_type']
+    ])
+    column_colours_diff = '_'.join([
+        scenario_types[1],
+        scenario_dict['stroke_type'],
+        treatment_type,
+        scenario_dict['outcome_type']
+    ])
+
+import os
+import geopandas
+from shapely.validation import make_valid  # for fixing dodgy polygons
+import numpy as np
+import rasterio
+from rasterio import features
+import rasterio.plot
+# Load LSOA geometry:
+# path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
+path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
+gdf = geopandas.read_file(path_to_lsoa)
+# Merge in column:
+gdf = pd.merge(gdf, df_lsoa,
+                left_on='LSOA11NM', right_on='lsoa', how='right')
+gdf.index = range(len(gdf))
+
+# Convert to British National Grid:
+gdf = gdf.to_crs('EPSG:27700')
+
+# Make geometry valid:
+gdf['geometry'] = [
+    make_valid(g) if g is not None else g
+    for g in gdf['geometry'].values
+    ]
+
+# Code source for conversion to raster: https://gis.stackexchange.com/a/475845
+# Prepare some variables
+xmin, ymin, xmax, ymax = gdf.total_bounds
+pixel_size = 1000
+width = int(np.ceil((pixel_size + xmax - xmin) // pixel_size))
+height = int(np.ceil((pixel_size + ymax - ymin) // pixel_size))
+transform = rasterio.transform.from_origin(xmin, ymax, pixel_size, pixel_size)
+
+# For maps:
+transform_dict = {
+    'xmin': xmin,
+    'ymin': ymin,
+    'xmax': xmax,
+    'ymax': ymax,
+    'pixel_size': pixel_size,
+    'width': width,
+    'height': height
+}
+# TEMPORARY - feed through from fixed_params
+transform_dict['zmin'] = 0.0
+transform_dict['zmax'] = 0.15
+transform_dict['zmax_diff'] = 0.05 
+
+im_xmax = xmin + (pixel_size * width)
+im_ymax = ymin + (pixel_size * height)
+
+# Burn geometries for left-hand map:
+shapes_lhs = ((geom, value) for geom, value in zip(gdf['geometry'], gdf[column_colours]))
+burned_lhs = features.rasterize(
+    shapes=shapes_lhs,
+    out_shape=(height, width),
+    fill=np.NaN,
+    transform=transform,
+    all_touched=True
+)
+burned_lhs = np.flip(burned_lhs, axis=0)
+
+
+# Burn geometries for right-hand map:
+shapes_rhs = ((geom, value) for geom, value in zip(gdf['geometry'], gdf[column_colours_diff]))
+burned_rhs = features.rasterize(
+    shapes=shapes_rhs,
+    out_shape=(height, width),
+    fill=np.NaN,
+    transform=transform,
+    all_touched=True
+)
+burned_rhs = np.flip(burned_rhs, axis=0)
+
+# Load colour info:
+cmap_lhs = inputs.make_colour_list(cmap_name)
+cmap_rhs = inputs.make_colour_list(cmap_diff_name)
+
 
 # ----- Region outlines -----
 if outline_name == 'None':
@@ -410,7 +517,7 @@ else:
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_lhs, gdf_rhs, gdf_catchment_lhs, gdf_catchment_rhs]
+gdfs_to_convert = [gdf_catchment_lhs, gdf_catchment_rhs]
 for gdf in gdfs_to_convert:
     if gdf is None:
         pass
@@ -425,9 +532,9 @@ traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
 
 # ----- Plot -----
 with container_map:
-    plot_maps.plotly_many_maps(
-        gdf_lhs,
-        gdf_rhs,
+    plot_maps.plotly_many_heatmaps(
+        burned_lhs,
+        burned_rhs,
         gdf_catchment_lhs,
         gdf_catchment_rhs,
         outline_names_col,
@@ -435,6 +542,7 @@ with container_map:
         traces_units,
         unit_subplot_dict,
         subplot_titles=subplot_titles,
-        colour_dict=colour_dict,
-        colour_diff_dict=colour_diff_dict
+        cmap_lhs=cmap_lhs,
+        cmap_rhs=cmap_rhs,
+        transform_dict=transform_dict,
         )
