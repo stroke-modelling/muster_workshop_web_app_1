@@ -398,33 +398,7 @@ with container_mrs_dists:
 #     cbar_title=cmap_titles[1],
 #     )
 
-# Pick out which columns of data to show:
 
-# Find the names of the columns that contain the data
-# that will be shown in the colour maps.
-if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
-    # Use no-treatment data.
-    treatment_type = ''
-    column_colours = None
-    column_colours_diff = None
-else:
-    if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
-        # Use IVT-only data.
-        treatment_type = 'ivt'
-    else:
-        treatment_type = scenario_dict['treatment_type']
-    column_colours = '_'.join([
-        scenario_types[0],
-        scenario_dict['stroke_type'],
-        treatment_type,
-        scenario_dict['outcome_type']
-    ])
-    column_colours_diff = '_'.join([
-        scenario_types[1],
-        scenario_dict['stroke_type'],
-        treatment_type,
-        scenario_dict['outcome_type']
-    ])
 
 import os
 import geopandas
@@ -450,6 +424,35 @@ gdf['geometry'] = [
     make_valid(g) if g is not None else g
     for g in gdf['geometry'].values
     ]
+
+
+# Find the names of the columns that contain the data
+# that will be shown in the colour maps.
+if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+    # Use no-treatment data.
+    treatment_type = ''
+    vals_for_colours = [0] * len(gdf)
+    vals_for_colours_diff = [0] * len(gdf)  # TEMPORARY - need to account for pop not considered for redirection (?? maybe)
+else:
+    if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
+        # Use IVT-only data.
+        treatment_type = 'ivt'
+    else:
+        treatment_type = scenario_dict['treatment_type']
+    column_colours = '_'.join([
+        scenario_types[0],
+        scenario_dict['stroke_type'],
+        treatment_type,
+        scenario_dict['outcome_type']
+    ])
+    column_colours_diff = '_'.join([
+        scenario_types[1],
+        scenario_dict['stroke_type'],
+        treatment_type,
+        scenario_dict['outcome_type']
+    ])
+    vals_for_colours = gdf[column_colours]
+    vals_for_colours_diff = gdf[column_colours_diff]
 
 # Code source for conversion to raster: https://gis.stackexchange.com/a/475845
 # Prepare some variables
@@ -478,7 +481,7 @@ im_xmax = xmin + (pixel_size * width)
 im_ymax = ymin + (pixel_size * height)
 
 # Burn geometries for left-hand map:
-shapes_lhs = ((geom, value) for geom, value in zip(gdf['geometry'], gdf[column_colours]))
+shapes_lhs = ((geom, value) for geom, value in zip(gdf['geometry'], vals_for_colours))
 burned_lhs = features.rasterize(
     shapes=shapes_lhs,
     out_shape=(height, width),
@@ -490,7 +493,7 @@ burned_lhs = np.flip(burned_lhs, axis=0)
 
 
 # Burn geometries for right-hand map:
-shapes_rhs = ((geom, value) for geom, value in zip(gdf['geometry'], gdf[column_colours_diff]))
+shapes_rhs = ((geom, value) for geom, value in zip(gdf['geometry'], vals_for_colours_diff))
 burned_rhs = features.rasterize(
     shapes=shapes_rhs,
     out_shape=(height, width),
