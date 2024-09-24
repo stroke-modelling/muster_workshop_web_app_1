@@ -16,7 +16,7 @@ import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
 # Containers:
-import utilities.container_inputs as inputs
+import utilities.inputs as inputs
 
 
 @st.cache_data

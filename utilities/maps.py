@@ -6,7 +6,9 @@ import geopandas
 from shapely.validation import make_valid  # for fixing dodgy polygons
 
 # Custom functions:
-import utilities.container_inputs as inputs
+import utilities.inputs as inputs
+import utilities.colour_setup
+
 
 def load_lsoa_gdf():
     # Load LSOA geometry:
@@ -67,7 +69,7 @@ def create_colour_gdf(
     # ----- Colour setup -----
     # Give the scenario dict a dummy 'scenario_type' entry
     # so that the right colour map and colour limits are picked.
-    colour_dict = inputs.set_up_colours(
+    colour_dict = utilities.colour_setup.set_up_colours(
         scenario_dict | {'scenario_type': scenario_type},
         cmap_name=cmap_name,
         cmap_diff_name=cmap_diff_name

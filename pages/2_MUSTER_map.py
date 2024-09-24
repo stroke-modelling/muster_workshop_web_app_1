@@ -18,7 +18,7 @@ import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
 from utilities.maps_raster import make_raster_from_vectors, set_up_raster_transform
 # Containers:
-import utilities.container_inputs as inputs
+import utilities.inputs as inputs
 import utilities.colour_setup
 
 
