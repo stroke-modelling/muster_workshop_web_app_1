@@ -12,7 +12,10 @@ from utilities.utils import load_reference_mrs_dists
 
 def setup_for_mrs_dist_bars(
         bar_option,
-        scenario_dict,
+        occ_type,
+        treat_type,
+        stroke_type_str,
+        treatment_type_str,
         df_nearest_units,
         df_mrs,
         input_dict,
@@ -43,16 +46,13 @@ def setup_for_mrs_dist_bars(
     df = calc.group_mrs_dists_by_region(
         df_mrs, df_nearest_units, col_region=col_region, col_vals=col_vals)
 
-    occ_type = scenario_dict['stroke_type']
-    treat_type = scenario_dict['treatment_type']
-
     col = f'{scenarios[0]}_{occ_type}_{treat_type}_mrs_dists'
     col2 = f'{scenarios[1]}_{occ_type}_{treat_type}_mrs_dists'
 
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
-        f'{scenario_dict["stroke_type_str"]}, ',
-        f'{scenario_dict["treatment_type_str"]}'
+        f'{stroke_type_str}, ',
+        f'{treatment_type_str}'
         ])
 
     # No-treatment data:

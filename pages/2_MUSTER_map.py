@@ -16,7 +16,8 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
-from utilities.maps_raster import make_raster_from_vectors, set_up_raster_transform
+from utilities.maps_raster import make_raster_from_vectors, \
+    set_up_raster_transform
 # Containers:
 import utilities.inputs as inputs
 import utilities.colour_setup
@@ -159,6 +160,8 @@ with container_intro:
 # #################################
 
 # These affect the data in all tables and all plots.
+
+# ----- Pathway timings and stroke units -----
 with container_inputs:
     with st.form('Model setup'):
         st.header('Pathway inputs')
@@ -175,22 +178,10 @@ with container_inputs:
         submitted = st.form_submit_button('Submit')
 
 
-# #######################################
-# ########## MAIN CALCULATIONS ##########
-# #######################################
-# While the main calculations are happening, display a blank map.
-# Later, when the calculations are finished, replace with the actual map.
-with container_map:
-    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
-
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
-    main_calculations(input_dict, df_unit_services))
-
-# ###########################################
-# ########## USER INPUTS FOR PLOTS ##########
-# ###########################################
 # These do not change the underlying data,
 # but do change what is shown in the plots.
+
+# ----- Stroke type, treatment, outcome -----
 with container_select_outcome:
     st.markdown('### Alternative outcome measures')
     outcome_type, outcome_type_str = inputs.select_outcome_type()
@@ -200,15 +191,7 @@ with container_input_stroke_type:
     stroke_type, stroke_type_str = (
         inputs.select_stroke_type(use_combo_stroke_types=False))
 
-# Gather these inputs:
-scenario_dict = {}
-scenario_dict['outcome_type_str'] = outcome_type_str
-scenario_dict['outcome_type'] = outcome_type
-scenario_dict['treatment_type_str'] = treatment_type_str
-scenario_dict['treatment_type'] = treatment_type
-scenario_dict['stroke_type_str'] = stroke_type_str
-scenario_dict['stroke_type'] = stroke_type
-
+# ----- Regions to draw -----
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
     outline_name = st.radio(
@@ -216,16 +199,7 @@ with container_input_region_type:
         ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
         )
 
-# Select mRS distribution region.
-# Select a region based on what's actually in the data,
-# not by guessing in advance which IVT units are included for example.
-region_options_dict = inputs.load_region_lists(df_unit_services_full)
-bar_options = ['National']
-for key, region_list in region_options_dict.items():
-    bar_options += [f'{key}: {v}' for v in region_list]
-# User input moved to fragment.
-
-# Colourmap selection
+# ----- Colourmap selection -----
 cmap_names = [
     'cosmic', 'viridis', 'inferno', 'neutral'
     ]
@@ -236,46 +210,27 @@ with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name, cmap_diff_name = inputs.select_colour_maps(
         cmap_names, cmap_diff_names)
-    # If we're showing mRS scores then flip the colour maps:
-    if outcome_type == 'mrs_shift':
-        cmap_name += '_r'
-        cmap_diff_name += '_r'
-        # Remove any double reverse reverse.
-        if cmap_name.endswith('_r_r'):
-            cmap_name = cmap_name[:-4]
-        if cmap_diff_name.endswith('_r_r'):
-            cmap_diff_name = cmap_diff_name[:-4]
+# If we're showing mRS scores then flip the colour maps:
+if outcome_type == 'mrs_shift':
+    cmap_name += '_r'
+    cmap_diff_name += '_r'
+    # Remove any double reverse reverse.
+    if cmap_name.endswith('_r_r'):
+        cmap_name = cmap_name[:-4]
+    if cmap_diff_name.endswith('_r_r'):
+        cmap_diff_name = cmap_diff_name[:-4]
 
 
-# #########################################
-# ########## VARIABLES FOR PLOTS ##########
-# #########################################
-# Which scenarios will be shown in the maps:
-# (in this order)
-scenario_types = ['usual_care', 'diff_msu_minus_usual_care']
-# Which mRS distributions will be shown on the bars:
-scenario_mrs = ['usual_care', 'msu']
+# #######################################
+# ########## MAIN CALCULATIONS ##########
+# #######################################
+# While the main calculations are happening, display a blank map.
+# Later, when the calculations are finished, replace with the actual map.
+with container_map:
+    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-# Display names:
-subplot_titles = [
-    'Usual care',
-    'Benefit of MSU over usual care'
-]
-cmap_titles = [
-    f'{scenario_dict["outcome_type_str"]}',
-    f'{scenario_dict["outcome_type_str"]}: Benefit of MSU over usual care'
-    ]
-
-# Which subplots to draw which units on:
-# Each entry is [row number, column number].
-# In plotly, the first row is 1 and first column is 1.
-# The order in which they are drawn (and so which markers appear
-# on top) is the order of this dictionary.
-unit_subplot_dict = {
-    'msu': [[1, 2]],        # second map only
-    'ivt': [[1, 1]],        # first map only
-    'mt': [[1, 1], [1, 2]]  # both maps
-}
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
+    main_calculations(input_dict, df_unit_services))
 
 
 # #########################################
@@ -312,7 +267,10 @@ with container_results_tables:
         st.dataframe(df_icb)
 
     with results_tabs[3]:
-        st.markdown('Results are the mean values of all LSOA in each ambulance service.')
+        st.markdown(''.join([
+            'Results are the mean values of all LSOA ',
+            'in each ambulance service.'
+            ]))
         st.dataframe(df_ambo)
 
     with results_tabs[4]:
@@ -323,40 +281,39 @@ with container_results_tables:
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
 
+# df_mrs column names are in the format:
+# `usual_care_lvo_ivt_mt_mrs_dists_X`, for X from 0 to 6, i.e.
+# '{scenario}_{occlusion}_{treatment}_{dist}_{X}' with these options:
+#
+# +---------------------------+------------+------------+------------------+
+# | Scenarios                 | Occlusions | Treatments | Dist types       |
+# +---------------------------+------------+------------+------------------+
+# | usual_care                | nlvo       | ivt        | mrs_dists        |
+# | msu                       | lvo        | mt         | mrs_dists_noncum |
+# | diff_msu_minus_usual_care |            | ivt_mt     |                  |
+# +---------------------------+------------+------------+------------------+
+#
+# There is not a separate column for "no treatment" to save space.
+
 # Limit the mRS data to only LSOA that benefit from an MSU,
 # i.e. remove anything where the added utility of MSU is not better
 # than the added utility of usual care.
-c1 = ''.join([
-    'diff_msu_minus_usual_care_',
-    f'{scenario_dict["stroke_type"]}_',
-    f'{scenario_dict["treatment_type"]}_utility_shift'
-])
-try:
+d_str = 'diff_msu_minus_usual_care'
+
+if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
+    # This data doesn't exist so show no LSOAs.
+    lsoa_to_keep = []
+elif ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
+    # Use IVT-only data:
+    c1 = f'{d_str}_{stroke_type}_ivt_{outcome_type}'
     lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
-    df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
-except KeyError:
-    # Looking up data that doesn't exist, e.g. nLVO with MT.
-    if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
-        # Use no-treatment data:
-        c1 = ''.join([
-            'diff_msu_minus_usual_care_',
-            f'{scenario_dict["stroke_type"]}_',
-            f'utility_shift'
-        ])
-        lsoa_to_keep = []  # df_lsoa.index[(df_lsoa[c1] > 0.0)]
-        df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
-    elif ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
-        # Use IVT-only data:
-        c1 = ''.join([
-            'diff_msu_minus_usual_care_',
-            f'{scenario_dict["stroke_type"]}_',
-            f'ivt_utility_shift'
-        ])
-        lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
-        df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
-    else:
-        # This shouldn't happen!
-        pass
+else:
+    # Look up the data normally.
+    c1 = f'{d_str}_{stroke_type}_{treatment_type}_{outcome_type}'
+    lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+
+# mRS distributions that meet the criteria:
+df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
 
 with container_mrs_dists_etc:
     st.markdown(''.join([
@@ -364,6 +321,18 @@ with container_mrs_dists_etc:
         'from an MSU (i.e. "added utility" for "MSU" scenario ',
         'is better than for "usual care" scenario).'
         ]))
+
+
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+
+# Which mRS distributions will be shown on the bars:
+scenario_mrs = ['usual_care', 'msu']
 
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
@@ -375,7 +344,10 @@ def display_mrs_dists():
     mrs_lists_dict, region_selected, col_pretty = (
         mrs.setup_for_mrs_dist_bars(
             bar_option,
-            scenario_dict,
+            stroke_type,
+            treatment_type,
+            stroke_type_str,
+            treatment_type_str,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
             df_mrs_to_plot,
             input_dict,
@@ -404,31 +376,38 @@ gdf = pd.merge(
     )
 
 # ----- Find data for colours -----
+
+# df_lsoa column names are in the format:
+# `usual_care_lvo_ivt_mt_utility_shift`, i.e.
+# '{scenario}_{occlusion}_{treatment}_{outcome}' with these options:
+#
+# +---------------------------+------------+------------+---------------+
+# | Scenarios                 | Occlusions | Treatments | Outcomes      |
+# +---------------------------+------------+------------+---------------+
+# | usual_care                | nlvo       | ivt        | utility_shift |
+# | msu                       | lvo        | mt         | mrs_shift     |
+# | diff_msu_minus_usual_care |            | ivt_mt     | mrs_0-2       |
+# +---------------------------+------------+------------+---------------+
+#
+# There is not a separate column for "no treatment" to save space.
+
 # Find the names of the columns that contain the data
 # that will be shown in the colour maps.
-if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
     # Use no-treatment data.
-    treatment_type = ''
+    # Set this to something that doesn't exist so it fails the try.
     column_colours = None
     column_colours_diff = None
 else:
-    if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
-        # Use IVT-only data.
-        treatment_type = 'ivt'
-    else:
-        treatment_type = scenario_dict['treatment_type']
+    # If this is nLVO with IVT and MT, look up the data for
+    # nLVO with IVT only.
+    using_nlvo_ivt_mt = ((stroke_type == 'nlvo') & ('mt' in treatment_type))
+    t = 'ivt' if using_nlvo_ivt_mt else treatment_type
+
     column_colours = '_'.join([
-        scenario_types[0],
-        scenario_dict['stroke_type'],
-        treatment_type,
-        scenario_dict['outcome_type']
-    ])
+        'usual_care', stroke_type, t, outcome_type])
     column_colours_diff = '_'.join([
-        scenario_types[1],
-        scenario_dict['stroke_type'],
-        treatment_type,
-        scenario_dict['outcome_type']
-    ])
+        'diff_msu_minus_usual_care', stroke_type, t, outcome_type])
 
 # Pick out the columns of data for the colours:
 try:
@@ -436,9 +415,11 @@ try:
     vals_for_colours_diff = gdf[column_colours_diff]
 except KeyError:
     # Those columns don't exist in the data.
-    # Instead... # TO DO -------------------------------------------------------------------
+    # This should only happen for nLVO treated with MT only.
     vals_for_colours = [0] * len(gdf)
-    vals_for_colours_diff = [0] * len(gdf)  # TEMPORARY - need to account for pop not considered for redirection (?? maybe)
+    vals_for_colours_diff = [0] * len(gdf)
+    # Note: this works for now because expect always no change
+    # for added utility and added mrs<=2 with no treatment.
 
 
 # ----- Convert vectors to raster -----
@@ -470,6 +451,10 @@ dict_colours, dict_colours_diff = (
 dict_colours['cmap'] = utilities.colour_setup.make_colour_list(cmap_name)
 dict_colours_diff['cmap'] = (
     utilities.colour_setup.make_colour_list(cmap_diff_name))
+# Colour bar titles:
+dict_colours['title'] = f'{outcome_type_str}'
+dict_colours_diff['title'] = (
+    f'{outcome_type_str}: Benefit of MSU over usual care')
 
 
 # ----- Region outlines -----
@@ -497,9 +482,24 @@ for gdf in gdfs_to_convert:
 # ----- Stroke units -----
 # Stroke unit scatter markers:
 traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
+# Which subplots to draw which units on:
+# Each entry is [row number, column number].
+# In plotly, the first row is 1 and first column is 1.
+# The order in which they are drawn (and so which markers appear
+# on top) is the order of this dictionary.
+unit_subplot_dict = {
+    'msu': [[1, 2]],        # second map only
+    'ivt': [[1, 1]],        # first map only
+    'mt': [[1, 1], [1, 2]]  # both maps
+}
 
 
 # ----- Plot -----
+# Display names:
+subplot_titles = [
+    'Usual care',
+    'Benefit of MSU over usual care'
+]
 with container_map:
     plot_maps.plotly_many_heatmaps(
         burned_lhs,
