@@ -221,6 +221,8 @@ with container_intro:
 # #################################
 
 # These affect the data in all tables and all plots.
+
+# ----- Pathway timings and stroke units -----
 with container_inputs:
     with st.form('Model setup'):
         st.markdown('### Pathway inputs')
@@ -242,23 +244,11 @@ with container_inputs:
 # Combine the two input dicts:
 input_dict = pathway_dict | population_dict
 
-# #######################################
-# ########## MAIN CALCULATIONS ##########
-# #######################################
-# While the main calculations are happening, display a blank map.
-# Later, when the calculations are finished, replace with the actual map.
-with container_map:
-    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
-    main_calculations(input_dict, df_unit_services))
-
-
-# ###########################################
-# ########## USER INPUTS FOR PLOTS ##########
-# ###########################################
 # These do not change the underlying data,
 # but do change what is shown in the plots.
+
+# ----- Stroke type, treatment, outcome -----
 with container_select_outcome:
     st.markdown('### Alternative outcome measures')
     outcome_type, outcome_type_str = inputs.select_outcome_type()
@@ -268,15 +258,7 @@ with container_input_stroke_type:
     stroke_type, stroke_type_str = (
         inputs.select_stroke_type(use_combo_stroke_types=True))
 
-# Gather these inputs:
-scenario_dict = {}
-scenario_dict['outcome_type_str'] = outcome_type_str
-scenario_dict['outcome_type'] = outcome_type
-scenario_dict['treatment_type_str'] = treatment_type_str
-scenario_dict['treatment_type'] = treatment_type
-scenario_dict['stroke_type_str'] = stroke_type_str
-scenario_dict['stroke_type'] = stroke_type
-
+# ----- Regions to draw -----
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
     outline_name = st.radio(
@@ -284,15 +266,7 @@ with container_input_region_type:
         ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
         )
 
-# Select mRS distribution region.
-# Select a region based on what's actually in the data,
-# not by guessing in advance which IVT units are included for example.
-region_options_dict = inputs.load_region_lists(df_unit_services_full)
-bar_options = ['National']
-for key, region_list in region_options_dict.items():
-    bar_options += [f'{key}: {v}' for v in region_list]
-# User input moved to fragment.
-
+# ----- Colourmap selection -----
 # Colourmap selection
 cmap_names = [
     'cosmic', 'viridis', 'inferno', 'neutral'
@@ -304,37 +278,27 @@ with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name, cmap_diff_name = inputs.select_colour_maps(
         cmap_names, cmap_diff_names)
+# If we're showing mRS scores then flip the colour maps:
+if outcome_type == 'mrs_shift':
+    cmap_name += '_r'
+    cmap_diff_name += '_r'
+    # Remove any double reverse reverse.
+    if cmap_name.endswith('_r_r'):
+        cmap_name = cmap_name[:-4]
+    if cmap_diff_name.endswith('_r_r'):
+        cmap_diff_name = cmap_diff_name[:-4]
 
 
-# #########################################
-# ########## VARIABLES FOR PLOTS ##########
-# #########################################
-# Which scenarios will be shown in the maps:
-# (in this order)
-scenario_types = ['usual_care', 'diff_redirection_considered_minus_usual_care']
-# Which mRS distributions will be shown on the bars:
-scenario_mrs = ['usual_care', 'redirection_considered']
+# #######################################
+# ########## MAIN CALCULATIONS ##########
+# #######################################
+# While the main calculations are happening, display a blank map.
+# Later, when the calculations are finished, replace with the actual map.
+with container_map:
+    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-# Display names:
-subplot_titles = [
-    'Usual care',
-    'Benefit of redirection over usual care'
-]
-cmap_titles = [
-    f'{scenario_dict["outcome_type_str"]}',
-    ''.join([f'{scenario_dict["outcome_type_str"]}: ',
-             'Benefit of redirection over usual care'])
-    ]
-
-# Which subplots to draw which units on:
-# Each entry is [row number, column number].
-# In plotly, the first row is 1 and first column is 1.
-# The order in which they are drawn (and so which markers appear
-# on top) is the order of this dictionary.
-unit_subplot_dict = {
-    'ivt': [[1, 1]],          # left map only
-    'mt': [[1, 1], [1, 2]]    # both maps
-}
+df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
+    main_calculations(input_dict, df_unit_services))
 
 
 # #########################################
@@ -371,7 +335,8 @@ with container_results_tables:
         st.dataframe(df_icb)
 
     with results_tabs[3]:
-        st.markdown('Results are the mean values of all LSOA in each ambulance service.')
+        st.markdown('Results are the mean values of all LSOA ' +
+                    'in each ambulance service.')
         st.dataframe(df_ambo)
 
     with results_tabs[4]:
@@ -382,21 +347,40 @@ with container_results_tables:
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
 
-# Limit the mRS data to only LSOA that are in the redirection zone,
-# i.e. remove anything that has the same nearest IVT unit and
-# nearest MT unit.
-mask_redir = (df_lsoa['nearest_ivt_unit'] != df_lsoa['nearest_mt_unit'])
-lsoa_to_keep = df_lsoa.index[mask_redir]
-df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
-
 with container_mrs_dists_etc:
-    st.markdown(''.join([
-        'mRS distributions shown for only LSOA whose nearest ',
-        'stroke unit does not offer MT.'
-        ]))
+    limit_mrs_dists = st.toggle(
+        'Limit mRS distributions to LSOA whose nearest stroke units do not offer MT.',
+        value=True
+    )
+if limit_mrs_dists:
+    # Limit the mRS data to only LSOA that are in the redirection zone,
+    # i.e. remove anything that has the same nearest IVT unit and
+    # nearest MT unit.
+    mask_redir = (df_lsoa['nearest_ivt_unit'] != df_lsoa['nearest_mt_unit'])
+    lsoa_to_keep = df_lsoa.index[mask_redir]
+
+    # Limit to these LSOA:
+    df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+else:
+    df_mrs_to_plot = df_mrs.copy()
+
+
+# Which mRS distributions will be shown on the bars:
+scenario_mrs = ['usual_care', 'redirection_considered']
+
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+# User input moved to fragment.
 
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
+
+
 @st.fragment
 def display_mrs_dists():
     # User input:
@@ -405,7 +389,10 @@ def display_mrs_dists():
     mrs_lists_dict, region_selected, col_pretty = (
         mrs.setup_for_mrs_dist_bars(
             bar_option,
-            scenario_dict,
+            stroke_type,
+            treatment_type,
+            stroke_type_str,
+            treatment_type_str,
             df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
             df_mrs_to_plot,
             input_dict,
@@ -425,16 +412,29 @@ with container_mrs_dists:
 # ####################################
 # Keep this below the results above because the map creation is slow.
 
+# Which scenarios will be shown in the maps:
+# (in this order)
+scenario_types = ['usual_care', 'diff_redirection_considered_minus_usual_care']
+# Display names:
+cmap_titles = [
+    f'{outcome_type_str}',
+    f'{outcome_type_str}: Benefit of redirection over usual care'
+    ]
+
 gdf_lhs, colour_dict = maps.create_colour_gdf(
     df_lsoa,
-    scenario_dict,
+    stroke_type,
+    treatment_type,
+    outcome_type,
     scenario_type=scenario_types[0],
     cmap_name=cmap_name,
     cbar_title=cmap_titles[0],
     )
 gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
     df_lsoa,
-    scenario_dict,
+    stroke_type,
+    treatment_type,
+    outcome_type,
     scenario_type=scenario_types[1],
     cmap_diff_name=cmap_diff_name,
     cbar_title=cmap_titles[1],
@@ -465,8 +465,21 @@ for gdf in gdfs_to_convert:
 # ----- Stroke units -----
 # Stroke unit scatter markers:
 traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
+# Which subplots to draw which units on:
+# Each entry is [row number, column number].
+# In plotly, the first row is 1 and first column is 1.
+# The order in which they are drawn (and so which markers appear
+# on top) is the order of this dictionary.
+unit_subplot_dict = {
+    'ivt': [[1, 1]],          # left map only
+    'mt': [[1, 1], [1, 2]]    # both maps
+}
 
 # ----- Plot -----
+subplot_titles = [
+    'Usual care',
+    'Benefit of redirection over usual care'
+]
 with container_map:
     plot_maps.plotly_many_maps(
         gdf_lhs,

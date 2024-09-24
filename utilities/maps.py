@@ -30,8 +30,10 @@ def load_lsoa_gdf():
 @st.cache_data
 def create_colour_gdf(
         df: pd.DataFrame,
-        scenario_dict: dict,
-        scenario_type: str,
+        stroke_type,
+        treatment_type,
+        outcome_type,
+        scenario_type,
         cmap_name: str = '',
         cmap_diff_name: str = '',
         cbar_title: str = '',
@@ -70,7 +72,8 @@ def create_colour_gdf(
     # Give the scenario dict a dummy 'scenario_type' entry
     # so that the right colour map and colour limits are picked.
     colour_dict = utilities.colour_setup.set_up_colours(
-        scenario_dict | {'scenario_type': scenario_type},
+        outcome_type,
+        scenario_type,
         cmap_name=cmap_name,
         cmap_diff_name=cmap_diff_name
         )
@@ -78,21 +81,21 @@ def create_colour_gdf(
     colour_dict['title'] = cbar_title
     # Find the names of the columns that contain the data
     # that will be shown in the colour maps.
-    if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
+    if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
         # Use no-treatment data.
-        treatment_type = ''
+        t = ''
         column_colours = None
     else:
-        if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
+        if ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
             # Use IVT-only data.
-            treatment_type = 'ivt'
+            t = 'ivt'
         else:
-            treatment_type = scenario_dict['treatment_type']
+            t = treatment_type
         column_colours = '_'.join([
                 scenario_type,
-                scenario_dict['stroke_type'],
-                treatment_type,
-                scenario_dict['outcome_type']
+                stroke_type,
+                t,
+                outcome_type
             ])
     colour_dict['column'] = column_colours
 

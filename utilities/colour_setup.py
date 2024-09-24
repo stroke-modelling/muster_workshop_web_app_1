@@ -92,7 +92,8 @@ def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
 # #####################################
 
 def set_up_colours(
-        scenario_dict,
+        outcome_type,
+        scenario_type,
         v_name='v',
         cmap_name='inferno',
         cmap_diff_name='RdBu'
@@ -178,15 +179,15 @@ def set_up_colours(
             },
         }
     }
-    if scenario_dict['scenario_type'].startswith('diff'):
+    if scenario_type.startswith('diff'):
         scen = 'diff'
     else:
         scen = 'scenario'
 
-    v_min = cbar_dict[scenario_dict['outcome_type']][scen]['vmin']
-    v_max = cbar_dict[scenario_dict['outcome_type']][scen]['vmax']
-    step_size = cbar_dict[scenario_dict['outcome_type']][scen]['step_size']
-    cmap_name = cbar_dict[scenario_dict['outcome_type']][scen]['cmap_name']
+    v_min = cbar_dict[outcome_type][scen]['vmin']
+    v_max = cbar_dict[outcome_type][scen]['vmax']
+    step_size = cbar_dict[outcome_type][scen]['step_size']
+    cmap_name = cbar_dict[outcome_type][scen]['cmap_name']
 
     if cmap_name.endswith('_r_r'):
         # Remove the double reverse reverse.
