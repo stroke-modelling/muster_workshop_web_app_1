@@ -16,8 +16,10 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
+from utilities.maps_raster import make_raster_from_vectors, set_up_raster_transform
 # Containers:
 import utilities.container_inputs as inputs
+import utilities.colour_setup
 
 
 @st.cache_data
@@ -234,6 +236,15 @@ with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name, cmap_diff_name = inputs.select_colour_maps(
         cmap_names, cmap_diff_names)
+    # If we're showing mRS scores then flip the colour maps:
+    if outcome_type == 'mrs_shift':
+        cmap_name += '_r'
+        cmap_diff_name += '_r'
+        # Remove any double reverse reverse.
+        if cmap_name.endswith('_r_r'):
+            cmap_name = cmap_name[:-4]
+        if cmap_diff_name.endswith('_r_r'):
+            cmap_diff_name = cmap_diff_name[:-4]
 
 
 # #########################################
@@ -374,6 +385,7 @@ def display_mrs_dists():
     mrs.plot_mrs_bars(
         mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
 
+
 with container_mrs_dists:
     display_mrs_dists()
 
@@ -383,56 +395,22 @@ with container_mrs_dists:
 # ####################################
 # Keep this below the results above because the map creation is slow.
 
-# gdf_lhs, colour_dict = maps.create_colour_gdf(
-#     df_lsoa,
-#     scenario_dict,
-#     scenario_type=scenario_types[0],
-#     cmap_name=cmap_name,
-#     cbar_title=cmap_titles[0],
-#     )
-# gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
-#     df_lsoa,
-#     scenario_dict,
-#     scenario_type=scenario_types[1],
-#     cmap_diff_name=cmap_diff_name,
-#     cbar_title=cmap_titles[1],
-#     )
+# ----- Set up geodataframe -----
+gdf = maps.load_lsoa_gdf()
+# Merge in outcomes data:
+gdf = pd.merge(
+    gdf, df_lsoa,
+    left_on='LSOA11NM', right_on='lsoa', how='right'
+    )
 
-
-
-import os
-import geopandas
-from shapely.validation import make_valid  # for fixing dodgy polygons
-import numpy as np
-import rasterio
-from rasterio import features
-import rasterio.plot
-# Load LSOA geometry:
-# path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
-path_to_lsoa = os.path.join('data', 'outline_lsoa11cds.geojson')
-gdf = geopandas.read_file(path_to_lsoa)
-# Merge in column:
-gdf = pd.merge(gdf, df_lsoa,
-                left_on='LSOA11NM', right_on='lsoa', how='right')
-gdf.index = range(len(gdf))
-
-# Convert to British National Grid:
-gdf = gdf.to_crs('EPSG:27700')
-
-# Make geometry valid:
-gdf['geometry'] = [
-    make_valid(g) if g is not None else g
-    for g in gdf['geometry'].values
-    ]
-
-
+# ----- Find data for colours -----
 # Find the names of the columns that contain the data
 # that will be shown in the colour maps.
 if ((scenario_dict['stroke_type'] == 'nlvo') & (scenario_dict['treatment_type'] == 'mt')):
     # Use no-treatment data.
     treatment_type = ''
-    vals_for_colours = [0] * len(gdf)
-    vals_for_colours_diff = [0] * len(gdf)  # TEMPORARY - need to account for pop not considered for redirection (?? maybe)
+    column_colours = None
+    column_colours_diff = None
 else:
     if ((scenario_dict['stroke_type'] == 'nlvo') & ('mt' in scenario_dict['treatment_type'])):
         # Use IVT-only data.
@@ -451,61 +429,47 @@ else:
         treatment_type,
         scenario_dict['outcome_type']
     ])
+
+# Pick out the columns of data for the colours:
+try:
     vals_for_colours = gdf[column_colours]
     vals_for_colours_diff = gdf[column_colours_diff]
+except KeyError:
+    # Those columns don't exist in the data.
+    # Instead... # TO DO -------------------------------------------------------------------
+    vals_for_colours = [0] * len(gdf)
+    vals_for_colours_diff = [0] * len(gdf)  # TEMPORARY - need to account for pop not considered for redirection (?? maybe)
 
-# Code source for conversion to raster: https://gis.stackexchange.com/a/475845
-# Prepare some variables
-xmin, ymin, xmax, ymax = gdf.total_bounds
-pixel_size = 1000
-width = int(np.ceil((pixel_size + xmax - xmin) // pixel_size))
-height = int(np.ceil((pixel_size + ymax - ymin) // pixel_size))
-transform = rasterio.transform.from_origin(xmin, ymax, pixel_size, pixel_size)
 
-# For maps:
-transform_dict = {
-    'xmin': xmin,
-    'ymin': ymin,
-    'xmax': xmax,
-    'ymax': ymax,
-    'pixel_size': pixel_size,
-    'width': width,
-    'height': height
-}
-# TEMPORARY - feed through from fixed_params
-transform_dict['zmin'] = 0.0
-transform_dict['zmax'] = 0.15
-transform_dict['zmax_diff'] = 0.05 
-
-im_xmax = xmin + (pixel_size * width)
-im_ymax = ymin + (pixel_size * height)
-
-# Burn geometries for left-hand map:
-shapes_lhs = ((geom, value) for geom, value in zip(gdf['geometry'], vals_for_colours))
-burned_lhs = features.rasterize(
-    shapes=shapes_lhs,
-    out_shape=(height, width),
-    fill=np.NaN,
-    transform=transform,
-    all_touched=True
+# ----- Convert vectors to raster -----
+# Set up parameters for conversion to raster:
+transform_dict = set_up_raster_transform(gdf, pixel_size=1000)
+# Burn geometries for left-hand map...
+burned_lhs = make_raster_from_vectors(
+    gdf['geometry'],
+    vals_for_colours,
+    transform_dict['height'],
+    transform_dict['width'],
+    transform_dict['transform']
 )
-burned_lhs = np.flip(burned_lhs, axis=0)
-
-
-# Burn geometries for right-hand map:
-shapes_rhs = ((geom, value) for geom, value in zip(gdf['geometry'], vals_for_colours_diff))
-burned_rhs = features.rasterize(
-    shapes=shapes_rhs,
-    out_shape=(height, width),
-    fill=np.NaN,
-    transform=transform,
-    all_touched=True
+# ... and right-hand map:
+burned_rhs = make_raster_from_vectors(
+    gdf['geometry'],
+    vals_for_colours_diff,
+    transform_dict['height'],
+    transform_dict['width'],
+    transform_dict['transform']
 )
-burned_rhs = np.flip(burned_rhs, axis=0)
 
-# Load colour info:
-cmap_lhs = inputs.make_colour_list(cmap_name)
-cmap_rhs = inputs.make_colour_list(cmap_diff_name)
+
+# ----- Set up colours -----
+# Load colour limits info:
+dict_colours, dict_colours_diff = (
+    utilities.colour_setup.load_colour_limits(outcome_type))
+# Load colour map colours:
+dict_colours['cmap'] = utilities.colour_setup.make_colour_list(cmap_name)
+dict_colours_diff['cmap'] = (
+    utilities.colour_setup.make_colour_list(cmap_diff_name))
 
 
 # ----- Region outlines -----
@@ -529,9 +493,11 @@ for gdf in gdfs_to_convert:
         gdf['x'] = x_list
         gdf['y'] = y_list
 
+
 # ----- Stroke units -----
 # Stroke unit scatter markers:
 traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
+
 
 # ----- Plot -----
 with container_map:
@@ -545,7 +511,7 @@ with container_map:
         traces_units,
         unit_subplot_dict,
         subplot_titles=subplot_titles,
-        cmap_lhs=cmap_lhs,
-        cmap_rhs=cmap_rhs,
+        dict_colours=dict_colours,
+        dict_colours_diff=dict_colours_diff,
         transform_dict=transform_dict,
         )

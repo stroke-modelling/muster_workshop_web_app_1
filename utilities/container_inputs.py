@@ -10,6 +10,25 @@ import cmasher as cmr  # for additional colour maps
 from importlib_resources import files
 
 import stroke_maps.load_data
+from utilities.colour_setup import make_colourbar_display_string
+
+
+def write_text_from_file(filename, head_lines_to_skip=0):
+    """
+    Write text from 'filename' into streamlit.
+    Skip a few lines at the top of the file using head_lines_to_skip.
+    """
+    # Open the file and read in the contents,
+    # skipping a few lines at the top if required.
+    with open(filename, 'r', encoding="utf-8") as f:
+        text_to_print = f.readlines()[head_lines_to_skip:]
+
+    # Turn the list of all of the lines into one long string
+    # by joining them up with an empty '' string in between each pair.
+    text_to_print = ''.join(text_to_print)
+
+    # Write the text in streamlit.
+    st.markdown(f"""{text_to_print}""")
 
 
 def select_parameters_map():
@@ -489,51 +508,6 @@ def select_parameters_population_optimist():
     return input_dict
 
 
-@st.cache_data
-def load_scenario_list():
-    df = pd.read_csv('./data/scenario_list_england.csv')
-    return df
-
-
-@st.cache_data
-def load_scenario_results():
-    df = pd.read_csv('./data/scenario_results_england.csv')
-    return df
-
-
-def find_scenario_id(input_dict):
-    # Import the file of all scenario parameter combinations:
-    df = load_scenario_list()
-
-    # Find the row of this dataframe that matches the input dict:
-    mask_list = [df[key] == value for key, value in input_dict.items()]
-    mask = np.all(mask_list, axis=0)
-
-    # Pick out this row only:
-    id = df.loc[mask, 'Scenario'].values[0]
-    return id
-
-
-def find_scenario_results(id):
-    # Import the file of all scenario results:
-    df = load_scenario_results()
-
-    # Find the row of this dataframe with that scenario ID:
-    row = df.loc[df['Scenario'] == id]
-
-    # Rename any 'utilility' to 'utility:
-    new_cols = []
-    for c in row.columns:
-        c = c.replace('utilility', 'utility')
-        new_cols.append(c)
-    row.columns = new_cols
-
-    # Convert to dictionary:
-    row = row.to_dict(orient='records')[0]
-
-    return row
-
-
 def select_stroke_unit_services(use_msu=True):
     df_unit_services, df_unit_services_full, cols_use = (
         import_stroke_unit_services(use_msu))
@@ -732,350 +706,45 @@ def select_stroke_type(use_combo_stroke_types=False):
     return stroke_type, stroke_type_str
 
 
-def set_up_colours(
-        scenario_dict,
-        v_name='v',
-        cmap_name='inferno',
-        cmap_diff_name='RdBu'
-        ):
+def select_colour_maps(cmap_names, cmap_diff_names):
     """
-    max ever displayed:
-
-    utility:
-    max times: > 0.300,
-
-    utility shift:
-    min times: 0.100 < 0.150, 0.150 < 0.200, 0.200 < 0.250,
-    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-
-    mrs shift:
-    min times: <0.000,
-    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-
-    mrs 0-2:
-    min times: 0.250 - 0.0300, > 0.300,
-    max times: 0.250 - 0.300, > 0.300
-
-
-    colour scales sometimes bug out, return to default colourbar
-    when the precision here isn't enough decimal places.
+    User inputs.
     """
-    # Define shared colour scales:
-    cbar_dict = {
-        'utility': {
-            'scenario': {
-                'vmin': 0.3,
-                'vmax': 0.6,
-                'step_size': 0.05,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.05,
-                'vmax': 0.05,
-                'step_size': 0.01,
-                'cmap_name': cmap_diff_name
-            },
-        },
-        'utility_shift': {
-            'scenario': {
-                'vmin': 0.0,
-                'vmax': 0.15,
-                'step_size': 0.025,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.040,
-                'vmax': 0.040,
-                'step_size': 0.010,
-                'cmap_name': cmap_diff_name
-            },
-        },
-        'mrs_shift': {
-            'scenario': {
-                'vmin': -0.5,
-                'vmax': 0.0,
-                'step_size': 0.1,
-                'cmap_name': f'{cmap_name}_r'  # lower numbers are better
-            },
-            'diff': {
-                'vmin': -0.2,
-                'vmax': 0.2,
-                'step_size': 0.05,
-                'cmap_name': f'{cmap_diff_name}_r'  # lower numbers are better
-            },
-        },
-        'mrs_0-2': {
-            'scenario': {
-                'vmin': 0.30,
-                'vmax': 0.70,
-                'step_size': 0.05,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.15,
-                'vmax': 0.15,
-                'step_size': 0.05,
-                'cmap_name': cmap_diff_name
-            },
-        }
-    }
-    if scenario_dict['scenario_type'].startswith('diff'):
-        scen = 'diff'
-    else:
-        scen = 'scenario'
+    cmap_displays = [
+        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+        for cmap_name in cmap_names
+        ]
+    cmap_diff_displays = [
+        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+        for cmap_name in cmap_diff_names
+        ]
 
-    v_min = cbar_dict[scenario_dict['outcome_type']][scen]['vmin']
-    v_max = cbar_dict[scenario_dict['outcome_type']][scen]['vmax']
-    step_size = cbar_dict[scenario_dict['outcome_type']][scen]['step_size']
-    cmap_name = cbar_dict[scenario_dict['outcome_type']][scen]['cmap_name']
-
-    if cmap_name.endswith('_r_r'):
-        # Remove the double reverse reverse.
-        cmap_name = cmap_name[:-2]
-
-    # Make a new column for the colours.
-    v_bands = np.arange(v_min, v_max + step_size, step_size)
-    if 'diff' in scen:
-        # Remove existing zero:
-        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
-        if len(ind_z) > 0:
-            ind_z = ind_z[0]
-            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
-        # Add a zero-ish band.
-        ind = np.where(v_bands >= -0.0)[0][0]
-        zero_size = step_size * 0.01
-        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
-        v_bands_z = np.append(v_bands_z, v_bands[ind:])
-        v_bands = v_bands_z
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
-
-        # Update zeroish name:
-        v_bands_str[ind+1] = '0.0'
-    else:
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
-
-    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
-
-    # Link bands to colours via v_bands_str:
-    colours = []
-    for v in v_bands_str:
-        colours.append(colour_map[v])
-
-    # Add an extra bound at either end (for the "to infinity" bit):
-    v_bands_for_cs = np.append(v_min - step_size, v_bands)
-    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
-    # Normalise the data bounds:
-    bounds = (
-        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
-        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
-    )
-    # Add extra bounds so that there's a tiny space at either end
-    # for the under/over colours.
-    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
-    bounds_for_cs = bounds
-
-    # Need separate data values and colourbar values.
-    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
-
-    # Create a colour scale from these colours.
-    # To get the discrete colourmap (i.e. no continuous gradient of
-    # colour made between the defined colours),
-    # double up the bounds so that colour A explicitly ends where
-    # colour B starts.
-    colourscale = []
-    for i in range(len(colours)):
-        colourscale += [
-            [bounds_for_cs[i], colours[i]],
-            [bounds_for_cs[i+1], colours[i]]
-            ]
-
-    colour_dict = {
-        'scen': scen,
-        'v_min': v_min,
-        'v_max': v_max,
-        'step_size': step_size,
-        'cmap_name': cmap_name,
-        'v_bands': v_bands,
-        'v_bands_str': v_bands_str,
-        'colour_map': colour_map,
-        'colour_scale': colourscale,
-        'bounds_for_colour_scale': bounds_for_cs,
-        # 'zero_label': '0.0',
-        # 'zero_colour': 
-    }
-    return colour_dict
-
-
-def set_up_colours_demog(
-        v_min,
-        v_max,
-        step_size,
-        use_diverging=False,
-        cmap_name='inferno',
-        v_name='v',
-        use_discrete=True
-        ):
-
-    if cmap_name.endswith('_r_r'):
-        # Remove the double reverse reverse.
-        cmap_name = cmap_name[:-4]
-
-    # Make a new column for the colours.
-    v_bands = np.arange(v_min, v_max + step_size, step_size)
-    if use_diverging:
-        # Remove existing zero:
-        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
-        if len(ind_z) > 0:
-            ind_z = ind_z[0]
-            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
-        # Add a zero-ish band.
-        ind = np.where(v_bands >= -0.0)[0][0]
-        zero_size = step_size * 0.01
-        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
-        v_bands_z = np.append(v_bands_z, v_bands[ind:])
-        v_bands = v_bands_z
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
-
-        # Update zeroish name:
-        v_bands_str[ind+1] = '0.0'
-    else:
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
-
-    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
-
-    # Link bands to colours via v_bands_str:
-    colours = []
-    for v in v_bands_str:
-        colours.append(colour_map[v])
-
-    # Add an extra bound at either end (for the "to infinity" bit):
-    v_bands_for_cs = np.append(v_min - step_size, v_bands)
-    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
-    # Normalise the data bounds:
-    bounds = (
-        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
-        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
-    )
-    # Add extra bounds so that there's a tiny space at either end
-    # for the under/over colours.
-    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
-    bounds_for_cs = bounds
-
-    # Need separate data values and colourbar values.
-    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
-
-    # Create a colour scale from these colours.
-    # To get the discrete colourmap (i.e. no continuous gradient of
-    # colour made between the defined colours),
-    # double up the bounds so that colour A explicitly ends where
-    # colour B starts.
-    if use_discrete:
-        colourscale = []
-        for i in range(len(colours)):
-            colourscale += [
-                [bounds_for_cs[i], colours[i]],
-                [bounds_for_cs[i+1], colours[i]]
-                ]
-    else:
-        # Make a "continuous" colour map in the same way as before
-        # because plotly cannot access all cmaps and sometimes they
-        # differ from matplotlib (e.g. inferno gets a pink end).
-        colour_map_cont = make_colour_map_dict(
-            np.arange(100).astype(str), cmap_name)
-        colours_cont = list(colour_map_cont.values())
-        bounds_for_cs_cont = np.linspace(0.0, 1.0, len(colours_cont)+1)
-
-        colourscale = []
-        for i in range(len(colours_cont)):
-            colourscale += [
-                [bounds_for_cs_cont[i], colours_cont[i]],
-                [bounds_for_cs_cont[i+1], colours_cont[i]]
-                ]
-        # Remove the "to infinity" bits from bounds:
-        # v_bands = v_bands[1:-1]
-        # v_bands_str = v_bands_str[1:-1]
-        bounds_for_cs = np.linspace(0.0, 1.0, len(v_bands))#bounds_for_cs[1:-1]
-
-    colour_dict = {
-        'diverging': use_diverging,
-        'v_min': v_min,
-        'v_max': v_max,
-        'step_size': step_size,
-        'cmap_name': cmap_name,
-        'v_bands': v_bands,
-        'v_bands_str': v_bands_str,
-        'colour_map': colour_map,
-        'colour_scale': colourscale,
-        'bounds_for_colour_scale': bounds_for_cs,
-        # 'zero_label': '0.0',
-        # 'zero_colour': 
-    }
-    return colour_dict
-
-
-def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
-    # Get colour values:
     try:
-        # Matplotlib colourmap:
-        cmap = plt.get_cmap(cmap_name)
-    except ValueError:
-        # CMasher colourmap:
-        cmap = plt.get_cmap(f'cmr.{cmap_name}')
+        cmap_name = st.session_state['cmap_name']
+        cmap_diff_name = st.session_state['cmap_diff_name']
+    except KeyError:
+        cmap_name = cmap_names[0]
+        cmap_diff_name = cmap_diff_names[0]
+    cmap_ind = cmap_names.index(cmap_name)
+    cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
 
-    cbands = np.linspace(0.0, 1.0, len(v_bands_str))
-    colour_list = cmap(cbands)
-    # # Convert tuples to strings:
-    colour_list = np.array([
-        f'rgba{tuple(c)}' for c in colour_list])
-    # Sample the colour list:
-    colour_map = [(c, colour_list[i]) for i, c in enumerate(v_bands_str)]
+    cmap_name = st.radio(
+        'Colour display for "usual care" map',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_name'
+    )
 
-    # # Set over and under colours:
-    # colour_list[0] = 'black'
-    # colour_list[-1] = 'LimeGreen'
+    cmap_diff_name = st.radio(
+        'Colour display for difference map',
+        cmap_diff_names,
+        captions=cmap_diff_displays,
+        index=cmap_diff_ind,
+        key='cmap_diff_name'
+    )
 
-    # Return as dict to track which colours are for which bands:
-    colour_map = dict(zip(v_bands_str, colour_list))
-    return colour_map
-
-
-def make_v_bands_str(v_bands, v_name='v'):
-    """Turn contour ranges into formatted strings."""
-    v_min = v_bands[0]
-    v_max = v_bands[-1]
-
-    v_bands_str = [f'{v_name} < {v_min:.3f}']
-    for i, band in enumerate(v_bands[:-1]):
-        b = f'{band:.3f} <= {v_name} < {v_bands[i+1]:.3f}'
-        v_bands_str.append(b)
-    v_bands_str.append(f'{v_max:.3f} <= {v_name}')
-
-    v_bands_str = np.array(v_bands_str)
-    return v_bands_str
-
-
-def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
-    try:
-        # Matplotlib colourmap:
-        cmap = plt.get_cmap(cmap_name)
-    except ValueError:
-        # CMasher colourmap:
-        cmap = plt.get_cmap(f'cmr.{cmap_name}')
-
-    # Get colours:
-    colours = cmap(np.linspace(0.0, 1.0, n_lines))
-    # Convert tuples to strings:
-    colours = (colours * 255).astype(int)
-    # Drop the alpha or the colour won't be right!
-    colours = ['#%02x%02x%02x' % tuple(c[:-1]) for c in colours]
-
-    line_str = '$'
-    for c in colours:
-        # s = f"<font color='{c}'>{char_line}</font>"
-        s = '\\textcolor{' + f'{c}' + '}{' + f'{char_line}' + '}'
-        line_str += s
-    line_str += '$'
-    return line_str
+    return cmap_name, cmap_diff_name
 
 
 def load_region_lists(df_unit_services_full):
@@ -1117,68 +786,3 @@ def load_region_lists(df_unit_services_full):
     }
 
     return region_options_dict
-
-
-def select_colour_maps(cmap_names, cmap_diff_names):
-    cmap_displays = [
-        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
-        for cmap_name in cmap_names
-        ]
-    cmap_diff_displays = [
-        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
-        for cmap_name in cmap_diff_names
-        ]
-
-    try:
-        cmap_name = st.session_state['cmap_name']
-        cmap_diff_name = st.session_state['cmap_diff_name']
-    except KeyError:
-        cmap_name = cmap_names[0]
-        cmap_diff_name = cmap_diff_names[0]
-    cmap_ind = cmap_names.index(cmap_name)
-    cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
-
-    cmap_name = st.radio(
-        'Colour display for "usual care" map',
-        cmap_names,
-        captions=cmap_displays,
-        index=cmap_ind,
-        key='cmap_name'
-    )
-
-    cmap_diff_name = st.radio(
-        'Colour display for difference map',
-        cmap_diff_names,
-        captions=cmap_diff_displays,
-        index=cmap_diff_ind,
-        key='cmap_diff_name'
-    )
-    return cmap_name, cmap_diff_name
-
-
-def make_colour_list(cmap_name='viridis', n_colours=101):
-    # Get colour values:
-    try:
-        # Matplotlib colourmap:
-        cmap = plt.get_cmap(cmap_name)
-    except ValueError:
-        # CMasher colourmap:
-        cmap = plt.get_cmap(f'cmr.{cmap_name}')
-
-    cbands = np.linspace(0.0, 1.0, n_colours)
-    colour_list = cmap(cbands)
-    # # Convert tuples to strings:
-    # Use format_float_positional to stop tiny floats being printed
-    # with scientific notation.
-    colour_list = np.array([
-        'rgba(' +
-        ','.join([f'{np.format_float_positional(c1, precision=100)}' for c1 in c]) +
-        ')' for c in colour_list
-        ])
-        # f'rgba{tuple(c)}' for c in colour_list])
-
-    # while ((colour_list[0] == 'rgba(0.,0.,0.,1.)') & (colour_list[-1] == 'rgba(1.,1.,1.,1.)')) | ((colour_list[-1] == 'rgba(0.,0.,0.,1.)') & (colour_list[0] == 'rgba(1.,1.,1.,1.)')):
-    #     colour_list = colour_list[1:]
-    # Plotly doesn't seem to handle white well so remove it:
-    colour_list = [c for c in colour_list if c != 'rgba(1.,1.,1.,1.)']
-    return colour_list

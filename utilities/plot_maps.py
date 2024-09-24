@@ -580,8 +580,8 @@ def plotly_many_heatmaps(
         unit_subplot_dict: dict = {},
         subplot_titles: list = [],
         legend_title: str = '',
-        cmap_lhs: np.array = {},
-        cmap_rhs: np.array = {},
+        dict_colours: np.array = {},
+        dict_colours_diff: np.array = {},
         transform_dict: dict = {},
         ):
     """
@@ -655,9 +655,9 @@ def plotly_many_heatmaps(
         dx=transform_dict['pixel_size'],
         y0=transform_dict['ymin'],
         dy=transform_dict['pixel_size'],
-        zmin=transform_dict['zmin'],
-        zmax=transform_dict['zmax'],
-        colorscale=cmap_lhs,
+        zmin=dict_colours['vmin'],
+        zmax=dict_colours['vmax'],
+        colorscale=dict_colours['cmap'],
         colorbar=dict(
             thickness=20,
             # tickmode='array',
@@ -676,9 +676,9 @@ def plotly_many_heatmaps(
         dx=transform_dict['pixel_size'],
         y0=transform_dict['ymin'],
         dy=transform_dict['pixel_size'],
-        zmin=-transform_dict['zmax_diff'],
-        zmax=transform_dict['zmax_diff'],
-        colorscale=cmap_rhs,
+        zmin=dict_colours_diff['vmin'],
+        zmax=dict_colours_diff['vmax'],
+        colorscale=dict_colours_diff['cmap'],
         colorbar=dict(
             thickness=20,
             # tickmode='array',
@@ -715,36 +715,6 @@ def plotly_many_heatmaps(
         selector={'name': 'rhs'}
         )
 
-    # # Add each row of the dataframe separately.
-    # # Scatter the edges of the polygons and use "fill" to colour
-    # # within the lines.
-    # for i in gdf_lhs.index:
-    #     fig.add_trace(go.Scatter(
-    #         x=gdf_lhs.loc[i, 'x'],
-    #         y=gdf_lhs.loc[i, 'y'],
-    #         mode='lines',
-    #         fill="toself",
-    #         fillcolor=gdf_lhs.loc[i, 'colour'],
-    #         line_width=0,
-    #         hoverinfo='skip',
-    #         name=gdf_lhs.loc[i, 'colour_str'],
-    #         showlegend=False
-    #         ), row='all', col=1
-    #         )
-
-    # for i in gdf_rhs.index:
-    #     fig.add_trace(go.Scatter(
-    #         x=gdf_rhs.loc[i, 'x'],
-    #         y=gdf_rhs.loc[i, 'y'],
-    #         mode='lines',
-    #         fill="toself",
-    #         fillcolor=gdf_rhs.loc[i, 'colour'],
-    #         line_width=0,
-    #         hoverinfo='skip',
-    #         name=gdf_rhs.loc[i, 'colour_str'],
-    #         showlegend=False
-    #         ), row='all', col=2
-    #         )
 
     def draw_outline(fig, gdf_catchment, col='all'):
         # I can't for the life of me get hovertemplate working here
