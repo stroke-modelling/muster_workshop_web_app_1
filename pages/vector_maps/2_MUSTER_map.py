@@ -16,8 +16,6 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
-from utilities.maps_raster import make_raster_from_vectors, \
-    set_up_raster_transform
 # Containers:
 import utilities.inputs as inputs
 import utilities.colour_setup as colour_setup
@@ -336,8 +334,6 @@ scenario_mrs = ['usual_care', 'msu']
 
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
-
-
 @st.fragment
 def display_mrs_dists():
     # User input:
@@ -368,14 +364,6 @@ with container_mrs_dists:
 # ########## SETUP FOR MAPS ##########
 # ####################################
 # Keep this below the results above because the map creation is slow.
-
-# ----- Set up geodataframe -----
-gdf = maps.load_lsoa_gdf()
-# Merge in outcomes data:
-gdf = pd.merge(
-    gdf, df_lsoa,
-    left_on='LSOA11NM', right_on='lsoa', how='right'
-    )
 
 # ----- Find data for colours -----
 
@@ -411,52 +399,58 @@ else:
     column_colours_diff = '_'.join([
         'diff_msu_minus_usual_care', stroke_type, t, outcome_type])
 
-# Pick out the columns of data for the colours:
-try:
-    vals_for_colours = gdf[column_colours]
-    vals_for_colours_diff = gdf[column_colours_diff]
-except KeyError:
-    # Those columns don't exist in the data.
-    # This should only happen for nLVO treated with MT only.
-    vals_for_colours = [0] * len(gdf)
-    vals_for_colours_diff = [0] * len(gdf)
-    # Note: this works for now because expect always no change
-    # for added utility and added mrs<=2 with no treatment.
-
-
-# ----- Convert vectors to raster -----
-# Set up parameters for conversion to raster:
-transform_dict = set_up_raster_transform(gdf, pixel_size=1000)
-# Burn geometries for left-hand map...
-burned_lhs = make_raster_from_vectors(
-    gdf['geometry'],
-    vals_for_colours,
-    transform_dict['height'],
-    transform_dict['width'],
-    transform_dict['transform']
-)
-# ... and right-hand map:
-burned_rhs = make_raster_from_vectors(
-    gdf['geometry'],
-    vals_for_colours_diff,
-    transform_dict['height'],
-    transform_dict['width'],
-    transform_dict['transform']
-)
-
 
 # ----- Set up colours -----
 # Load colour limits info (vmin, vmax, step_size):
 dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
-# Load colour map colours:
-dict_colours['cmap'] = colour_setup.make_colour_list(cmap_name)
-dict_colours_diff['cmap'] = (
-    colour_setup.make_colour_list(cmap_diff_name))
 # Colour bar titles:
 dict_colours['title'] = f'{outcome_type_str}'
 dict_colours_diff['title'] = (
-    f'{outcome_type_str}: Benefit of MSU over usual care')
+    f'{outcome_type_str}: Benefit of redirection over usual care')
+# Colour map names:
+dict_colours['cmap_name'] = cmap_name
+dict_colours_diff['cmap_name'] = cmap_diff_name
+
+for d in [dict_colours, dict_colours_diff]:
+    # Set up contour boundaries:
+    d['v_bands'] = colour_setup.make_contour_edge_values(
+        d['vmin'],
+        d['vmax'],
+        d['step_size']
+        )
+    # Make names for the contour bands:
+    d['v_bands_str'] = colour_setup.make_v_bands_str(
+        d['v_bands'], v_name='v')
+    # Set up colours for each contour:
+    d['colour_map'] = colour_setup.make_colour_map_dict(
+        d['v_bands_str'], d['cmap_name'])
+    # Add an extra bound at either end (for the "to infinity" bit):
+    d['v_bands_for_cs'] = colour_setup.add_infinity_bounds(
+        d['v_bands'],
+        d['vmin'],
+        d['vmax'],
+        d['step_size']
+        )
+    # Normalise the data bounds (for plotly):
+    d['bounds_for_colour_scale'] = (
+        colour_setup.normalise_bounds(d['v_bands_for_cs']))
+    # Create a colour scale from these colours (for plotly).
+    d['colour_scale'] = colour_setup.create_colour_scale_for_plotly(
+        list(d['colour_map'].values()),
+        d['bounds_for_colour_scale']
+        )
+
+# Store column names for data source:
+dict_colours['column'] = column_colours
+dict_colours_diff['column'] = column_colours_diff
+
+
+# ----- Outcome maps -----
+# Work out which contour each LSOA belongs in,
+# combine polygons of LSOA in the same contour:
+gdf_lhs = maps.create_colour_gdf(df_lsoa, dict_colours)
+gdf_rhs = maps.create_colour_gdf(df_lsoa, dict_colours_diff)
 
 
 # ----- Region outlines -----
@@ -471,7 +465,7 @@ else:
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_catchment_lhs, gdf_catchment_rhs]
+gdfs_to_convert = [gdf_lhs, gdf_rhs, gdf_catchment_lhs, gdf_catchment_rhs]
 for gdf in gdfs_to_convert:
     if gdf is None:
         pass
@@ -503,9 +497,9 @@ subplot_titles = [
     'Benefit of MSU over usual care'
 ]
 with container_map:
-    plot_maps.plotly_many_heatmaps(
-        burned_lhs,
-        burned_rhs,
+    plot_maps.plotly_many_maps(
+        gdf_lhs,
+        gdf_rhs,
         gdf_catchment_lhs,
         gdf_catchment_rhs,
         outline_names_col,
@@ -513,7 +507,6 @@ with container_map:
         traces_units,
         unit_subplot_dict,
         subplot_titles=subplot_titles,
-        dict_colours=dict_colours,
-        dict_colours_diff=dict_colours_diff,
-        transform_dict=transform_dict,
+        colour_dict=dict_colours,
+        colour_diff_dict=dict_colours_diff
         )
