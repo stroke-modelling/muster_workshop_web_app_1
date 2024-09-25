@@ -97,7 +97,7 @@ def make_contour_edge_values(v_min, v_max, step_size):
 
     # If there are negative and positive values,
     # make an extra contour around zero that's really small.
-    if ((v_min < 0) & (v_max > 0)):
+    if ((np.sign(v_min) == -1) & (np.sign(v_max) == 1)):
         # Remove existing zero if it exists:
         ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
         if len(ind_z) > 0:
