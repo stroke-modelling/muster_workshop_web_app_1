@@ -444,7 +444,7 @@ burned_rhs = make_raster_from_vectors(
 
 
 # ----- Set up colours -----
-# Load colour limits info:
+# Load colour limits info (vmin, vmax, step_size):
 dict_colours, dict_colours_diff = (
     utilities.colour_setup.load_colour_limits(outcome_type))
 # Load colour map colours:

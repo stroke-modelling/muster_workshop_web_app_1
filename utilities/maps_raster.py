@@ -3,6 +3,7 @@ Make raster maps.
 """
 import numpy as np
 import rasterio
+from rasterio import features
 
 
 def make_raster_from_vectors(

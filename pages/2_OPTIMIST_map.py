@@ -15,7 +15,7 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
-# Containers:
+import utilities.colour_setup as colour_setup
 import utilities.inputs as inputs
 
 
@@ -412,33 +412,97 @@ with container_mrs_dists:
 # ####################################
 # Keep this below the results above because the map creation is slow.
 
-# Which scenarios will be shown in the maps:
-# (in this order)
-scenario_types = ['usual_care', 'diff_redirection_considered_minus_usual_care']
-# Display names:
-cmap_titles = [
-    f'{outcome_type_str}',
-    f'{outcome_type_str}: Benefit of redirection over usual care'
-    ]
+# ----- Find data for colours -----
 
-gdf_lhs, colour_dict = maps.create_colour_gdf(
-    df_lsoa,
-    stroke_type,
-    treatment_type,
-    outcome_type,
-    scenario_type=scenario_types[0],
-    cmap_name=cmap_name,
-    cbar_title=cmap_titles[0],
-    )
-gdf_rhs, colour_diff_dict = maps.create_colour_gdf(
-    df_lsoa,
-    stroke_type,
-    treatment_type,
-    outcome_type,
-    scenario_type=scenario_types[1],
-    cmap_diff_name=cmap_diff_name,
-    cbar_title=cmap_titles[1],
-    )
+# df_lsoa column names are in the format:
+# `usual_care_lvo_ivt_mt_utility_shift`, i.e.
+# '{scenario}_{occlusion}_{treatment}_{outcome}' with these options:
+#
+# +---------------------------+------------+------------+---------------+
+# | Scenarios                 | Occlusions | Treatments | Outcomes      |
+# +---------------------------+------------+------------+---------------+
+# | usual_care                | nlvo       | ivt        | utility_shift |
+# | redirection_approved      | lvo        | mt         | mrs_shift     |
+# | redirection_rejected      | combo      | ivt_mt     | mrs_0-2       |
+# | redirection_considered    |            |            |               |
+# | diff_redirection_considered_minus_usual_care        |               |
+# +---------------------------+------------+------------+---------------+
+#
+# There is not a separate column for "no treatment" to save space.
+
+# Find the names of the columns that contain the data
+# that will be shown in the colour maps.
+if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
+    # Use no-treatment data.
+    # Set this to something that doesn't exist so it fails a check later.
+    # The check will set all values to zero.
+    column_colours = None
+    column_colours_diff = None
+else:
+    # If this is nLVO with IVT and MT, look up the data for
+    # nLVO with IVT only.
+    using_nlvo_ivt_mt = ((stroke_type == 'nlvo') & ('mt' in treatment_type))
+    t = 'ivt' if using_nlvo_ivt_mt else treatment_type
+
+    column_colours = '_'.join([
+        'usual_care', stroke_type, t, outcome_type])
+    column_colours_diff = '_'.join([
+        'diff_redirection_considered_minus_usual_care',
+        stroke_type, t, outcome_type
+        ])
+
+
+# ----- Set up colours -----
+# Load colour limits info (vmin, vmax, step_size):
+dict_colours, dict_colours_diff = (
+    colour_setup.load_colour_limits(outcome_type))
+# Colour bar titles:
+dict_colours['title'] = f'{outcome_type_str}'
+dict_colours_diff['title'] = (
+    f'{outcome_type_str}: Benefit of redirection over usual care')
+# Colour map names:
+dict_colours['cmap_name'] = cmap_name
+dict_colours_diff['cmap_name'] = cmap_diff_name
+
+for d in [dict_colours, dict_colours_diff]:
+    # Set up contour boundaries:
+    d['v_bands'] = colour_setup.make_contour_edge_values(
+        d['vmin'],
+        d['vmax'],
+        d['step_size']
+        )
+    # Make names for the contour bands:
+    d['v_bands_str'] = colour_setup.make_v_bands_str(
+        d['v_bands'], v_name='v')
+    # Set up colours for each contour:
+    d['colour_map'] = colour_setup.make_colour_map_dict(
+        d['v_bands_str'], d['cmap_name'])
+    # Add an extra bound at either end (for the "to infinity" bit):
+    d['v_bands_for_cs'] = colour_setup.add_infinity_bounds(
+        d['v_bands'],
+        d['vmin'],
+        d['vmax'],
+        d['step_size']
+        )
+    # Normalise the data bounds (for plotly):
+    d['bounds_for_colour_scale'] = (
+        colour_setup.normalise_bounds(d['v_bands_for_cs']))
+    # Create a colour scale from these colours (for plotly).
+    d['colour_scale'] = colour_setup.create_colour_scale_for_plotly(
+        list(d['colour_map'].values()),
+        d['bounds_for_colour_scale']
+        )
+
+# Store column names for data source:
+dict_colours['column'] = column_colours
+dict_colours_diff['column'] = column_colours_diff
+
+
+# ----- Outcome maps -----
+# Work out which contour each LSOA belongs in,
+# combine polygons of LSOA in the same contour:
+gdf_lhs = maps.create_colour_gdf(df_lsoa, dict_colours)
+gdf_rhs = maps.create_colour_gdf(df_lsoa, dict_colours_diff)
 
 
 # ----- Region outlines -----
@@ -491,6 +555,6 @@ with container_map:
         traces_units,
         unit_subplot_dict,
         subplot_titles=subplot_titles,
-        colour_dict=colour_dict,
-        colour_diff_dict=colour_diff_dict
+        colour_dict=dict_colours,
+        colour_diff_dict=dict_colours_diff
         )

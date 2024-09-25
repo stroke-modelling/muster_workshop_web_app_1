@@ -342,7 +342,7 @@ def plotly_many_maps(
         # Replace zeroish with zero:
         # (this is a visual difference only - it combines two near-zero
         # ticks and their labels into a single tick.)
-        if colour_dict['scen'] == 'diff':
+        if ((colour_dict['vmin'] < 0) & (colour_dict['vmax'] > 0)):
             ind_z = np.where(np.sign(colour_dict['v_bands']) >= 0.0)[0][0] + 1
             tick_z = np.mean([tick_locs[ind_z-1], tick_locs[ind_z]])
             name_z = '0'

@@ -30,13 +30,7 @@ def load_lsoa_gdf():
 @st.cache_data
 def create_colour_gdf(
         df: pd.DataFrame,
-        stroke_type,
-        treatment_type,
-        outcome_type,
-        scenario_type,
-        cmap_name: str = '',
-        cmap_diff_name: str = '',
-        cbar_title: str = '',
+        colour_dict: dict
         ):
     """
     Main colour map creation function for Streamlit apps.
@@ -68,37 +62,6 @@ def create_colour_gdf(
                   same value.
     colour_dict - dict. The information used to set up the colours.
     """
-    # ----- Colour setup -----
-    # Give the scenario dict a dummy 'scenario_type' entry
-    # so that the right colour map and colour limits are picked.
-    colour_dict = utilities.colour_setup.set_up_colours(
-        outcome_type,
-        scenario_type,
-        cmap_name=cmap_name,
-        cmap_diff_name=cmap_diff_name
-        )
-    # Pull down colourbar titles from earlier in this script:
-    colour_dict['title'] = cbar_title
-    # Find the names of the columns that contain the data
-    # that will be shown in the colour maps.
-    if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
-        # Use no-treatment data.
-        t = ''
-        column_colours = None
-    else:
-        if ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
-            # Use IVT-only data.
-            t = 'ivt'
-        else:
-            t = treatment_type
-        column_colours = '_'.join([
-                scenario_type,
-                stroke_type,
-                t,
-                outcome_type
-            ])
-    colour_dict['column'] = column_colours
-
     # ----- Outcome maps -----
     # Left-hand subplot colours:
     df_colours = assign_colour_bands_to_areas(
@@ -116,7 +79,7 @@ def create_colour_gdf(
     # Map the colours to the colour names:
     gdf = assign_colour_to_areas(gdf, colour_dict['colour_map'])
 
-    return gdf, colour_dict
+    return gdf
 
 
 def assign_colour_bands_to_areas(

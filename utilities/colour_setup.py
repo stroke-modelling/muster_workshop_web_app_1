@@ -91,112 +91,14 @@ def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
 # ##### CONTOUR MAPS COLOUR SETUP #####
 # #####################################
 
-def set_up_colours(
-        outcome_type,
-        scenario_type,
-        v_name='v',
-        cmap_name='inferno',
-        cmap_diff_name='RdBu'
-        ):
-    """
-    max ever displayed:
-
-    utility:
-    max times: > 0.300,
-
-    utility shift:
-    min times: 0.100 < 0.150, 0.150 < 0.200, 0.200 < 0.250,
-    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-
-    mrs shift:
-    min times: <0.000,
-    max times: <0.000, 0.000 - < 0.050, 0.050 < 0.100,
-
-    mrs 0-2:
-    min times: 0.250 - 0.0300, > 0.300,
-    max times: 0.250 - 0.300, > 0.300
-
-
-    colour scales sometimes bug out, return to default colourbar
-    when the precision here isn't enough decimal places.
-    """
-    # Define shared colour scales:
-    cbar_dict = {
-        'utility': {
-            'scenario': {
-                'vmin': 0.3,
-                'vmax': 0.6,
-                'step_size': 0.05,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.05,
-                'vmax': 0.05,
-                'step_size': 0.01,
-                'cmap_name': cmap_diff_name
-            },
-        },
-        'utility_shift': {
-            'scenario': {
-                'vmin': 0.0,
-                'vmax': 0.15,
-                'step_size': 0.025,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.040,
-                'vmax': 0.040,
-                'step_size': 0.010,
-                'cmap_name': cmap_diff_name
-            },
-        },
-        'mrs_shift': {
-            'scenario': {
-                'vmin': -0.5,
-                'vmax': 0.0,
-                'step_size': 0.1,
-                'cmap_name': f'{cmap_name}_r'  # lower numbers are better
-            },
-            'diff': {
-                'vmin': -0.2,
-                'vmax': 0.2,
-                'step_size': 0.05,
-                'cmap_name': f'{cmap_diff_name}_r'  # lower numbers are better
-            },
-        },
-        'mrs_0-2': {
-            'scenario': {
-                'vmin': 0.30,
-                'vmax': 0.70,
-                'step_size': 0.05,
-                'cmap_name': cmap_name
-            },
-            'diff': {
-                'vmin': -0.15,
-                'vmax': 0.15,
-                'step_size': 0.05,
-                'cmap_name': cmap_diff_name
-            },
-        }
-    }
-    if scenario_type.startswith('diff'):
-        scen = 'diff'
-    else:
-        scen = 'scenario'
-
-    v_min = cbar_dict[outcome_type][scen]['vmin']
-    v_max = cbar_dict[outcome_type][scen]['vmax']
-    step_size = cbar_dict[outcome_type][scen]['step_size']
-    cmap_name = cbar_dict[outcome_type][scen]['cmap_name']
-
-    if cmap_name.endswith('_r_r'):
-        # Remove the double reverse reverse.
-        cmap_name = cmap_name[:-2]
-
+def make_contour_edge_values(v_min, v_max, step_size):
     # Make a new column for the colours.
     v_bands = np.arange(v_min, v_max + step_size, step_size)
-    if 'diff' in scen:
-        # Remove existing zero:
+
+    # If there are negative and positive values,
+    # make an extra contour around zero that's really small.
+    if ((v_min < 0) & (v_max > 0)):
+        # Remove existing zero if it exists:
         ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
         if len(ind_z) > 0:
             ind_z = ind_z[0]
@@ -207,36 +109,67 @@ def set_up_colours(
         v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
         v_bands_z = np.append(v_bands_z, v_bands[ind:])
         v_bands = v_bands_z
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
-
-        # Update zeroish name:
-        v_bands_str[ind+1] = '0.0'
     else:
-        v_bands_str = make_v_bands_str(v_bands, v_name=v_name)
+        pass
+    return v_bands
 
-    colour_map = make_colour_map_dict(v_bands_str, cmap_name)
 
-    # Link bands to colours via v_bands_str:
-    colours = []
-    for v in v_bands_str:
-        colours.append(colour_map[v])
+def make_v_bands_str(v_bands, v_name='v'):
+    """Turn contour ranges into formatted strings."""
+    v_min = v_bands[0]
+    v_max = v_bands[-1]
 
+    v_bands_str = [f'{v_name} < {v_min:.3f}']
+    for i, band in enumerate(v_bands[:-1]):
+        if band != v_bands[i+1]:
+            b = f'{band:.3f} <= {v_name} < {v_bands[i+1]:.3f}'
+        else:
+            # Update zeroish name:
+            b = f'{band:.3f}'
+        v_bands_str.append(b)
+    v_bands_str.append(f'{v_max:.3f} <= {v_name}')
+
+    v_bands_str = np.array(v_bands_str)
+    return v_bands_str
+
+
+def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
+    # Get colour values:
+    colour_list = make_colour_list(
+        cmap_name, n_colours=len(v_bands_str), remove_white=False)
+
+    # # Sample the colour list:
+    # colour_map = [(c, colour_list[i]) for i, c in enumerate(v_bands_str)]
+
+    # # # Set over and under colours:
+    # # colour_list[0] = 'black'
+    # # colour_list[-1] = 'LimeGreen'
+
+    # Return as dict to track which colours are for which bands:
+    colour_map = dict(zip(v_bands_str, colour_list))
+    return colour_map
+
+
+def add_infinity_bounds(v_bands, v_min, v_max, step_size):
     # Add an extra bound at either end (for the "to infinity" bit):
     v_bands_for_cs = np.append(v_min - step_size, v_bands)
     v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
+    return v_bands_for_cs
+
+
+def normalise_bounds(v_bands_for_cs):
     # Normalise the data bounds:
     bounds = (
         (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
         (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
     )
-    # Add extra bounds so that there's a tiny space at either end
-    # for the under/over colours.
-    # bounds_for_cs = [bounds[0], bounds[0] + 1e-7, *bounds[1:-1], bounds[-1] - 1e-7, bounds[-1]]
-    bounds_for_cs = bounds
-
     # Need separate data values and colourbar values.
     # e.g. translate 32 in the data means colour 0.76 on the colourmap.
 
+    return bounds
+
+
+def create_colour_scale_for_plotly(colours, bounds_for_cs):
     # Create a colour scale from these colours.
     # To get the discrete colourmap (i.e. no continuous gradient of
     # colour made between the defined colours),
@@ -248,51 +181,4 @@ def set_up_colours(
             [bounds_for_cs[i], colours[i]],
             [bounds_for_cs[i+1], colours[i]]
             ]
-
-    colour_dict = {
-        'scen': scen,
-        'v_min': v_min,
-        'v_max': v_max,
-        'step_size': step_size,
-        'cmap_name': cmap_name,
-        'v_bands': v_bands,
-        'v_bands_str': v_bands_str,
-        'colour_map': colour_map,
-        'colour_scale': colourscale,
-        'bounds_for_colour_scale': bounds_for_cs,
-        # 'zero_label': '0.0',
-        # 'zero_colour':
-    }
-    return colour_dict
-
-
-def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
-    # Get colour values:
-    colour_list = make_colour_list(
-        cmap_name, n_colours=len(v_bands_str), remove_white=False)
-
-    # Sample the colour list:
-    colour_map = [(c, colour_list[i]) for i, c in enumerate(v_bands_str)]
-
-    # # Set over and under colours:
-    # colour_list[0] = 'black'
-    # colour_list[-1] = 'LimeGreen'
-
-    # Return as dict to track which colours are for which bands:
-    colour_map = dict(zip(v_bands_str, colour_list))
-    return colour_map
-
-
-def make_v_bands_str(v_bands, v_name='v'):
-    """Turn contour ranges into formatted strings."""
-    v_min = v_bands[0]
-    v_max = v_bands[-1]
-
-    v_bands_str = [f'{v_name} < {v_min:.3f}']
-    for i, band in enumerate(v_bands[:-1]):
-        b = f'{band:.3f} <= {v_name} < {v_bands[i+1]:.3f}'
-        v_bands_str.append(b)
-    v_bands_str.append(f'{v_max:.3f} <= {v_name}')
-
-    v_bands_str = np.array(v_bands_str)
-    return v_bands_str
+    return colourscale
