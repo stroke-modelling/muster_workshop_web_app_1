@@ -1,13 +1,15 @@
 """
 Make raster maps.
 """
+import streamlit as st
 import numpy as np
 import rasterio
 from rasterio import features
 
 
+@st.cache_data
 def make_raster_from_vectors(
-        geometry,
+        _geometry,
         vals_for_colours,
         height,
         width,
@@ -17,7 +19,7 @@ def make_raster_from_vectors(
     # Burn geometries for left-hand map:
 
     """
-    shapes = ((geom, value) for geom, value in zip(geometry, vals_for_colours))
+    shapes = ((geom, value) for geom, value in zip(_geometry, vals_for_colours))
     burned = rasterio.features.rasterize(
         shapes=shapes,
         out_shape=(height, width),
@@ -29,7 +31,7 @@ def make_raster_from_vectors(
     return burned
 
 
-def set_up_raster_transform(gdf, pixel_size=1000):
+def set_up_raster_transform(gdf, pixel_size=100000):
     """
     # Code source for conversion to raster:
     # https://gis.stackexchange.com/a/475845

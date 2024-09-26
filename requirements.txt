@@ -11,6 +11,7 @@ shapely==2.0.1
 statsmodels
 stroke-outcome
 stroke-maps
+rasterio==1.3.6
 # yaml is temporary - should have been included in stroke-maps package
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 

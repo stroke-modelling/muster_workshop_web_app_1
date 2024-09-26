@@ -76,7 +76,8 @@ def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
     # with scientific notation.
     colour_list = np.array([
         'rgba(' +
-        ','.join([f'{np.format_float_positional(c1, precision=100)}'
+        # ','.join([f'{np.format_float_positional(c1, precision=100)}'
+        ', '.join([f'{int(np.round(c1 * 255, 0))}'
                   for c1 in c]) +
         ')' for c in colour_list
         ])

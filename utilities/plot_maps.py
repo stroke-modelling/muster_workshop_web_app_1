@@ -11,8 +11,6 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from utilities.maps import convert_shapely_polys_into_xy
 
-# from stroke_maps.utils import find_multiindex_column_names
-# from stroke_maps.geo import _load_geometry_stroke_units, check_scenario_level
 import stroke_maps.load_data
 
 
@@ -667,7 +665,8 @@ def plotly_many_heatmaps(
             # ticklabelposition='outside top'
             title=dict_colours['title']
             ),
-        name='lhs'
+        name='lhs',
+        hoverinfo='skip',
     ), row='all', col=1)
 
     fig.add_trace(go.Heatmap(
@@ -688,7 +687,8 @@ def plotly_many_heatmaps(
             # ticklabelposition='outside top'
             title=dict_colours_diff['title']
             ),
-        name='rhs'
+        name='rhs',
+        hoverinfo='skip',
     ), row='all', col=2)
 
     fig.update_traces(
@@ -818,6 +818,99 @@ def plotly_many_heatmaps(
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
 
+    # BUTTONS TEST - https://plotly.com/python/custom-buttons/
+
+    # Add drowdowns
+    # button_layer_1_height = 1.08
+    button_layer_1_height = 1.12
+    button_layer_2_height = 1.065
+
+    # Colour scales dict:
+    dict_colourscales = {}
+    import utilities.colour_setup as colour_setup
+    for c in ['iceburn_r', 'seaweed', 'fusion', 'waterlily']:
+        plop = colour_setup.make_colour_list(c)
+        # # plop = np.array(plop)
+        plop = np.array([np.linspace(0, 1, len(plop)), plop], dtype=object).T
+        plop = str(plop)
+        plop = plop.replace("'", '"')
+        plop = plop.replace(' "rgb', ', "rgb')
+        plop = plop.replace(',1.)', ')')
+        plop = plop.replace(', 255)', ')')
+        plop = plop.replace('rgba', 'rgb')
+        plop = plop.replace(']', '],').replace('],]', ']]').replace(']],', ']]')
+        dict_colourscales[c] = plop  # [1:-1]
+        # st.write(dict_colourscales[c])
+        # st.stop()
+
+
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                buttons=list([
+                    dict(
+                        args=['colorscale', dict_colourscales['iceburn_r']],
+                        label='iceburn_r',
+                        method='restyle'
+                    ),
+                    dict(
+                        args=['colorscale', dict_colourscales['seaweed']],
+                        label='seaweed',
+                        method='restyle'
+                    ),
+                    dict(
+                        args=['colorscale', dict_colourscales['fusion']],
+                        label='fusion',
+                        method='restyle'
+                    ),
+                    dict(
+                        args=['colorscale', dict_colourscales['waterlily']],
+                        label='waterlily',
+                        method='restyle'
+                    ),
+                ]),
+                type = 'buttons',
+                direction='right',
+                pad={'r': 10, 't': 10},
+                showactive=True,
+                x=0.1,
+                xanchor='left',
+                y=button_layer_1_height,
+                yanchor='top'
+            ),
+            dict(
+                buttons=list([
+                    dict(
+                        args=['reversescale', False],
+                        label='False',
+                        method='restyle'
+                    ),
+                    dict(
+                        args=['reversescale', True],
+                        label='True',
+                        method='restyle'
+                    )
+                ]),
+                type = 'buttons',
+                direction='right',
+                pad={'r': 10, 't': 10},
+                showactive=True,
+                x=0.13,
+                xanchor='left',
+                y=button_layer_2_height,
+                yanchor='top'
+            ),
+        ]
+    )
+
+    fig.update_layout(
+        annotations=[
+            dict(text='colorscale', x=0, xref='paper', y=1.1, yref='paper',
+                                align='left', showarrow=False),
+            dict(text='Reverse<br>Colorscale', x=0, xref='paper', y=1.06,
+                                yref='paper', showarrow=False),
+        ])
+
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
     plotly_config = {
@@ -845,4 +938,3 @@ def plotly_many_heatmaps(
         use_container_width=True,
         config=plotly_config
         )
-
