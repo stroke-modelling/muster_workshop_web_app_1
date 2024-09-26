@@ -829,27 +829,15 @@ def plotly_many_heatmaps(
     dict_colourscales = {}
     import utilities.colour_setup as colour_setup
     for c in ['iceburn_r', 'seaweed', 'fusion', 'waterlily']:
-        plop = colour_setup.make_colour_list(c)
-        # # plop = np.array(plop)
-        plop = np.array([np.linspace(0, 1, len(plop)), plop], dtype=object).T
-        plop = str(plop)
-        plop = plop.replace("'", '"')
-        plop = plop.replace(' "rgb', ', "rgb')
-        plop = plop.replace(',1.)', ')')
-        plop = plop.replace(', 255)', ')')
-        plop = plop.replace('rgba', 'rgb')
-        plop = plop.replace(']', '],').replace('],]', ']]').replace(']],', ']]')
-        dict_colourscales[c] = plop  # [1:-1]
-        # st.write(dict_colourscales[c])
-        # st.stop()
-
+        dict_colourscales[c] = colour_setup.make_colour_list_for_plotly_button(c)
 
     fig.update_layout(
         updatemenus=[
             dict(
                 buttons=list([
                     dict(
-                        args=['colorscale', dict_colourscales['iceburn_r']],
+                        args=[{'colorscale': [dict_colourscales['iceburn_r'], dict_colourscales['seaweed']]},
+                              {'traces': ['lhs', 'rhs']}],
                         label='iceburn_r',
                         method='restyle'
                     ),

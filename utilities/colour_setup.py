@@ -85,7 +85,28 @@ def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
     if remove_white:
         # Plotly doesn't seem to handle white well so remove it:
         colour_list = [c for c in colour_list if c != 'rgba(1.,1.,1.,1.)']
+
     return colour_list
+
+
+def make_colour_list_for_plotly_button(*args, **kwargs):
+    c = make_colour_list(*args, **kwargs)
+
+    # Convert this into the very specific string format
+    # that plotly needs for restyle colourscale buttons.
+    c = np.array([np.linspace(0, 1, len(c)), c], dtype=object).T
+    c = str(c)
+    # Swap single for double quotes:
+    c = c.replace("'", '"')
+    # Remove alpha:
+    c = c.replace(', 255)', ')')
+    c = c.replace('rgba', 'rgb')
+    # Sort out comma placement:
+    c = c.replace(' "rgb', ', "rgb')
+    c = c.replace(']', '],').replace('],]', ']]').replace(']],', ']]')
+    # Remove newlines:
+    c = c.replace('\n', '')
+    return c
 
 
 # #####################################
