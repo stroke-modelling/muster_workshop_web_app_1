@@ -737,7 +737,7 @@ def select_colour_maps(cmap_names, cmap_diff_names):
     # )
 
     cmap_diff_name = st.radio(
-        'Colour display for difference map',
+        'Default colour display for difference map',
         cmap_diff_names,
         captions=cmap_diff_displays,
         index=cmap_diff_ind,

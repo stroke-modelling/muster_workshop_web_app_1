@@ -759,9 +759,11 @@ def plotly_many_heatmaps(
     fig.update_xaxes(matches='x')
     fig.update_yaxes(matches='y')
 
-    # Remove axis ticks:
-    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
+    # Remove axis ticks.
+    fig.update_xaxes(tickvals=[], showticklabels=False,
+                     showgrid=False, zeroline=False)
+    fig.update_yaxes(tickvals=[], showticklabels=False,
+                     showgrid=False, zeroline=False)
 
     # --- Stroke unit scatter markers ---
     if len(unit_subplot_dict) > 0:
