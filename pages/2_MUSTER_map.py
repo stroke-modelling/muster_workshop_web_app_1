@@ -450,9 +450,16 @@ burned_rhs = make_raster_from_vectors(
 dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
 # Load colour map colours:
-dict_colours['cmap'] = colour_setup.make_colour_list(cmap_name)
-dict_colours_diff['cmap'] = (
-    colour_setup.make_colour_list(cmap_diff_name))
+dict_colours['cmap'] = colour_setup.make_colour_list(
+    cmap_name,
+    vmin=dict_colours['vmin'],
+    vmax=dict_colours['vmax']
+    )
+dict_colours_diff['cmap'] = colour_setup.make_colour_list(
+    cmap_diff_name,
+    vmin=dict_colours_diff['vmin'],
+    vmax=dict_colours_diff['vmax']
+    )
 # Colour bar titles:
 dict_colours['title'] = f'{outcome_type_str}'
 dict_colours_diff['title'] = (

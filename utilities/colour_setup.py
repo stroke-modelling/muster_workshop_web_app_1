@@ -57,7 +57,13 @@ def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
     return line_str
 
 
-def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
+def make_colour_list(
+        cmap_name='viridis',
+        n_colours=101,
+        remove_white=False,
+        vmax=1,
+        vmin=-1
+        ):
     """
     Pick out a list of rgba strings from a colour map.
     """
@@ -69,7 +75,40 @@ def make_colour_list(cmap_name='viridis', n_colours=101, remove_white=True):
         # CMasher colourmap:
         cmap = get_cmap(f'cmr.{cmap_name}')
 
-    cbands = np.linspace(0.0, 1.0, n_colours)
+    # Work out which part of the colour map to sample.
+    # If vmax is +ve and vmin is -ve, use both halves of the diverging
+    # colourmap. If both are +ve, use only the top half.
+    if vmin == -vmax:
+        # Sample the full diverging colourmap.
+        bmin = 0.0
+        bmax = 1.0
+    elif np.sign(vmin) == -np.sign(vmax):
+        # vmin is -ve, vmax is +ve, but zero is not halfway.
+        if np.abs(vmax) > np.abs(vmin):
+            # Use the full right-hand-side of the cmap
+            # and part of the left-hand-side.
+            bmax = 1.0
+            bmin = 0.5 * (1.0 - (np.abs(vmin) / np.abs(vmax)))
+        else:
+            # Use the full left-hand-side of the cmap
+            # and part of the right-hand-side.
+            bmin = 0.0
+            bmax = 0.5 * (1.0 + (np.abs(vmax) / np.abs(vmin)))
+    elif np.sign(vmax) == 0:
+        # Max value is zero. Use only left-hand-side of cmap.
+        bmin = 0.0
+        bmax = 0.5
+    elif np.sign(vmin) == 0:
+        # Min value is zero. Use only right-hand-side of cmap.
+        bmin = 0.5
+        bmax = 1.0
+    else:
+        # Both vmin and vmax are +ve or both are -ve.
+        # Use the full colour scale:
+        bmin = 0.0
+        bmax = 1.0
+
+    cbands = np.linspace(bmin, bmax, n_colours)
     colour_list = cmap(cbands)
     # # Convert tuples to strings:
     # Use format_float_positional to stop tiny floats being printed

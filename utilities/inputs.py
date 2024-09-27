@@ -710,31 +710,31 @@ def select_colour_maps(cmap_names, cmap_diff_names):
     """
     User inputs.
     """
-    cmap_displays = [
-        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
-        for cmap_name in cmap_names
-        ]
+    # cmap_displays = [
+    #     make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+    #     for cmap_name in cmap_names
+    #     ]
     cmap_diff_displays = [
         make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
         for cmap_name in cmap_diff_names
         ]
 
     try:
-        cmap_name = st.session_state['cmap_name']
+        # cmap_name = st.session_state['cmap_name']
         cmap_diff_name = st.session_state['cmap_diff_name']
     except KeyError:
-        cmap_name = cmap_names[0]
+        # cmap_name = cmap_names[0]
         cmap_diff_name = cmap_diff_names[0]
-    cmap_ind = cmap_names.index(cmap_name)
+    # cmap_ind = cmap_names.index(cmap_name)
     cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
 
-    cmap_name = st.radio(
-        'Colour display for "usual care" map',
-        cmap_names,
-        captions=cmap_displays,
-        index=cmap_ind,
-        key='cmap_name'
-    )
+    # cmap_name = st.radio(
+    #     'Colour display for "usual care" map',
+    #     cmap_names,
+    #     captions=cmap_displays,
+    #     index=cmap_ind,
+    #     key='cmap_name'
+    # )
 
     cmap_diff_name = st.radio(
         'Colour display for difference map',
@@ -743,6 +743,7 @@ def select_colour_maps(cmap_names, cmap_diff_names):
         index=cmap_diff_ind,
         key='cmap_diff_name'
     )
+    cmap_name = cmap_diff_name
 
     return cmap_name, cmap_diff_name
 
