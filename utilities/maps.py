@@ -20,6 +20,16 @@ def load_lsoa_gdf():
     # Convert to British National Grid:
     gdf = gdf.to_crs('EPSG:27700')
 
+    # The original geojson file had only valid geometry,
+    # but some of the shapes became None or invalid when the
+    # geojson was simplified and precision reduced.
+
+    # Remove None polygons.
+    # This will only affect the display of the map, not the
+    # underlying outcomes data.
+    mask = gdf['geometry'].isna()
+    gdf = gdf[~mask].copy()
+
     # Make geometry valid:
     gdf['geometry'] = [
         make_valid(g) if g is not None else g

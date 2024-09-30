@@ -371,11 +371,13 @@ with container_mrs_dists:
 
 # ----- Set up geodataframe -----
 gdf = maps.load_lsoa_gdf()
+
 # Merge in outcomes data:
 gdf = pd.merge(
     gdf, df_lsoa,
-    left_on='LSOA11NM', right_on='lsoa', how='right'
+    left_on='LSOA11NM', right_on='lsoa', how='left'
     )
+
 
 # ----- Find data for colours -----
 
