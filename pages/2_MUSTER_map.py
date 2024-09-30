@@ -426,7 +426,7 @@ except KeyError:
 
 # ----- Convert vectors to raster -----
 # Set up parameters for conversion to raster:
-transform_dict = set_up_raster_transform(gdf, pixel_size=1000)
+transform_dict = set_up_raster_transform(gdf, pixel_size=2000)
 # Burn geometries for left-hand map...
 burned_lhs = make_raster_from_vectors(
     gdf['geometry'],

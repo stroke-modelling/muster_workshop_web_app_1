@@ -31,7 +31,7 @@ def make_raster_from_vectors(
     return burned
 
 
-def set_up_raster_transform(gdf, pixel_size=100000):
+def set_up_raster_transform(gdf, pixel_size=2000):
     """
     # Code source for conversion to raster:
     # https://gis.stackexchange.com/a/475845

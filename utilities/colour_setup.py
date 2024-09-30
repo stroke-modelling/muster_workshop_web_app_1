@@ -102,9 +102,18 @@ def make_colour_list(
         # Min value is zero. Use only right-hand-side of cmap.
         bmin = 0.5
         bmax = 1.0
+    elif np.sign(vmax) == -1:
+        # Both vmin and vmax are -ve.
+        # Use the left half of the cmap:
+        bmin = 0.0
+        bmax = 0.5
+    elif np.sign(vmax) == 1:
+        # Both vmin and vmax are +ve.
+        # Use the right half of the cmap:
+        bmin = 0.5
+        bmax = 1.0
     else:
-        # Both vmin and vmax are +ve or both are -ve.
-        # Use the full colour scale:
+        # This shouldn't happen.
         bmin = 0.0
         bmax = 1.0
 
