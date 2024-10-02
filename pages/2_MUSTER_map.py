@@ -59,7 +59,7 @@ def main_calculations(input_dict, df_unit_services):
         combine_mrs_dists=True
         )
 
-    # Place probabilities of death into df_lsoa data
+    # Place probabilities of death into st.session_state['df_lsoa'] data
     # so that they are displayed in the results tables.
     cols_probs_of_death = [
         'usual_care_lvo_ivt_mrs_dists_noncum_6',
@@ -123,29 +123,44 @@ st.set_page_config(
 #   +--------------------------+
 
 container_intro = st.container()
-with st.sidebar:
+tab_inputs, tab_results = st.tabs(['Inputs', 'Results'])
+with tab_inputs:
     container_inputs = st.container()
+    # container_timeline_plot = st.container()
     container_unit_services = st.container()
-container_map, container_mrs_dists_etc = st.columns([2, 1])
-# Convert the map container to empty so that the placeholder map
-# is replaced once the real map is ready.
-with container_map:
-    container_map = st.empty()
-# Convert mRS dists to empty so that re-running a fragment replaces
-# the bars rather than displays the new plot in addition.
-with container_mrs_dists_etc:
-    container_mrs_dists = st.empty()
-container_map_inputs = st.container(border=True)
-with container_map_inputs:
-    st.markdown('__Plot options__')
-    (container_input_treatment,
-     container_input_stroke_type,
-     container_input_region_type,
-     container_input_mrs_region) = st.columns(4)
-with container_input_mrs_region:
-    container_input_mrs_region = st.empty()
-with st.expander('Full data tables'):
-    container_results_tables = st.container()
+
+with container_inputs:
+    container_inputs_top = st.container()
+    (
+        container_inputs_standard,
+        container_timeline_standard,
+        container_inputs_msu,
+        container_timeline_msu
+    ) = st.columns(4)
+
+with tab_results:
+    container_rerun = st.container()
+    container_map, container_mrs_dists_etc = st.columns([2, 1])
+    # Convert the map container to empty so that the placeholder map
+    # is replaced once the real map is ready.
+    with container_map:
+        container_map = st.empty()
+    # Convert mRS dists to empty so that re-running a fragment replaces
+    # the bars rather than displays the new plot in addition.
+    with container_mrs_dists_etc:
+        container_mrs_dists = st.empty()
+    container_map_inputs = st.container(border=True)
+    with container_map_inputs:
+        st.markdown('__Plot options__')
+        (container_input_treatment,
+         container_input_stroke_type,
+         container_input_region_type,
+         container_input_mrs_region) = st.columns(4)
+    with container_input_mrs_region:
+        container_input_mrs_region = st.empty()
+    with st.expander('Full data tables'):
+        container_results_tables = st.container()
+
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
         container_select_outcome = st.container()
@@ -162,21 +177,27 @@ with container_intro:
 # These affect the data in all tables and all plots.
 
 # ----- Pathway timings and stroke units -----
-with container_inputs:
-    with st.form('Model setup'):
-        st.header('Pathway inputs')
-        input_dict = inputs.select_parameters_map()
+input_dict = {}
+with container_inputs_top:
+    st.markdown('## Pathway inputs')
+    input_dict['process_time_call_ambulance'] = st.number_input(
+        'Time to call ambulance',
+        value=60,
+        help=f"Reference value: {60}",
+        # key=key
+        )
+with container_inputs_standard:
+    st.markdown('### Standard pathway')
+    input_dict = inputs.select_parameters_map(input_dict)
+with container_inputs_msu:
+    st.markdown('### Mobile Stroke Unit')
+    input_dict = inputs.select_parameters_msu(input_dict)
 
-        st.header('Stroke unit services')
-        st.markdown('Update which services the stroke units provide:')
-        df_unit_services, df_unit_services_full = (
-            inputs.select_stroke_unit_services())
-
-        # Button for completing the form
-        # (so script only re-runs once it is pressed, allows changes
-        # to multiple widgets at once.)
-        submitted = st.form_submit_button('Submit')
-
+with container_unit_services:
+    st.header('Stroke unit services')
+    st.markdown('Update which services the stroke units provide:')
+    df_unit_services, df_unit_services_full = (
+        inputs.select_stroke_unit_services())
 
 # These do not change the underlying data,
 # but do change what is shown in the plots.
@@ -221,6 +242,379 @@ if outcome_type == 'mrs_shift':
         cmap_diff_name = cmap_diff_name[:-4]
 
 
+
+# TIME LINE
+# import utilities.plot_timeline as timeline
+# times_dicts = timeline.build_data_for_timeline(input_dict, use_drip_ship=True, use_mothership=True, use_msu=False)
+
+
+def build_time_dicts(pathway_dict):
+    # Pre-hospital "usual care":
+    time_dict_prehosp_usual_care = {'onset': 0}
+    prehosp_keys = [
+        'process_time_call_ambulance',
+        'process_time_ambulance_response',
+        'process_ambulance_on_scene_duration',
+        ]
+    for key in prehosp_keys:
+        time_dict_prehosp_usual_care[key] = pathway_dict[key]
+
+    # MSU dispatch:
+    time_dict_msu_dispatch = {'onset': 0}
+    msu_dispatch_keys = [
+        'process_time_call_ambulance',
+        'process_msu_dispatch',
+        ]
+    for key in msu_dispatch_keys:
+        time_dict_msu_dispatch[key] = pathway_dict[key]
+
+    # MSU:
+    time_dict_prehosp_msu_ivt = {'msu_arrival_on_scene': 0}
+    prehosp_msu_ivt_keys = [
+        'process_msu_thrombolysis',
+        'process_msu_on_scene_post_thrombolysis',
+        ]
+    for key in prehosp_msu_ivt_keys:
+        time_dict_prehosp_msu_ivt[key] = pathway_dict[key]
+
+    # MSU, no thrombolysis:
+    time_dict_prehosp_msu_no_ivt = {'msu_arrival_on_scene': 0}
+    prehosp_msu_no_ivt_keys = [
+        'process_msu_on_scene_no_thrombolysis',
+        ]
+    for key in prehosp_msu_no_ivt_keys:
+        time_dict_prehosp_msu_no_ivt[key] = pathway_dict[key]
+
+    # Transfer to MT unit from MSU:
+    time_dict_mt_transfer_unit_from_msu = {'arrival_ivt_mt': 0}
+    time_dict_mt_transfer_unit_from_msu['arrival_to_puncture'] = (
+        pathway_dict['process_time_msu_arrival_to_puncture'])
+
+    # IVT-only unit:
+    time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
+    time_dict_ivt_only_unit['arrival_to_needle'] = (
+        pathway_dict['process_time_arrival_to_needle'])
+    time_dict_ivt_only_unit['needle_to_door_out'] = (
+        pathway_dict['transfer_time_delay'] -
+        pathway_dict['process_time_arrival_to_needle']
+    )
+
+    # MT transfer unit:
+    time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
+    time_dict_mt_transfer_unit['arrival_to_puncture'] = (
+        pathway_dict['process_time_transfer_arrival_to_puncture'])
+
+    # IVT and MT unit:
+    time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
+    time_dict_ivt_mt_unit['arrival_to_needle'] = (
+        pathway_dict['process_time_arrival_to_needle'])
+    time_dict_ivt_mt_unit['needle_to_puncture'] = (
+        pathway_dict['process_time_arrival_to_puncture'] -
+        pathway_dict['process_time_arrival_to_needle']
+    )
+
+    time_dicts = {
+        'prehosp_usual_care': time_dict_prehosp_usual_care,
+        'msu_dispatch': time_dict_msu_dispatch,
+        'prehosp_msu_ivt': time_dict_prehosp_msu_ivt,
+        'prehosp_msu_no_ivt': time_dict_prehosp_msu_no_ivt,
+        'mt_transfer_from_msu': time_dict_mt_transfer_unit_from_msu,
+        'ivt_only_unit': time_dict_ivt_only_unit,
+        'mt_transfer_unit': time_dict_mt_transfer_unit,
+        'ivt_mt_unit': time_dict_ivt_mt_unit,
+    }
+    return time_dicts
+
+
+time_dicts = build_time_dicts(input_dict)
+
+# Emoji unicode reference:
+# 🔧 \U0001f527
+# 🏥 \U0001f3e5
+# 🚑 \U0001f691
+# 💉 \U0001f489
+# ☎ \U0000260E
+timeline_display_dict = {
+    'onset': {
+        'emoji': '',
+        'text': 'Onset',
+    },
+    'process_time_call_ambulance': {
+        'emoji': '\U0000260E',
+        'text': 'Call<br>ambulance',
+    },
+    'process_time_ambulance_response': {
+        'emoji': '\U0001f691',
+        'text': 'Ambulance<br>arrives on scene',
+    },
+    'process_ambulance_on_scene_duration': {
+        'emoji': '\U0001f691',
+        'text': 'Ambulance<br>leaves',
+    },
+    'arrival_ivt_only': {
+        'emoji': '\U0001f3e5',
+        'text': 'Arrival<br>IVT unit',
+    },
+    'arrival_ivt_mt': {
+        'emoji': '\U0001f3e5',
+        'text': 'Arrival<br>MT unit',
+    },
+    'arrival_to_needle': {
+        'emoji': '\U0001f489',
+        'text': '<b><span style="color:red">IVT</span></b>',
+    },
+    'needle_to_door_out': {
+        'emoji': '\U0001f691',
+        'text': 'Ambulance<br>transfer<br>begins',
+    },
+    'needle_to_puncture': {
+        'emoji': '\U0001f527',
+        'text': '<b><span style="color:red">MT</span></b>',
+    },
+    'arrival_to_puncture': {
+        'emoji': '\U0001f527',
+        'text': '<b><span style="color:red">MT</span></b>',
+    },
+    'process_msu_dispatch': {
+        'emoji': '\U0001f691',
+        'text': 'MSU<br>leaves base'
+    },
+    'msu_arrival_on_scene': {
+        'emoji': '\U0001f691',
+        'text': 'MSU arrives<br>on scene'
+    },
+    'process_msu_thrombolysis': {
+        'emoji': '\U0001f489',
+        'text': '<b><span style="color:red">IVT</span></b>',
+    },
+    'process_msu_on_scene_post_thrombolysis': {
+        'emoji': '\U0001f691',
+        'text': 'MSU<br>leaves scene'
+    },
+    'process_msu_on_scene_no_thrombolysis': {
+        'emoji': '\U0001f691',
+        'text': 'MSU<br>leaves scene'
+    },
+    'nearest_ivt_time': {
+        'emoji': '',
+        'text': '',
+    },
+    'nearest_mt_time': {
+        'emoji': '',
+        'text': '',
+    },
+    'transfer_time': {
+        'emoji': '',
+        'text': '',
+    },
+    }
+
+
+import plotly.graph_objects as go
+import numpy as np
+
+def plot_timeline(
+        time_dicts,
+        timeline_display_dict,
+        y_vals,
+        y_labels,
+        time_offsets=[],
+        tmax=None,
+        tmin=None,
+        ):
+    if len(time_offsets) == 0:
+        time_offsets = [0] * len(time_dicts.keys())
+
+    # Pre-hospital timelines
+    fig = go.Figure()
+
+
+    # # Draw box
+    # fig.add_trace(go.Scatter(
+    #     y=[0, 100, 100, 0],
+    #     x=[0, 0, -2, -2],
+    #     fill="toself",
+    #     hoverinfo='skip',
+    #     mode='lines',
+    #     line=dict(color="RoyalBlue", width=3),
+    #     showlegend=False
+    #     ))
+
+    # Assume the keys are in the required order:
+    time_names = list(time_dicts.keys())
+
+    for i, time_name in enumerate(time_names):
+        # Pick out this dict:
+        time_dict = time_dicts[time_name]
+        # Convert the discrete times into cumulative times:
+        cum_times = np.cumsum(list(time_dict.values()))
+        # Pick out the emoji and text labels to plot:
+        emoji_here = [timeline_display_dict[key]['emoji']
+                      for key in list(time_dict.keys())]
+        labels_here = [f'{timeline_display_dict[key]["text"]}'  #<br><br><br>'
+                       for key in list(time_dict.keys())]
+        time_offset = time_offsets[time_name]
+
+        fig.add_trace(go.Scatter(
+            y=time_offset + cum_times,
+            x=[y_vals[i]]*len(cum_times),
+            mode='lines+markers+text',
+            text=emoji_here,
+            marker=dict(symbol='line-ew', size=10,
+                        line_width=2, line_color='grey'),
+            line_color='grey',
+            textposition='middle center',
+            textfont=dict(size=24),
+            name=time_name,
+            showlegend=False,
+            hoverinfo='skip'  # 'y'
+        ))
+        fig.add_trace(go.Scatter(
+            y=time_offset + cum_times,
+            x=[y_vals[i] + 0.2]*len(cum_times),
+            mode='text',
+            text=labels_here,
+            textposition='middle right',
+            # textfont=dict(size=24)
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+        # Sneaky extra scatter marker for hover text:
+        y_sneaky = np.array([np.mean([cum_times[i], cum_times[i+1]]) for i in range(len(cum_times) - 1)])
+        y_diffs = [f'{d}    ' for d in np.diff(cum_times)]
+        fig.add_trace(go.Scatter(
+            y=time_offset + y_sneaky,
+            x=[y_vals[i]]*len(y_sneaky),
+            mode='text',
+            text=y_diffs,
+            line_color='grey',
+            textposition='middle left',
+            textfont=dict(size=18),
+            showlegend=False,
+            hoverinfo='skip'  # 'y'
+        ))
+
+    fig.update_layout(xaxis=dict(
+        tickmode='array',
+        tickvals=[],  # y_vals,
+        # ticktext=y_labels
+    ))
+    fig.update_layout(yaxis=dict(
+        tickmode='array',
+        tickvals=[],
+        zeroline=False
+    ))
+    fig.update_layout(xaxis_range=[min(y_vals) - 0.5, max(y_vals) + 1.0])
+    # fig.update_layout(yaxis_title='Time (minutes)')
+
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+
+    fig.update_layout(
+        # autosize=False,
+        # width=500,
+        height=tmax*2.0,
+        yaxis=dict(
+            range=[tmax, tmin],  # Default x-axis zoom.
+        ),
+        # Make the default cursor setting pan instead of zoom box:
+        dragmode='pan'
+    )
+    # fig.update_yaxes(autorange="reversed")
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config=plotly_config
+        )
+
+
+gap_between_chunks = 45
+
+time_offsets = {
+    'prehosp_usual_care': 0,
+    'ivt_only_unit': gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values()),
+    'mt_transfer_unit': gap_between_chunks * 2.0 + sum(time_dicts['prehosp_usual_care'].values()) + sum(time_dicts['ivt_only_unit'].values()),
+    'ivt_mt_unit': gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values()),
+    'msu_dispatch': 0,
+    'prehosp_msu_ivt': gap_between_chunks + sum(time_dicts['msu_dispatch'].values()),
+    'prehosp_msu_no_ivt': gap_between_chunks + sum(time_dicts['msu_dispatch'].values()),
+    'mt_transfer_from_msu': gap_between_chunks * 2.0 + sum(time_dicts['msu_dispatch'].values()) + max([sum(time_dicts['prehosp_msu_ivt'].values()), sum(time_dicts['prehosp_msu_no_ivt'].values())]),
+}
+tmax = max(
+    [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
+) + gap_between_chunks
+
+time_keys_standard = [
+    'prehosp_usual_care',
+    'ivt_only_unit',
+    'mt_transfer_unit',
+    'ivt_mt_unit',
+]
+time_dicts_standard = dict([(k, time_dicts[k]) for k in time_keys_standard])
+time_offsets_standard = dict([(k, time_offsets[k]) for k in time_keys_standard])
+
+
+time_keys_msu = [
+    'msu_dispatch',
+    'prehosp_msu_ivt',
+    'prehosp_msu_no_ivt',
+    'mt_transfer_from_msu',
+]
+time_dicts_msu = dict([(k, time_dicts[k]) for k in time_keys_msu])
+time_offsets_msu = dict([(k, time_offsets[k]) for k in time_keys_msu])
+
+
+with container_timeline_standard:
+    plot_timeline(
+        time_dicts_standard,
+        timeline_display_dict,
+        y_vals=[0.5, 0, 0, 1],
+        y_labels=[
+            'Usual care',
+            'IVT-only unit',
+            'Transfer to MT unit',
+            'IVT & MT unit'
+            ],
+        time_offsets=time_offsets_standard,
+        tmax=tmax,
+        tmin=-gap_between_chunks
+        )
+with container_timeline_msu:
+    plot_timeline(
+        time_dicts_msu, timeline_display_dict, y_vals=[0.5, 0, 1, 0.5],
+        y_labels=[
+            'MSU dispatch', 'MSU (IVT)', 'MSU (no IVT)',
+            'Transfer to MT unit (from MSU)'
+            ],
+        time_offsets=time_offsets_msu,
+        tmax=tmax,
+        tmin=-gap_between_chunks
+    )
+
+st.stop()
+
+
 # #######################################
 # ########## MAIN CALCULATIONS ##########
 # #######################################
@@ -229,9 +623,40 @@ if outcome_type == 'mrs_shift':
 with container_map:
     plot_maps.plotly_blank_maps(['', ''], n_blank=2)
 
-df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo = (
-    main_calculations(input_dict, df_unit_services))
+try:
+    inputs_changed = (
+        (st.session_state['input_dict'] != input_dict) |
+        (st.session_state['df_unit_services']['Use_IVT'] != df_unit_services['Use_IVT']).any() |
+        (st.session_state['df_unit_services']['Use_MT'] != df_unit_services['Use_MT']).any() |
+        (st.session_state['df_unit_services']['Use_MSU'] != df_unit_services['Use_MSU']).any()
+    )
+except KeyError:
+    # First run of the app.
+    inputs_changed = False
 
+with container_rerun:
+    if st.button('Calculate results'):
+        st.session_state['input_dict'] = input_dict
+        st.session_state['df_unit_services'] = df_unit_services
+        (
+            st.session_state['df_lsoa'],
+            st.session_state['df_mrs'],
+            st.session_state['df_icb'],
+            st.session_state['df_isdn'],
+            st.session_state['df_nearest_ivt'],
+            st.session_state['df_ambo']
+        ) = main_calculations(input_dict, df_unit_services)
+    else:
+        if inputs_changed:
+            with container_rerun:
+                st.warning('Inputs have changed! The results currently being shown are for the previous set of inputs. Use the "calculate results" button to update the results.', icon='⚠️')
+
+
+if 'df_lsoa' in st.session_state.keys():
+    pass
+else:
+    # This hasn't been created yet and so the results cannot be drawn.
+    st.stop()
 
 # #########################################
 # ########## RESULTS - FULL DATA ##########
@@ -248,7 +673,7 @@ with container_results_tables:
     # Set some columns to bool for nicer display:
     cols_bool = ['transfer_required', 'England']
     for col in cols_bool:
-        for df in [df_icb, df_isdn, df_nearest_ivt, df_ambo, df_lsoa]:
+        for df in [st.session_state['df_icb'], st.session_state['df_isdn'], st.session_state['df_nearest_ivt'], st.session_state['df_ambo'], st.session_state['df_lsoa']]:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
@@ -256,32 +681,32 @@ with container_results_tables:
             'Results are the mean values of all LSOA ',
             'in each IVT unit catchment area.'
             ]))
-        st.dataframe(df_nearest_ivt)
+        st.dataframe(st.session_state['df_nearest_ivt'])
 
     with results_tabs[1]:
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
-        st.dataframe(df_isdn)
+        st.dataframe(st.session_state['df_isdn'])
 
     with results_tabs[2]:
         st.markdown('Results are the mean values of all LSOA in each ICB.')
-        st.dataframe(df_icb)
+        st.dataframe(st.session_state['df_icb'])
 
     with results_tabs[3]:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each ambulance service.'
             ]))
-        st.dataframe(df_ambo)
+        st.dataframe(st.session_state['df_ambo'])
 
     with results_tabs[4]:
-        st.dataframe(df_lsoa)
+        st.dataframe(st.session_state['df_lsoa'])
 
 
 # #########################################
 # ########## RESULTS - mRS DISTS ##########
 # #########################################
 
-# df_mrs column names are in the format:
+# st.session_state['df_mrs'] column names are in the format:
 # `usual_care_lvo_ivt_mt_mrs_dists_X`, for X from 0 to 6, i.e.
 # '{scenario}_{occlusion}_{treatment}_{dist}_{X}' with these options:
 #
@@ -306,14 +731,14 @@ if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
 elif ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
     # Use IVT-only data:
     c1 = f'{d_str}_{stroke_type}_ivt_{outcome_type}'
-    lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+    lsoa_to_keep = st.session_state['df_lsoa'].index[(st.session_state['df_lsoa'][c1] > 0.0)]
 else:
     # Look up the data normally.
     c1 = f'{d_str}_{stroke_type}_{treatment_type}_{outcome_type}'
-    lsoa_to_keep = df_lsoa.index[(df_lsoa[c1] > 0.0)]
+    lsoa_to_keep = st.session_state['df_lsoa'].index[(st.session_state['df_lsoa'][c1] > 0.0)]
 
 # mRS distributions that meet the criteria:
-df_mrs_to_plot = df_mrs[df_mrs.index.isin(lsoa_to_keep)]
+df_mrs_to_plot = st.session_state['df_mrs'][st.session_state['df_mrs'].index.isin(lsoa_to_keep)]
 
 with container_mrs_dists_etc:
     st.markdown(''.join([
@@ -350,7 +775,7 @@ def display_mrs_dists():
             treatment_type,
             stroke_type_str,
             treatment_type_str,
-            df_lsoa[['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+            st.session_state['df_lsoa'][['nearest_ivt_unit', 'nearest_ivt_unit_name']],
             df_mrs_to_plot,
             input_dict,
             scenarios=scenario_mrs
@@ -374,14 +799,14 @@ gdf = maps.load_lsoa_gdf()
 
 # Merge in outcomes data:
 gdf = pd.merge(
-    gdf, df_lsoa,
+    gdf, st.session_state['df_lsoa'],
     left_on='LSOA11NM', right_on='lsoa', how='left'
     )
 
 
 # ----- Find data for colours -----
 
-# df_lsoa column names are in the format:
+# st.session_state['df_lsoa'] column names are in the format:
 # `usual_care_lvo_ivt_mt_utility_shift`, i.e.
 # '{scenario}_{occlusion}_{treatment}_{outcome}' with these options:
 #
@@ -475,7 +900,7 @@ if outline_name == 'None':
     gdf_catchment_rhs = None
 else:
     outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs = (
-        calc.load_or_calculate_region_outlines(outline_name, df_lsoa))
+        calc.load_or_calculate_region_outlines(outline_name, st.session_state['df_lsoa']))
 
 
 # ----- Process geography for plotting -----

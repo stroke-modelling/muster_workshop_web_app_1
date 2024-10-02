@@ -31,7 +31,7 @@ def write_text_from_file(filename, head_lines_to_skip=0):
     st.markdown(f"""{text_to_print}""")
 
 
-def select_parameters_map():
+def select_parameters_map(input_dict={}):
     """
 
     TO DO another day - set these reference values up in fixed_params.
@@ -41,89 +41,119 @@ def select_parameters_map():
     call_to_ambulance_arrival_time: 18,
     ambulance_on_scene_time: 29,
     """
-    # Set up scenarios
-    inputs_shared = {
-        # Shared
-        'process_time_call_ambulance': {
-            'name': 'Time to call ambulance',
-            'default': 60
-        },
-    }
-    inputs_standard = {
-        # Standard ambulance pathway
-        'process_time_ambulance_response': {
-            'name': 'Ambulance response time',
-            'default': 20
-        },
-        'process_ambulance_on_scene_duration': {
-            'name': 'Time ambulance is on scene',
-            'default': 30
-        },
-        'process_time_arrival_to_needle': {
-            'name': 'Hospital arrival to IVT time',
-            'default': 40
-        },
-        'process_time_arrival_to_puncture': {
-            'name': 'Hospital arrival to MT time (for in-hospital IVT+MT)',
-            'default': 90
-        },
-    }
-    inputs_transfer = {
-        # Transfer required
-        'transfer_time_delay': {
-            'name': 'Door-in to door-out (for transfer to MT)',
-            'default': 90
-        },
-        'process_time_transfer_arrival_to_puncture': {
-            'name': 'Hospital arrival to MT time (for transfers)',
-            'default': 60
-        },
-    }
-    inputs_msu = {
-        # MSU
-        'process_msu_dispatch': {
-            'name': 'MSU dispatch time',
-            'default': 15
-        },
-        'process_msu_thrombolysis': {
-            'name': 'MSU IVT time',
-            'default': 30
-        },
-        'process_msu_on_scene_post_thrombolysis': {
-            'name': 'MSU on scene post IVT time',
-            'default': 15
-        },
-        'process_time_msu_arrival_to_puncture': {
-            'name': 'Hospital arrival to MT time (for MSU arrivals)',
-            'default': 60
-        },
-        'process_msu_on_scene_no_thrombolysis': {
-            'name': 'MSU on scene (no thrombolysis given)',
-            'default': 15
-        },
-        'scale_msu_travel_times': {
-            'name': 'Scale factor for MSU travel speed',
-            'default': 1.0
-        },
-    }
+    st.markdown('')
+    st.markdown('__Pre-hospital__')
+    input_dict['process_time_ambulance_response'] = st.number_input(
+        'Ambulance response time',
+        value=20,
+        help=f"Reference value: {20}",
+        # key=key
+        )
+    input_dict['process_ambulance_on_scene_duration'] = st.number_input(
+        'Time ambulance is on scene',
+        value=30,
+        help=f"Reference value: {30}",
+        # key=key
+        )
 
-    dicts = {
-        'Shared': inputs_shared,
-        'Standard pathway': inputs_standard,
-        'Transfer required': inputs_transfer,
-        'Mobile Stroke Unit': inputs_msu
-        }
+    st.markdown('')
+    st.markdown('__IVT__')
+    input_dict['process_time_arrival_to_needle'] = st.number_input(
+        'Hospital arrival to IVT time',
+        value=40,
+        help=f"Reference value: {40}",
+        # key=key
+        )    
 
-    input_dict = {}
-    for heading, i_dict in dicts.items():
-        st.markdown(f'## {heading}')
-        for key, s_dict in i_dict.items():
-            input_dict[key] = st.number_input(
-                s_dict['name'],
-                value=s_dict['default'],
-                help=f"Reference value: {s_dict['default']}",
-                key=key
-                )
+    st.markdown('')
+    st.markdown('__Transfer required for MT__')
+    input_dict['transfer_time_delay'] = st.number_input(
+        'Door-in to door-out (for transfer to MT)',
+        value=90,
+        help=f"Reference value: {90}",
+        # key=key
+        )
+    input_dict['process_time_transfer_arrival_to_puncture'] = st.number_input(
+        'Hospital arrival to MT time (for transfers)',
+        value=60,
+        help=f"Reference value: {60}",
+        # key=key
+        )
+
+    st.markdown('')
+    st.markdown('__No transfer required for MT__')
+    input_dict['process_time_arrival_to_puncture'] = st.number_input(
+        'Hospital arrival to MT time (for in-hospital IVT+MT)',
+        value=90,
+        help=f"Reference value: {90}",
+        # key=key
+        )
+
+    return input_dict
+
+
+def select_parameters_msu(input_dict={}):
+    """
+
+    TO DO another day - set these reference values up in fixed_params.
+    Default values from median onset to arrival times document
+    (Mike Allen, 23rd April 2024):
+    onset_to_call: 79,
+    call_to_ambulance_arrival_time: 18,
+    ambulance_on_scene_time: 29,
+    """
+
+    st.markdown('')
+    st.markdown('__MSU dispatch__')
+    input_dict['process_msu_dispatch'] = st.number_input(
+        'MSU dispatch time',
+        value=15,
+        help=f"Reference value: {15}",
+        # key=key
+        )
+
+    st.markdown('')
+    st.markdown('__MSU chooses to thrombolyse__')
+    input_dict['process_msu_thrombolysis'] = st.number_input(
+        'MSU IVT time',
+        value=30,
+        help=f"Reference value: {30}",
+        # key=key
+        )
+    input_dict['process_msu_on_scene_post_thrombolysis'] = st.number_input(
+        'MSU on scene post IVT time',
+        value=15,
+        help=f"Reference value: {15}",
+        # key=key
+        )
+
+    st.markdown('')
+    st.markdown('__MSU chooses not to thrombolyse__')
+    input_dict['process_msu_on_scene_no_thrombolysis'] = st.number_input(
+        'MSU on scene (no thrombolysis given)',
+        value=15,
+        help=f"Reference value: {15}",
+        # key=key
+        )
+
+    st.markdown('')
+    st.markdown('__Transfer to MT unit__')
+    input_dict['process_time_msu_arrival_to_puncture'] = st.number_input(
+        'Hospital arrival to MT time (for MSU arrivals)',
+        value=60,
+        help=f"Reference value: {60}",
+        # key=key
+        )
+
+    st.markdown('')
+    st.markdown('__Extra__')
+    input_dict['scale_msu_travel_times'] = st.number_input(
+        'Scale factor for MSU travel speed',
+        value=1.0,
+        help=f"Reference value: {1.0}",
+        # key=key
+        )
+
 
     # Write an example for how the MSU speed affects the timings.
     time_not_msu = 20.0
@@ -516,7 +546,7 @@ def select_stroke_unit_services(use_msu=True):
     df_unit_services = st.data_editor(
         df_unit_services,
         disabled=['postcode', 'stroke_team', 'isdn'],
-        height=180  # limit height to show fewer rows
+        # height=180  # limit height to show fewer rows
         )
 
     df_unit_services, df_unit_services_full = update_stroke_unit_services(
@@ -737,7 +767,7 @@ def select_colour_maps(cmap_names, cmap_diff_names):
     # )
 
     cmap_diff_name = st.radio(
-        'Default colour display for difference map',
+        'Default colour display for maps',
         cmap_diff_names,
         captions=cmap_diff_displays,
         index=cmap_diff_ind,
