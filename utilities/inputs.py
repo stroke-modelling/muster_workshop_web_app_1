@@ -554,64 +554,189 @@ def select_stroke_unit_services(use_msu=True):
     return df_unit_services, df_unit_services_full
 
 
-# def select_stroke_unit_services_broad(use_msu=True):
-# WORK IN PROGRESS AND BROKEN!!
-#     df_unit_services, df_unit_services_full, cols_use = (
-#         import_stroke_unit_services(use_msu))
+def select_stroke_unit_services_broad(use_msu=True):
+    df_unit_services, df_unit_services_full, cols_use = (
+        import_stroke_unit_services(use_msu))
 
-#     # Display and store any changes from the user:
-#     df_unit_services = st.data_editor(
-#         df_unit_services,
-#         disabled=['postcode', 'stroke_team', 'isdn'],
-#         height=180  # limit height to show fewer rows
-#         )
+
+    st.write(st.session_state)
+
+    # If this has already been loaded in, keep that version instead
+    # so changes are retained:
+    try:
+        df_unit_services = st.session_state['df_unit_services']
+    except KeyError:
+        pass
+    st.write(df_unit_services)
+
+
+    # Select either:
+    # + MSU at all IVT-only units
+    # + MSU at all MT units
+    # + MSU at all IVT and/or MT units
+    add_all_ivt = st.button('Place MSU at all IVT-only units')
+    add_all_mt = st.button('Place MSU at all MT units')
+    add_all = st.button('Place MSU at all units')
+    remove_all_ivt = st.button('Remove MSU from all IVT-only units')
+    remove_all_mt = st.button('Remove MSU from all MT units')
+    remove_all = st.button('Remove MSU from all units')
+
+    units_ivt_bool = (
+        (df_unit_services['Use_IVT'] == True) &
+        (df_unit_services['Use_MT'] == False)
+    )
+    units_mt_bool = (
+        (df_unit_services['Use_MT'] == True)
+    )
+    inds_ivt_bool = np.where(units_ivt_bool)
+    inds_mt_bool = np.where(units_mt_bool)
+    inds_all = range(len(df_unit_services))
+    if add_all_ivt:
+        df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 1
+        # for ind in inds_ivt_bool:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+    if add_all_mt:
+        df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 1
+        # for ind in inds_mt_bool:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+    if add_all:
+        df_unit_services['Use_MSU'] = 1
+        # for ind in inds_all:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
+    if remove_all_ivt:
+        df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 0
+        # for ind in inds_ivt_bool:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+    if remove_all_mt:
+        df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 0
+        # for ind in inds_mt_bool:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+    if remove_all:
+        df_unit_services['Use_MSU'] = 0
+        # for ind in inds_all:
+        #     try:
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+        #     except KeyError:
+        #         units_data_editor['edited_rows'][str(ind)] = {}
+        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
+
+    # st.session_state['units_data_editor'] = units_data_editor
+    # st.write(st.session_state['units_data_editor'])
+
+    # Manually apply the edits from data_editor.
+    # if 'units_data_editor' in st.session_state:
+    #     units_data_editor = st.session_state['units_data_editor']
+    #     for ind in list(units_data_editor['edited_rows'].keys()):
+    #         for col in list(units_data_editor['edited_rows'][ind].keys()):
+
+    #             st.write(units_data_editor['edited_rows'][ind][col])
+    #             st.write(df_unit_services.iloc[ind][col])
+    try:
+        units_data_editor = st.session_state['units_data_editor']
+        for ind in list(units_data_editor['edited_rows'].keys()):
+            for col in list(units_data_editor['edited_rows'][ind].keys()):
+                ind_name = df_unit_services.iloc[[ind]].index
+                st.write(ind_name)
+                val = units_data_editor['edited_rows'][ind][col]
+                st.write(val)
+                val = 1 if val is True else False
+                st.write(val)
+                st.write(units_data_editor['edited_rows'][ind][col])
+                st.write(df_unit_services.loc[ind_name, col])
+                df_unit_services.loc[ind_name, col] = val
+        # Delete the changelog:
+        del st.session_state['units_data_editor']
+        st.write('deleto')
+    except KeyError:
+        # st.session_state['units_data_editor'] = {
+        #     "edited_rows": {},
+        #     "added_rows": [],
+        #     "deleted_rows": []
+        #     }
+        # units_data_editor = st.session_state['units_data_editor']
+        pass
+
+
+    # def update_units_df():
+    #     # Store:
+    #     st.session_state['df_unit_services'] = df_unit_services.copy()
+
+
+    # st.session_state['df_unit_services'] = df_unit_services.copy()
+    st.session_state['df_unit_services'] = df_unit_services.copy()
+
+    # Display and store any changes from the user:
+    df_unit_services_edited = st.data_editor(
+        df_unit_services,
+        disabled=['postcode', 'stroke_team', 'isdn'],
+        # height=180  # limit height to show fewer rows
+        column_config={
+            'Use_IVT': st.column_config.CheckboxColumn(),
+            'Use_MT': st.column_config.CheckboxColumn(),
+            'Use_MSU': st.column_config.CheckboxColumn(),
+        },
+        key='units_data_editor',
+        # key=str(st.session_state['df_unit_services'])
+        # on_change=update_units_df
+        )
+
+    # st.write(units_data_editor_before)
+    # st.write(st.session_state['units_data_editor'])
+
+    # if st.session_state['units_data_editor'] == units_data_editor_before:
+    #     pass
+    # else:
+    #     df_unit_services = df_unit_services_edited
+    #     st.session_state['units_data_editor_before'] = st.session_state['units_data_editor']
+
+    # st.write(st.session_state['units_data_editor_before'])
     
-#     # Select either:
-#     # + MSU at all IVT-only units
-#     # + MSU at all MT units
-#     # + MSU at all IVT and/or MT units
-#     add_all_ivt = st.button('Place MSU at all IVT-only units')
-#     add_all_mt = st.button('Place MSU at all MT units')
-#     add_all = st.button('Place MSU at all units')
-#     remove_all_ivt = st.button('Remove MSU from all IVT-only units')
-#     remove_all_mt = st.button('Remove MSU from all MT units')
-#     remove_all = st.button('Remove MSU from all units')
 
-#     units_ivt_bool = (
-#         (df_unit_services['use_ivt'] == 1) &
-#         (df_unit_services['use_mt'] == 0)
-#     )
-#     units_mt_bool = (
-#         (df_unit_services['use_mt'] == 1)
-#     )
-#     if add_all_ivt:
-#         df_unit_services.loc[units_ivt_bool, 'use_msu'] = 1
-#     if add_all_mt:
-#         df_unit_services.loc[units_mt_bool, 'use_msu'] = 1
-#     if add_all:
-#         df_unit_services['use_msu'] = 1
-#     if remove_all_ivt:
-#         df_unit_services.loc[units_ivt_bool, 'use_msu'] = 0
-#     if remove_all_mt:
-#         df_unit_services.loc[units_mt_bool, 'use_msu'] = 0
-#     if remove_all:
-#         df_unit_services['use_msu'] = 0
+    st.write(st.session_state)
+    # update_units_df()
 
-#     # For display:
-#     df_unit_services['use_msu'] = df_unit_services['use_msu'].astype(bool)
-
-#     df_unit_services, df_unit_services_full = update_stroke_unit_services(
-#         df_unit_services, df_unit_services_full, cols_use)
-#     return df_unit_services, df_unit_services_full
+    df_unit_services, df_unit_services_full = update_stroke_unit_services(
+        df_unit_services, df_unit_services_full, cols_use)
+    
+    return df_unit_services, df_unit_services_full
 
 
 def import_stroke_unit_services(use_msu=True):
     # Set up stroke unit services (IVT, MT, MSU).
     df_unit_services = stroke_maps.load_data.stroke_unit_region_lookup()
+
+    # Rename columns to match what the rest of the model here wants.
+    df_unit_services.index.name = 'Postcode'
+    df_unit_services = df_unit_services.rename(columns={
+        'use_ivt': 'Use_IVT',
+        'use_mt': 'Use_MT',
+        'use_msu': 'Use_MSU',
+    })
+
     # Remove stroke units that don't offer IVT or MT:
     mask = (
-        (df_unit_services['use_ivt'] == 1) |
-        (df_unit_services['use_mt'] == 1)
+        (df_unit_services['Use_IVT'] == 1) |
+        (df_unit_services['Use_MT'] == 1)
     )
     df_unit_services = df_unit_services.loc[mask].copy()
     # Limit to England:
@@ -624,19 +749,21 @@ def import_stroke_unit_services(use_msu=True):
     # Limit which columns to show:
     cols_to_keep = [
         'stroke_team',
-        'use_ivt',
-        'use_mt',
+        'Use_IVT',
+        'Use_MT',
         # 'region',
         # 'icb',
         'isdn'
     ]
     df_unit_services = df_unit_services[cols_to_keep]
-    # Change 1/0 columns to bool for formatting:
-    cols_use = ['use_ivt', 'use_mt']
+
+    cols_use = ['Use_IVT', 'Use_MT']
     if use_msu:
-        df_unit_services['use_msu'] = df_unit_services['use_mt'].copy()
-        cols_use.append('use_msu')
-    df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
+        df_unit_services['Use_MSU'] = df_unit_services['Use_MT'].copy()
+        cols_use.append('Use_MSU')
+
+    # Change 1/0 columns to bool for formatting:
+    # df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values('isdn')
 
@@ -648,8 +775,8 @@ def update_stroke_unit_services(
         df_unit_services_full,
         cols_use
         ):
-    # Restore dtypes:
-    df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
+    # # Restore dtypes:
+    # df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
 
     # Update the full data (for maps) with the changes:
     cols_to_merge = cols_use  # + ['transfer_unit_postcode']
@@ -660,14 +787,6 @@ def update_stroke_unit_services(
         df_unit_services[cols_to_merge].copy(),
         left_index=True, right_index=True, how='left'
         )
-
-    # Rename columns to match what the rest of the model here wants.
-    df_unit_services.index.name = 'Postcode'
-    df_unit_services = df_unit_services.rename(columns={
-        'use_ivt': 'Use_IVT',
-        'use_mt': 'Use_MT',
-        'use_msu': 'Use_MSU',
-    })
     return df_unit_services, df_unit_services_full
 
 

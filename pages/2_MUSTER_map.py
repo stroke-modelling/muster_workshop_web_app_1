@@ -198,7 +198,8 @@ with container_unit_services:
     st.header('Stroke unit services')
     st.markdown('Update which services the stroke units provide:')
     df_unit_services, df_unit_services_full = (
-        inputs.select_stroke_unit_services())
+        inputs.select_stroke_unit_services_broad())
+    st.write(df_unit_services)
 
 # These do not change the underlying data,
 # but do change what is shown in the plots.
