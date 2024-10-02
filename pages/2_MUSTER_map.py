@@ -21,6 +21,7 @@ from utilities.maps_raster import make_raster_from_vectors, \
 # Containers:
 import utilities.inputs as inputs
 import utilities.colour_setup as colour_setup
+import utilities.plot_timeline as timeline
 
 
 @st.cache_data
@@ -243,328 +244,55 @@ if outcome_type == 'mrs_shift':
 
 
 
-# TIME LINE
-# import utilities.plot_timeline as timeline
-# times_dicts = timeline.build_data_for_timeline(input_dict, use_drip_ship=True, use_mothership=True, use_msu=False)
+# ######################################
+# ########## PLOT USER INPUTS ##########
+# ######################################
 
+# ----- Timeline -----
+time_dicts = timeline.build_time_dicts_muster(input_dict)
+timeline_display_dict = timeline.get_timeline_display_dict()
 
-def build_time_dicts(pathway_dict):
-    # Pre-hospital "usual care":
-    time_dict_prehosp_usual_care = {'onset': 0}
-    prehosp_keys = [
-        'process_time_call_ambulance',
-        'process_time_ambulance_response',
-        'process_ambulance_on_scene_duration',
-        ]
-    for key in prehosp_keys:
-        time_dict_prehosp_usual_care[key] = pathway_dict[key]
-
-    # MSU dispatch:
-    time_dict_msu_dispatch = {'onset': 0}
-    msu_dispatch_keys = [
-        'process_time_call_ambulance',
-        'process_msu_dispatch',
-        ]
-    for key in msu_dispatch_keys:
-        time_dict_msu_dispatch[key] = pathway_dict[key]
-
-    # MSU:
-    time_dict_prehosp_msu_ivt = {'msu_arrival_on_scene': 0}
-    prehosp_msu_ivt_keys = [
-        'process_msu_thrombolysis',
-        'process_msu_on_scene_post_thrombolysis',
-        ]
-    for key in prehosp_msu_ivt_keys:
-        time_dict_prehosp_msu_ivt[key] = pathway_dict[key]
-
-    # MSU, no thrombolysis:
-    time_dict_prehosp_msu_no_ivt = {'msu_arrival_on_scene': 0}
-    prehosp_msu_no_ivt_keys = [
-        'process_msu_on_scene_no_thrombolysis',
-        ]
-    for key in prehosp_msu_no_ivt_keys:
-        time_dict_prehosp_msu_no_ivt[key] = pathway_dict[key]
-
-    # Transfer to MT unit from MSU:
-    time_dict_mt_transfer_unit_from_msu = {'arrival_ivt_mt': 0}
-    time_dict_mt_transfer_unit_from_msu['arrival_to_puncture'] = (
-        pathway_dict['process_time_msu_arrival_to_puncture'])
-
-    # IVT-only unit:
-    time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
-    time_dict_ivt_only_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_only_unit['needle_to_door_out'] = (
-        pathway_dict['transfer_time_delay'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    # MT transfer unit:
-    time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
-    time_dict_mt_transfer_unit['arrival_to_puncture'] = (
-        pathway_dict['process_time_transfer_arrival_to_puncture'])
-
-    # IVT and MT unit:
-    time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
-    time_dict_ivt_mt_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_mt_unit['needle_to_puncture'] = (
-        pathway_dict['process_time_arrival_to_puncture'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    time_dicts = {
-        'prehosp_usual_care': time_dict_prehosp_usual_care,
-        'msu_dispatch': time_dict_msu_dispatch,
-        'prehosp_msu_ivt': time_dict_prehosp_msu_ivt,
-        'prehosp_msu_no_ivt': time_dict_prehosp_msu_no_ivt,
-        'mt_transfer_from_msu': time_dict_mt_transfer_unit_from_msu,
-        'ivt_only_unit': time_dict_ivt_only_unit,
-        'mt_transfer_unit': time_dict_mt_transfer_unit,
-        'ivt_mt_unit': time_dict_ivt_mt_unit,
-    }
-    return time_dicts
-
-
-time_dicts = build_time_dicts(input_dict)
-
-# Emoji unicode reference:
-# 🔧 \U0001f527
-# 🏥 \U0001f3e5
-# 🚑 \U0001f691
-# 💉 \U0001f489
-# ☎ \U0000260E
-timeline_display_dict = {
-    'onset': {
-        'emoji': '',
-        'text': 'Onset',
-    },
-    'process_time_call_ambulance': {
-        'emoji': '\U0000260E',
-        'text': 'Call<br>ambulance',
-    },
-    'process_time_ambulance_response': {
-        'emoji': '\U0001f691',
-        'text': 'Ambulance<br>arrives on scene',
-    },
-    'process_ambulance_on_scene_duration': {
-        'emoji': '\U0001f691',
-        'text': 'Ambulance<br>leaves',
-    },
-    'arrival_ivt_only': {
-        'emoji': '\U0001f3e5',
-        'text': 'Arrival<br>IVT unit',
-    },
-    'arrival_ivt_mt': {
-        'emoji': '\U0001f3e5',
-        'text': 'Arrival<br>MT unit',
-    },
-    'arrival_to_needle': {
-        'emoji': '\U0001f489',
-        'text': '<b><span style="color:red">IVT</span></b>',
-    },
-    'needle_to_door_out': {
-        'emoji': '\U0001f691',
-        'text': 'Ambulance<br>transfer<br>begins',
-    },
-    'needle_to_puncture': {
-        'emoji': '\U0001f527',
-        'text': '<b><span style="color:red">MT</span></b>',
-    },
-    'arrival_to_puncture': {
-        'emoji': '\U0001f527',
-        'text': '<b><span style="color:red">MT</span></b>',
-    },
-    'process_msu_dispatch': {
-        'emoji': '\U0001f691',
-        'text': 'MSU<br>leaves base'
-    },
-    'msu_arrival_on_scene': {
-        'emoji': '\U0001f691',
-        'text': 'MSU arrives<br>on scene'
-    },
-    'process_msu_thrombolysis': {
-        'emoji': '\U0001f489',
-        'text': '<b><span style="color:red">IVT</span></b>',
-    },
-    'process_msu_on_scene_post_thrombolysis': {
-        'emoji': '\U0001f691',
-        'text': 'MSU<br>leaves scene'
-    },
-    'process_msu_on_scene_no_thrombolysis': {
-        'emoji': '\U0001f691',
-        'text': 'MSU<br>leaves scene'
-    },
-    'nearest_ivt_time': {
-        'emoji': '',
-        'text': '',
-    },
-    'nearest_mt_time': {
-        'emoji': '',
-        'text': '',
-    },
-    'transfer_time': {
-        'emoji': '',
-        'text': '',
-    },
-    }
-
-
-import plotly.graph_objects as go
-import numpy as np
-
-def plot_timeline(
-        time_dicts,
-        timeline_display_dict,
-        y_vals,
-        y_labels,
-        time_offsets=[],
-        tmax=None,
-        tmin=None,
-        ):
-    if len(time_offsets) == 0:
-        time_offsets = [0] * len(time_dicts.keys())
-
-    # Pre-hospital timelines
-    fig = go.Figure()
-
-
-    # # Draw box
-    # fig.add_trace(go.Scatter(
-    #     y=[0, 100, 100, 0],
-    #     x=[0, 0, -2, -2],
-    #     fill="toself",
-    #     hoverinfo='skip',
-    #     mode='lines',
-    #     line=dict(color="RoyalBlue", width=3),
-    #     showlegend=False
-    #     ))
-
-    # Assume the keys are in the required order:
-    time_names = list(time_dicts.keys())
-
-    for i, time_name in enumerate(time_names):
-        # Pick out this dict:
-        time_dict = time_dicts[time_name]
-        # Convert the discrete times into cumulative times:
-        cum_times = np.cumsum(list(time_dict.values()))
-        # Pick out the emoji and text labels to plot:
-        emoji_here = [timeline_display_dict[key]['emoji']
-                      for key in list(time_dict.keys())]
-        labels_here = [f'{timeline_display_dict[key]["text"]}'  #<br><br><br>'
-                       for key in list(time_dict.keys())]
-        time_offset = time_offsets[time_name]
-
-        fig.add_trace(go.Scatter(
-            y=time_offset + cum_times,
-            x=[y_vals[i]]*len(cum_times),
-            mode='lines+markers+text',
-            text=emoji_here,
-            marker=dict(symbol='line-ew', size=10,
-                        line_width=2, line_color='grey'),
-            line_color='grey',
-            textposition='middle center',
-            textfont=dict(size=24),
-            name=time_name,
-            showlegend=False,
-            hoverinfo='skip'  # 'y'
-        ))
-        fig.add_trace(go.Scatter(
-            y=time_offset + cum_times,
-            x=[y_vals[i] + 0.2]*len(cum_times),
-            mode='text',
-            text=labels_here,
-            textposition='middle right',
-            # textfont=dict(size=24)
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-
-        # Sneaky extra scatter marker for hover text:
-        y_sneaky = np.array([np.mean([cum_times[i], cum_times[i+1]]) for i in range(len(cum_times) - 1)])
-        y_diffs = [f'{d}    ' for d in np.diff(cum_times)]
-        fig.add_trace(go.Scatter(
-            y=time_offset + y_sneaky,
-            x=[y_vals[i]]*len(y_sneaky),
-            mode='text',
-            text=y_diffs,
-            line_color='grey',
-            textposition='middle left',
-            textfont=dict(size=18),
-            showlegend=False,
-            hoverinfo='skip'  # 'y'
-        ))
-
-    fig.update_layout(xaxis=dict(
-        tickmode='array',
-        tickvals=[],  # y_vals,
-        # ticktext=y_labels
-    ))
-    fig.update_layout(yaxis=dict(
-        tickmode='array',
-        tickvals=[],
-        zeroline=False
-    ))
-    fig.update_layout(xaxis_range=[min(y_vals) - 0.5, max(y_vals) + 1.0])
-    # fig.update_layout(yaxis_title='Time (minutes)')
-
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-
-    fig.update_layout(
-        # autosize=False,
-        # width=500,
-        height=tmax*2.0,
-        yaxis=dict(
-            range=[tmax, tmin],  # Default x-axis zoom.
-        ),
-        # Make the default cursor setting pan instead of zoom box:
-        dragmode='pan'
-    )
-    # fig.update_yaxes(autorange="reversed")
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config=plotly_config
-        )
-
-
+# Setup for timeline plot.
+# Leave this gap in minutes between separate chunks of pathway:
 gap_between_chunks = 45
-
+# Start each chunk at these offsets:
 time_offsets = {
     'prehosp_usual_care': 0,
-    'ivt_only_unit': gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values()),
-    'mt_transfer_unit': gap_between_chunks * 2.0 + sum(time_dicts['prehosp_usual_care'].values()) + sum(time_dicts['ivt_only_unit'].values()),
-    'ivt_mt_unit': gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values()),
+    'ivt_only_unit': (
+        gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
+        ),
+    'mt_transfer_unit': (
+        gap_between_chunks * 2.0 +
+        sum(time_dicts['prehosp_usual_care'].values()) +
+        sum(time_dicts['ivt_only_unit'].values())
+    ),
+    'ivt_mt_unit': (
+        gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
+    ),
     'msu_dispatch': 0,
-    'prehosp_msu_ivt': gap_between_chunks + sum(time_dicts['msu_dispatch'].values()),
-    'prehosp_msu_no_ivt': gap_between_chunks + sum(time_dicts['msu_dispatch'].values()),
-    'mt_transfer_from_msu': gap_between_chunks * 2.0 + sum(time_dicts['msu_dispatch'].values()) + max([sum(time_dicts['prehosp_msu_ivt'].values()), sum(time_dicts['prehosp_msu_no_ivt'].values())]),
+    'prehosp_msu_ivt': (
+        gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
+    ),
+    'prehosp_msu_no_ivt': (
+        gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
+    ),
+    'mt_transfer_from_msu': (
+        gap_between_chunks * 2.0 +
+        sum(time_dicts['msu_dispatch'].values()) +
+        max([
+            sum(time_dicts['prehosp_msu_ivt'].values()),
+            sum(time_dicts['prehosp_msu_no_ivt'].values())
+            ])
+    ),
 }
+# Find shared max time for setting same size across multiple plots
+# so that 1 minute always spans the same number of pixels.
 tmax = max(
     [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
 ) + gap_between_chunks
 
+# Separate the standard and MSU pathway data.
+# Standard:
 time_keys_standard = [
     'prehosp_usual_care',
     'ivt_only_unit',
@@ -573,8 +301,7 @@ time_keys_standard = [
 ]
 time_dicts_standard = dict([(k, time_dicts[k]) for k in time_keys_standard])
 time_offsets_standard = dict([(k, time_offsets[k]) for k in time_keys_standard])
-
-
+# MSU:
 time_keys_msu = [
     'msu_dispatch',
     'prehosp_msu_ivt',
@@ -584,35 +311,26 @@ time_keys_msu = [
 time_dicts_msu = dict([(k, time_dicts[k]) for k in time_keys_msu])
 time_offsets_msu = dict([(k, time_offsets[k]) for k in time_keys_msu])
 
-
+# Draw the timelines:
 with container_timeline_standard:
-    plot_timeline(
+    timeline.plot_timeline(
         time_dicts_standard,
         timeline_display_dict,
-        y_vals=[0.5, 0, 0, 1],
-        y_labels=[
-            'Usual care',
-            'IVT-only unit',
-            'Transfer to MT unit',
-            'IVT & MT unit'
-            ],
+        y_vals=[0.5, 1, 1, 0],
         time_offsets=time_offsets_standard,
         tmax=tmax,
-        tmin=-gap_between_chunks
+        tmin=-10.0
         )
 with container_timeline_msu:
-    plot_timeline(
-        time_dicts_msu, timeline_display_dict, y_vals=[0.5, 0, 1, 0.5],
-        y_labels=[
-            'MSU dispatch', 'MSU (IVT)', 'MSU (no IVT)',
-            'Transfer to MT unit (from MSU)'
-            ],
+    timeline.plot_timeline(
+        time_dicts_msu,
+        timeline_display_dict,
+        y_vals=[0.5, 0, 1, 0.5],
         time_offsets=time_offsets_msu,
         tmax=tmax,
-        tmin=-gap_between_chunks
+        tmin=-10.0
     )
 
-st.stop()
 
 
 # #######################################

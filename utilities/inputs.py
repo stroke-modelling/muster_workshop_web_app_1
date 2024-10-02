@@ -66,6 +66,15 @@ def select_parameters_map(input_dict={}):
         )    
 
     st.markdown('')
+    st.markdown('__No transfer required for MT__')
+    input_dict['process_time_arrival_to_puncture'] = st.number_input(
+        'Hospital arrival to MT time (for in-hospital IVT+MT)',
+        value=90,
+        help=f"Reference value: {90}",
+        # key=key
+        )
+
+    st.markdown('')
     st.markdown('__Transfer required for MT__')
     input_dict['transfer_time_delay'] = st.number_input(
         'Door-in to door-out (for transfer to MT)',
@@ -77,15 +86,6 @@ def select_parameters_map(input_dict={}):
         'Hospital arrival to MT time (for transfers)',
         value=60,
         help=f"Reference value: {60}",
-        # key=key
-        )
-
-    st.markdown('')
-    st.markdown('__No transfer required for MT__')
-    input_dict['process_time_arrival_to_puncture'] = st.number_input(
-        'Hospital arrival to MT time (for in-hospital IVT+MT)',
-        value=90,
-        help=f"Reference value: {90}",
         # key=key
         )
 
