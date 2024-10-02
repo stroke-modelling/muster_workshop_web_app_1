@@ -558,17 +558,12 @@ def select_stroke_unit_services_broad(use_msu=True):
     df_unit_services, df_unit_services_full, cols_use = (
         import_stroke_unit_services(use_msu))
 
-
-    st.write(st.session_state)
-
     # If this has already been loaded in, keep that version instead
     # so changes are retained:
     try:
         df_unit_services = st.session_state['df_unit_services']
     except KeyError:
         pass
-    st.write(df_unit_services)
-
 
     # Select either:
     # + MSU at all IVT-only units
@@ -581,143 +576,78 @@ def select_stroke_unit_services_broad(use_msu=True):
     remove_all_mt = st.button('Remove MSU from all MT units')
     remove_all = st.button('Remove MSU from all units')
 
+    # Which units need to be changed in each case:
     units_ivt_bool = (
-        (df_unit_services['Use_IVT'] == True) &
-        (df_unit_services['Use_MT'] == False)
+        (df_unit_services['Use_IVT'] == 1) &
+        (df_unit_services['Use_MT'] == 0)
     )
     units_mt_bool = (
-        (df_unit_services['Use_MT'] == True)
+        (df_unit_services['Use_MT'] == 1)
     )
-    inds_ivt_bool = np.where(units_ivt_bool)
-    inds_mt_bool = np.where(units_mt_bool)
-    inds_all = range(len(df_unit_services))
+    # Apply change of the last button pressed.
+    # The button is only True if it was pressed on the last run
+    # of the script.
     if add_all_ivt:
         df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 1
-        # for ind in inds_ivt_bool:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
     if add_all_mt:
         df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 1
-        # for ind in inds_mt_bool:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
     if add_all:
         df_unit_services['Use_MSU'] = 1
-        # for ind in inds_all:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = True
     if remove_all_ivt:
         df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 0
-        # for ind in inds_ivt_bool:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
     if remove_all_mt:
         df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 0
-        # for ind in inds_mt_bool:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
     if remove_all:
         df_unit_services['Use_MSU'] = 0
-        # for ind in inds_all:
-        #     try:
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
-        #     except KeyError:
-        #         units_data_editor['edited_rows'][str(ind)] = {}
-        #         units_data_editor['edited_rows'][str(ind)]['Use_MSU'] = False
-
-    # st.session_state['units_data_editor'] = units_data_editor
-    # st.write(st.session_state['units_data_editor'])
 
     # Manually apply the edits from data_editor.
-    # if 'units_data_editor' in st.session_state:
-    #     units_data_editor = st.session_state['units_data_editor']
-    #     for ind in list(units_data_editor['edited_rows'].keys()):
-    #         for col in list(units_data_editor['edited_rows'][ind].keys()):
-
-    #             st.write(units_data_editor['edited_rows'][ind][col])
-    #             st.write(df_unit_services.iloc[ind][col])
     try:
         units_data_editor = st.session_state['units_data_editor']
+        # Update each of the changes listed in this dict:
         for ind in list(units_data_editor['edited_rows'].keys()):
             for col in list(units_data_editor['edited_rows'][ind].keys()):
+                # Which row in the dataframe is this?
                 ind_name = df_unit_services.iloc[[ind]].index
-                st.write(ind_name)
+                # Is the value True or False?
                 val = units_data_editor['edited_rows'][ind][col]
-                st.write(val)
                 val = 1 if val is True else False
-                st.write(val)
-                st.write(units_data_editor['edited_rows'][ind][col])
-                st.write(df_unit_services.loc[ind_name, col])
+                # Update this value in the dataframe:
                 df_unit_services.loc[ind_name, col] = val
         # Delete the changelog:
         del st.session_state['units_data_editor']
-        st.write('deleto')
+        # ^ otherwise the same edits would be applied again
+        # as soon as the data_editor widget is rendered.
     except KeyError:
-        # st.session_state['units_data_editor'] = {
-        #     "edited_rows": {},
-        #     "added_rows": [],
-        #     "deleted_rows": []
-        #     }
-        # units_data_editor = st.session_state['units_data_editor']
+        # The edit dict doesn't exist yet.
+        # This is the first run of the script.
         pass
 
-
-    # def update_units_df():
-    #     # Store:
-    #     st.session_state['df_unit_services'] = df_unit_services.copy()
-
-
-    # st.session_state['df_unit_services'] = df_unit_services.copy()
+    # Store a copy of the dataframe with our edits:
     st.session_state['df_unit_services'] = df_unit_services.copy()
 
-    # Display and store any changes from the user:
+    # Display data_editor to collect changes from the user:
     df_unit_services_edited = st.data_editor(
         df_unit_services,
         disabled=['postcode', 'stroke_team', 'isdn'],
         # height=180  # limit height to show fewer rows
+        # Make columns display as checkboxes instead of 0/1 ints:
         column_config={
             'Use_IVT': st.column_config.CheckboxColumn(),
             'Use_MT': st.column_config.CheckboxColumn(),
             'Use_MSU': st.column_config.CheckboxColumn(),
         },
         key='units_data_editor',
-        # key=str(st.session_state['df_unit_services'])
-        # on_change=update_units_df
         )
+    # Do not keep a copy of the returned edited dataframe.
+    # We'll update it ourselves when the script reruns.
+    # The script reruns immediately after the dataframe is edited
+    # or a button is pressed.
 
-    # st.write(units_data_editor_before)
-    # st.write(st.session_state['units_data_editor'])
-
-    # if st.session_state['units_data_editor'] == units_data_editor_before:
-    #     pass
-    # else:
-    #     df_unit_services = df_unit_services_edited
-    #     st.session_state['units_data_editor_before'] = st.session_state['units_data_editor']
-
-    # st.write(st.session_state['units_data_editor_before'])
-    
-
-    st.write(st.session_state)
-    # update_units_df()
-
+    # Gather the rest of the data that was previously hidden
+    # from the user:
     df_unit_services, df_unit_services_full = update_stroke_unit_services(
         df_unit_services, df_unit_services_full, cols_use)
-    
+
     return df_unit_services, df_unit_services_full
 
 
