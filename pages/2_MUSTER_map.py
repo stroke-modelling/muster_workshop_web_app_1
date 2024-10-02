@@ -345,9 +345,9 @@ with container_map:
 try:
     inputs_changed = (
         (st.session_state['input_dict'] != input_dict) |
-        (st.session_state['df_unit_services']['Use_IVT'] != df_unit_services['Use_IVT']).any() |
-        (st.session_state['df_unit_services']['Use_MT'] != df_unit_services['Use_MT']).any() |
-        (st.session_state['df_unit_services']['Use_MSU'] != df_unit_services['Use_MSU']).any()
+        (st.session_state['df_unit_services_on_last_run']['Use_IVT'] != df_unit_services['Use_IVT']).any() |
+        (st.session_state['df_unit_services_on_last_run']['Use_MT'] != df_unit_services['Use_MT']).any() |
+        (st.session_state['df_unit_services_on_last_run']['Use_MSU'] != df_unit_services['Use_MSU']).any()
     )
 except KeyError:
     # First run of the app.
@@ -356,7 +356,7 @@ except KeyError:
 with container_rerun:
     if st.button('Calculate results'):
         st.session_state['input_dict'] = input_dict
-        st.session_state['df_unit_services'] = df_unit_services
+        st.session_state['df_unit_services_on_last_run'] = df_unit_services
         (
             st.session_state['df_lsoa'],
             st.session_state['df_mrs'],

@@ -610,7 +610,7 @@ def select_stroke_unit_services_broad(use_msu=True):
                 ind_name = df_unit_services.iloc[[ind]].index
                 # Is the value True or False?
                 val = units_data_editor['edited_rows'][ind][col]
-                val = 1 if val is True else False
+                val = 1 if val is True else 0
                 # Update this value in the dataframe:
                 df_unit_services.loc[ind_name, col] = val
         # Delete the changelog:
@@ -854,7 +854,7 @@ def load_region_lists(df_unit_services_full):
     # Find list of units offering IVT.
     # Use names not postcodes here to match ICB and ISDN names
     # and have nicer display on the app.
-    mask = df_unit_services_full['use_ivt'] == 1
+    mask = df_unit_services_full['Use_IVT'] == 1
     nearest_ivt_unit_names_list = sorted(df_unit_services_full.loc[mask, 'stroke_team'])
 
     # Key for region type, value for list of options.

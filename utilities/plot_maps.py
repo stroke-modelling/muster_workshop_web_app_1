@@ -69,7 +69,7 @@ def create_stroke_team_markers(df_units=None):
     # Set everything to the IVT marker:
     markers = np.full(len(gdf_points_units), 'circle', dtype=object)
     # Update MT units:
-    col_use_mt = 'use_mt'
+    col_use_mt = 'Use_MT'
     mask_mt = (gdf_points_units[col_use_mt] == 1)
     markers[mask_mt] = 'square'
     # Store in the DataFrame:
@@ -77,9 +77,9 @@ def create_stroke_team_markers(df_units=None):
 
     # Add markers in separate traces for the sake of legend entries.
     # Pick out which stroke unit types are where in the gdf:
-    col_ivt = 'use_ivt'
-    col_mt = 'use_mt'
-    col_msu = 'use_msu'
+    col_ivt = 'Use_IVT'
+    col_mt = 'Use_MT'
+    col_msu = 'Use_MSU'
     mask_ivt = gdf_points_units[col_ivt] == 1
     mask_mt = gdf_points_units[col_mt] == 1
     mask_msu = gdf_points_units[col_msu] == 1
