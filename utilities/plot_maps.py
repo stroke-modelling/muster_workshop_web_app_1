@@ -831,7 +831,9 @@ def plotly_many_heatmaps(
     dict_colourscales_lhs = {}
     dict_colourscales_rhs = {}
     import utilities.colour_setup as colour_setup
-    for c in ['iceburn_r', 'seaweed', 'fusion', 'waterlily']:
+    cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
+    cmaps += [c[:-2] if c.endswith('_r') else f'{c}_r' for c in cmaps]
+    for c in cmaps:
         dict_colourscales_lhs[c] = colour_setup.make_colour_list_for_plotly_button(
             c, vmin=dict_colours['vmin'], vmax=dict_colours['vmax'])
         dict_colourscales_rhs[c] = colour_setup.make_colour_list_for_plotly_button(
@@ -842,29 +844,12 @@ def plotly_many_heatmaps(
             dict(
                 buttons=list([
                     dict(
-                        args=[{'colorscale': [dict_colourscales_lhs['iceburn_r'], dict_colourscales_rhs['iceburn_r']]},
+                        args=[{'colorscale': [dict_colourscales_lhs[c], dict_colourscales_rhs[c]]},
                               {'traces': ['lhs', 'rhs']}],
-                        label='iceburn_r',
+                        label=c,
                         method='restyle'
-                    ),
-                    dict(
-                        args=[{'colorscale': [dict_colourscales_lhs['seaweed'], dict_colourscales_rhs['seaweed']]},
-                              {'traces': ['lhs', 'rhs']}],
-                        label='seaweed',
-                        method='restyle'
-                    ),
-                    dict(
-                        args=[{'colorscale': [dict_colourscales_lhs['fusion'], dict_colourscales_rhs['fusion']]},
-                              {'traces': ['lhs', 'rhs']}],
-                        label='fusion',
-                        method='restyle'
-                    ),
-                    dict(
-                        args=[{'colorscale': [dict_colourscales_lhs['waterlily'], dict_colourscales_rhs['waterlily']]},
-                              {'traces': ['lhs', 'rhs']}],
-                        label='waterlily',
-                        method='restyle'
-                    ),
+                    )
+                    for c in cmaps
                 ]),
                 type = 'buttons',
                 direction='right',
