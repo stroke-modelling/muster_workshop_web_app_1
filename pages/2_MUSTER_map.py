@@ -228,6 +228,7 @@ cmap_names = [
 cmap_diff_names = [
     'iceburn_r', 'seaweed', 'fusion', 'waterlily'
     ]
+cmap_diff_names += [c[:-2] if c.endswith('_r') else f'{c}_r' for c in cmap_diff_names]
 with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name, cmap_diff_name = inputs.select_colour_maps(
