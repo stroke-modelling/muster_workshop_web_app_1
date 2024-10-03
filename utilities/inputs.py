@@ -554,7 +554,11 @@ def select_stroke_unit_services(use_msu=True):
     return df_unit_services, df_unit_services_full
 
 
-def select_stroke_unit_services_broad(use_msu=True):
+def select_stroke_unit_services_broad(
+        container_buttons,
+        container_dataeditor,
+        use_msu=True
+        ):
     df_unit_services, df_unit_services_full, cols_use = (
         import_stroke_unit_services(use_msu))
 
@@ -569,12 +573,27 @@ def select_stroke_unit_services_broad(use_msu=True):
     # + MSU at all IVT-only units
     # + MSU at all MT units
     # + MSU at all IVT and/or MT units
-    add_all_ivt = st.button('Place MSU at all IVT-only units')
-    add_all_mt = st.button('Place MSU at all MT units')
-    add_all = st.button('Place MSU at all units')
-    remove_all_ivt = st.button('Remove MSU from all IVT-only units')
-    remove_all_mt = st.button('Remove MSU from all MT units')
-    remove_all = st.button('Remove MSU from all units')
+    with container_buttons:
+        n_cols = 6
+        cols = st.columns(n_cols)
+        i = 0
+        with cols[i % n_cols]:
+            add_all_ivt = st.button('Place MSU at all IVT-only units')
+        i += 1
+        with cols[i % n_cols]:
+            add_all_mt = st.button('Place MSU at all MT units')
+        i += 1
+        with cols[i % n_cols]:
+            add_all = st.button('Place MSU at all units')
+        i += 1
+        with cols[i % n_cols]:
+            remove_all_ivt = st.button('Remove MSU from all IVT-only units')
+        i += 1
+        with cols[i % n_cols]:
+            remove_all_mt = st.button('Remove MSU from all MT units')
+        i += 1
+        with cols[i % n_cols]:
+            remove_all = st.button('Remove MSU from all units')
 
     # Which units need to be changed in each case:
     units_ivt_bool = (
@@ -626,18 +645,19 @@ def select_stroke_unit_services_broad(use_msu=True):
     st.session_state['df_unit_services'] = df_unit_services.copy()
 
     # Display data_editor to collect changes from the user:
-    df_unit_services_edited = st.data_editor(
-        df_unit_services,
-        disabled=['postcode', 'stroke_team', 'isdn'],
-        # height=180  # limit height to show fewer rows
-        # Make columns display as checkboxes instead of 0/1 ints:
-        column_config={
-            'Use_IVT': st.column_config.CheckboxColumn(),
-            'Use_MT': st.column_config.CheckboxColumn(),
-            'Use_MSU': st.column_config.CheckboxColumn(),
-        },
-        key='units_data_editor',
-        )
+    with container_dataeditor:
+        df_unit_services_edited = st.data_editor(
+            df_unit_services,
+            disabled=['postcode', 'stroke_team', 'isdn'],
+            # height=180  # limit height to show fewer rows
+            # Make columns display as checkboxes instead of 0/1 ints:
+            column_config={
+                'Use_IVT': st.column_config.CheckboxColumn(),
+                'Use_MT': st.column_config.CheckboxColumn(),
+                'Use_MSU': st.column_config.CheckboxColumn(),
+            },
+            key='units_data_editor',
+            )
     # Do not keep a copy of the returned edited dataframe.
     # We'll update it ourselves when the script reruns.
     # The script reruns immediately after the dataframe is edited
@@ -682,8 +702,8 @@ def import_stroke_unit_services(use_msu=True):
         'Use_IVT',
         'Use_MT',
         # 'region',
+        'isdn',
         # 'icb',
-        'isdn'
     ]
     df_unit_services = df_unit_services[cols_to_keep]
 

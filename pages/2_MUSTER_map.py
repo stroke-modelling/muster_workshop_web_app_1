@@ -95,7 +95,7 @@ st.set_page_config(
 
 
 # #####################################
-# ########## CONTAINER SETUP ##########
+# ########## CONTAINER SETUP ##########  --------------------------------------------- update me
 # #####################################
 # Make containers:
 # +-----------------------------------------------+
@@ -138,6 +138,17 @@ with container_inputs:
         container_inputs_msu,
         container_timeline_msu
     ) = st.columns(4)
+with container_unit_services:
+    (
+        container_unit_services_top,
+        container_services_map
+    ) = st.columns([1, 2])
+    with container_unit_services_top:
+        st.header('Stroke unit services')
+    container_services_buttons = st.container()
+    container_services_dataeditor = st.container()
+with container_services_buttons:    
+    st.markdown('To update the services, use the following buttons and click the tick-boxes in the table.')
 
 with tab_results:
     container_rerun = st.container()
@@ -194,11 +205,11 @@ with container_inputs_msu:
     st.markdown('### Mobile Stroke Unit')
     input_dict = inputs.select_parameters_msu(input_dict)
 
-with container_unit_services:
-    st.header('Stroke unit services')
-    st.markdown('Update which services the stroke units provide:')
-    df_unit_services, df_unit_services_full = (
-        inputs.select_stroke_unit_services_broad())
+df_unit_services, df_unit_services_full = (
+    inputs.select_stroke_unit_services_broad(
+        container_services_buttons,
+        container_services_dataeditor,
+    ))
 
 # These do not change the underlying data,
 # but do change what is shown in the plots.
@@ -333,6 +344,80 @@ with container_timeline_msu:
     )
 
 
+# ----- Maps -----
+# Stroke unit scatter markers:
+traces_units = plot_maps.create_stroke_team_markers(
+    df_unit_services_full)
+# Which subplots to draw which units on:
+# Each entry is [row number, column number].
+# In plotly, the first row is 1 and first column is 1.
+# The order in which they are drawn (and so which markers appear
+# on top) is the order of this dictionary.
+unit_subplot_dict = {
+    'msu': [[1, 2]],        # second map only
+    'ivt': [[1, 1]],        # first map only
+    'mt': [[1, 1], [1, 2]]  # both maps
+}
+# Regions to draw
+# Name of the column in the geojson that labels the shapes:
+with container_unit_services_top:
+    st.markdown('These maps show which services are provided by each stroke unit in England.')
+    outline_name_for_unit_map = st.radio(
+        'Region type to draw on maps',
+        [
+            'None',
+            'ISDN',
+            'ICB',
+            'Nearest service',  # hasn't been calculated yet
+            'Ambulance service'
+            ],
+        key='outlines_for_unit_map'
+        )
+
+# Region outlines:
+if outline_name_for_unit_map == 'None':
+    outline_names_col_for_unit_map = None
+    gdf_catchment_lhs_for_unit_map = None
+    gdf_catchment_rhs_for_unit_map = None
+else:
+    if outline_name_for_unit_map == 'Nearest service':
+        # Times to treatment:
+        geo = calc.calculate_geography(df_unit_services).combined_data
+        # Put columns in the format expected by the region outline
+        # function:
+        geo = geo.rename(columns={
+            'LSOA': 'lsoa',
+            'nearest_ivt_unit': 'nearest_ivt_unit_name',
+            'nearest_mt_unit': 'nearest_mt_unit_name',
+            })
+        geo = geo.set_index(['lsoa', 'nearest_ivt_unit_name'])
+    else:
+        # Don't need catchment areas.
+        geo = None
+    outline_names_col_for_unit_map, gdf_catchment_lhs_for_unit_map, gdf_catchment_rhs_for_unit_map = (
+        calc.load_or_calculate_region_outlines(outline_name_for_unit_map, geo))
+# ----- Process geography for plotting -----
+# Convert gdf polygons to xy cartesian coordinates:
+gdfs_to_convert = [gdf_catchment_lhs_for_unit_map, gdf_catchment_rhs_for_unit_map]
+for gdf in gdfs_to_convert:
+    if gdf is None:
+        pass
+    else:
+        x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
+        gdf['x'] = x_list
+        gdf['y'] = y_list
+
+with container_services_map:
+    plot_maps.plotly_unit_maps(
+        traces_units,
+        unit_subplot_dict,
+        gdf_catchment_lhs_for_unit_map,
+        gdf_catchment_rhs_for_unit_map,
+        outline_names_col_for_unit_map,
+        outline_name_for_unit_map,
+        subplot_titles=['Usual care', 'Mobile Stroke Unit']
+        )
+
 
 # #######################################
 # ########## MAIN CALCULATIONS ##########
@@ -357,6 +442,7 @@ with container_rerun:
     if st.button('Calculate results'):
         st.session_state['input_dict'] = input_dict
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
+        st.session_state['df_unit_services_full_on_last_run'] = df_unit_services_full
         (
             st.session_state['df_lsoa'],
             st.session_state['df_mrs'],
@@ -636,7 +722,8 @@ for gdf in gdfs_to_convert:
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
-traces_units = plot_maps.create_stroke_team_markers(df_unit_services_full)
+traces_units = plot_maps.create_stroke_team_markers(
+    st.session_state['df_unit_services_full_on_last_run'])
 # Which subplots to draw which units on:
 # Each entry is [row number, column number].
 # In plotly, the first row is 1 and first column is 1.
