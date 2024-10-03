@@ -97,30 +97,53 @@ st.set_page_config(
 # #####################################
 # ########## CONTAINER SETUP ##########  --------------------------------------------- update me
 # #####################################
-# Make containers:
+# Both tabs:
 # +-----------------------------------------------+
 # |                container_intro                |
+# +-------------------------+---------------------+
+#
+# Inputs tab:
+# +-----------------------------------------------+
+# |                container_inputs               |
+# |  +-----------------------------------------+  |
+# |  |           container_inputs_top          |  |
+# |  +-----------------------------------------+  |
+# |  +---------+----------+---------+----------+  |
+# |  |    c1   |    c2    |    c3   |    c4    |  |
+# |  +---------+----------+---------+----------+  |
+# +-----------------------------------------------+
+# |             container_unit_services           |
+# |  +-----------------------------------------+  |
+# |  |         cu1        |         cu2        |  |
+# |  +-----------------------------------------+  |
+# |  |       container_services_buttons        |  |
+# |  +-----------------------------------------+  |
+# |  |     container_services_dataeditor       |  |
+# |  +-----------------------------------------+  |
+# +-----------------------------------------------+
+#
+# Results tab:
+# +-----------------------------------------------+
+# |                 container_rerun               |
 # +-------------------------+---------------------+
 # |      container_map      | container_mrs_dists |
 # +-------------------------+---------------------+
 # |              container_map_inputs             |
+# |  +---------+----------+---------+----------+  |
+# |  |   cm1   |   cm2    |   cm3   |   cm4    |  |
+# |  +---------+----------+---------+----------+  |
 # +-----------------------------------------------+
 # |            container_results_tables           |
 # +-----------------------------------------------+
-
+# 
 # Sidebar:
-# form
-#   +--------------------------+
-#   |     container_inputs     |
-#   +--------------------------+
-#   |  container_unit_services |
-#   +--------------------------+
-# /form
 # v Accessibility & advanced options
 #   +--------------------------+
 #   | container_select_outcome |
 #   +--------------------------+
 #   |  container_select_cmap   |
+#   +--------------------------+
+#   |  container_select_vlim   |
 #   +--------------------------+
 
 container_intro = st.container()
@@ -133,22 +156,25 @@ with tab_inputs:
 with container_inputs:
     container_inputs_top = st.container()
     (
-        container_inputs_standard,
-        container_timeline_standard,
-        container_inputs_msu,
-        container_timeline_msu
+        container_inputs_standard,     # c1
+        container_timeline_standard,   # c2
+        container_inputs_msu,          # c3
+        container_timeline_msu         # c4
     ) = st.columns(4)
 with container_unit_services:
     (
-        container_unit_services_top,
-        container_services_map
+        container_unit_services_top,  # cu1
+        container_services_map        # cu2
     ) = st.columns([1, 2])
     with container_unit_services_top:
         st.header('Stroke unit services')
     container_services_buttons = st.container()
     container_services_dataeditor = st.container()
-with container_services_buttons:    
-    st.markdown('To update the services, use the following buttons and click the tick-boxes in the table.')
+with container_services_buttons:
+    st.markdown(''.join([
+        'To update the services, use the following buttons ',
+        'and click the tick-boxes in the table.'
+        ]))
 
 with tab_results:
     container_rerun = st.container()
@@ -164,10 +190,12 @@ with tab_results:
     container_map_inputs = st.container(border=True)
     with container_map_inputs:
         st.markdown('__Plot options__')
-        (container_input_treatment,
-         container_input_stroke_type,
-         container_input_region_type,
-         container_input_mrs_region) = st.columns(4)
+        (
+            container_input_treatment,    # cm1
+            container_input_stroke_type,  # cm2
+            container_input_region_type,  # cm3
+            container_input_mrs_region    # cm4
+        ) = st.columns(4)
     with container_input_mrs_region:
         container_input_mrs_region = st.empty()
     with st.expander('Full data tables'):
@@ -240,7 +268,8 @@ cmap_names = [
 cmap_diff_names = [
     'iceburn_r', 'seaweed', 'fusion', 'waterlily'
     ]
-cmap_diff_names += [c[:-2] if c.endswith('_r') else f'{c}_r' for c in cmap_diff_names]
+cmap_diff_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
+                    for c in cmap_diff_names]
 with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name, cmap_diff_name = inputs.select_colour_maps(
@@ -262,6 +291,7 @@ dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
 # User inputs for vmin and vmax with loaded values as defaults:
 with container_select_vlim:
+    st.markdown('### Colour limits')
     vmin = st.number_input(
         f'{outcome_type_str}: minimum value',
         value=dict_colours['vmin'],
@@ -350,7 +380,8 @@ time_keys_standard = [
     'ivt_mt_unit',
 ]
 time_dicts_standard = dict([(k, time_dicts[k]) for k in time_keys_standard])
-time_offsets_standard = dict([(k, time_offsets[k]) for k in time_keys_standard])
+time_offsets_standard = dict([(k, time_offsets[k])
+                              for k in time_keys_standard])
 # MSU:
 time_keys_msu = [
     'msu_dispatch',
@@ -399,7 +430,10 @@ unit_subplot_dict = {
 # Regions to draw
 # Name of the column in the geojson that labels the shapes:
 with container_unit_services_top:
-    st.markdown('These maps show which services are provided by each stroke unit in England.')
+    st.markdown(''.join([
+        'These maps show which services are provided ',
+        'by each stroke unit in England.'
+        ]))
     outline_name_for_unit_map = st.radio(
         'Region type to draw on maps',
         [
@@ -432,11 +466,17 @@ else:
     else:
         # Don't need catchment areas.
         geo = None
-    outline_names_col_for_unit_map, gdf_catchment_lhs_for_unit_map, gdf_catchment_rhs_for_unit_map = (
-        calc.load_or_calculate_region_outlines(outline_name_for_unit_map, geo))
+    (
+        outline_names_col_for_unit_map,
+        gdf_catchment_lhs_for_unit_map,
+        gdf_catchment_rhs_for_unit_map
+    ) = calc.load_or_calculate_region_outlines(outline_name_for_unit_map, geo)
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_catchment_lhs_for_unit_map, gdf_catchment_rhs_for_unit_map]
+gdfs_to_convert = [
+    gdf_catchment_lhs_for_unit_map,
+    gdf_catchment_rhs_for_unit_map
+    ]
 for gdf in gdfs_to_convert:
     if gdf is None:
         pass
@@ -468,9 +508,18 @@ with container_map:
 try:
     inputs_changed = (
         (st.session_state['input_dict'] != input_dict) |
-        (st.session_state['df_unit_services_on_last_run']['Use_IVT'] != df_unit_services['Use_IVT']).any() |
-        (st.session_state['df_unit_services_on_last_run']['Use_MT'] != df_unit_services['Use_MT']).any() |
-        (st.session_state['df_unit_services_on_last_run']['Use_MSU'] != df_unit_services['Use_MSU']).any()
+        (
+            st.session_state['df_unit_services_on_last_run']['Use_IVT'] !=
+            df_unit_services['Use_IVT']
+        ).any() |
+        (
+            st.session_state['df_unit_services_on_last_run']['Use_MT'] !=
+            df_unit_services['Use_MT']
+        ).any() |
+        (
+            st.session_state['df_unit_services_on_last_run']['Use_MSU'] !=
+            df_unit_services['Use_MSU']
+        ).any()
     )
 except KeyError:
     # First run of the app.
@@ -480,7 +529,8 @@ with container_rerun:
     if st.button('Calculate results'):
         st.session_state['input_dict'] = input_dict
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
-        st.session_state['df_unit_services_full_on_last_run'] = df_unit_services_full
+        st.session_state['df_unit_services_full_on_last_run'] = (
+            df_unit_services_full)
         (
             st.session_state['df_lsoa'],
             st.session_state['df_mrs'],
@@ -492,7 +542,12 @@ with container_rerun:
     else:
         if inputs_changed:
             with container_rerun:
-                st.warning('Inputs have changed! The results currently being shown are for the previous set of inputs. Use the "calculate results" button to update the results.', icon='⚠️')
+                st.warning(''.join([
+                    'Inputs have changed! The results currently being shown ',
+                    'are for the previous set of inputs. ',
+                    'Use the "calculate results" button ',
+                    'to update the results.'
+                    ]), icon='⚠️')
 
 
 if 'df_lsoa' in st.session_state.keys():
@@ -516,7 +571,13 @@ with container_results_tables:
     # Set some columns to bool for nicer display:
     cols_bool = ['transfer_required', 'England']
     for col in cols_bool:
-        for df in [st.session_state['df_icb'], st.session_state['df_isdn'], st.session_state['df_nearest_ivt'], st.session_state['df_ambo'], st.session_state['df_lsoa']]:
+        for df in [
+            st.session_state['df_icb'],
+            st.session_state['df_isdn'],
+            st.session_state['df_nearest_ivt'],
+            st.session_state['df_ambo'],
+            st.session_state['df_lsoa']
+        ]:
             df[col] = df[col].astype(bool)
 
     with results_tabs[0]:
@@ -574,14 +635,17 @@ if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
 elif ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
     # Use IVT-only data:
     c1 = f'{d_str}_{stroke_type}_ivt_{outcome_type}'
-    lsoa_to_keep = st.session_state['df_lsoa'].index[(st.session_state['df_lsoa'][c1] > 0.0)]
+    lsoa_to_keep = st.session_state['df_lsoa'].index[
+        (st.session_state['df_lsoa'][c1] > 0.0)]
 else:
     # Look up the data normally.
     c1 = f'{d_str}_{stroke_type}_{treatment_type}_{outcome_type}'
-    lsoa_to_keep = st.session_state['df_lsoa'].index[(st.session_state['df_lsoa'][c1] > 0.0)]
+    lsoa_to_keep = st.session_state['df_lsoa'].index[
+        (st.session_state['df_lsoa'][c1] > 0.0)]
 
 # mRS distributions that meet the criteria:
-df_mrs_to_plot = st.session_state['df_mrs'][st.session_state['df_mrs'].index.isin(lsoa_to_keep)]
+df_mrs_to_plot = st.session_state['df_mrs'][
+    st.session_state['df_mrs'].index.isin(lsoa_to_keep)]
 
 with container_mrs_dists_etc:
     st.markdown(''.join([
@@ -618,7 +682,8 @@ def display_mrs_dists():
             treatment_type,
             stroke_type_str,
             treatment_type_str,
-            st.session_state['df_lsoa'][['nearest_ivt_unit', 'nearest_ivt_unit_name']],
+            st.session_state['df_lsoa'][
+                ['nearest_ivt_unit', 'nearest_ivt_unit_name']],
             df_mrs_to_plot,
             input_dict,
             scenarios=scenario_mrs
@@ -740,7 +805,8 @@ if outline_name == 'None':
     gdf_catchment_rhs = None
 else:
     outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs = (
-        calc.load_or_calculate_region_outlines(outline_name, st.session_state['df_lsoa']))
+        calc.load_or_calculate_region_outlines(
+            outline_name, st.session_state['df_lsoa']))
 
 
 # ----- Process geography for plotting -----
