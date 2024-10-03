@@ -177,6 +177,7 @@ with st.sidebar:
     with st.expander('Accessibility & advanced options'):
         container_select_outcome = st.container()
         container_select_cmap = st.container()
+        container_select_vlim = st.container()
 
 with container_intro:
     st.markdown('# Benefit in outcomes from Mobile Stroke Units')
@@ -254,6 +255,43 @@ if outcome_type == 'mrs_shift':
     if cmap_diff_name.endswith('_r_r'):
         cmap_diff_name = cmap_diff_name[:-4]
 
+
+# ----- Colour limits -----
+# Load colour limits info (vmin, vmax, step_size):
+dict_colours, dict_colours_diff = (
+    colour_setup.load_colour_limits(outcome_type))
+# User inputs for vmin and vmax with loaded values as defaults:
+with container_select_vlim:
+    vmin = st.number_input(
+        f'{outcome_type_str}: minimum value',
+        value=dict_colours['vmin'],
+        help=f'Default value: {dict_colours["vmin"]}',
+    )
+    vmax = st.number_input(
+        f'{outcome_type_str}: maximum value',
+        value=dict_colours['vmax'],
+        help=f'Default value: {dict_colours["vmax"]}',
+    )
+    vmin_diff = st.number_input(
+        f'{outcome_type_str} benefit of MSU: minimum value',
+        value=dict_colours_diff['vmin'],
+        help=f'Default value: {dict_colours_diff["vmin"]}',
+    )
+    vmax_diff = st.number_input(
+        f'{outcome_type_str} benefit of MSU: maximum value',
+        value=dict_colours_diff['vmax'],
+        help=f'Default value: {dict_colours_diff["vmax"]}',
+    )
+    # Sanity checks:
+    if ((vmax <= vmin) | (vmax_diff <= vmin_diff)):
+        st.error(
+            'Maximum value must be less than the minimum value.', icon='❗')
+        st.stop()
+# Overwrite default values:
+dict_colours['vmin'] = vmin
+dict_colours['vmax'] = vmax
+dict_colours_diff['vmin'] = vmin_diff
+dict_colours_diff['vmax'] = vmax_diff
 
 
 # ######################################
@@ -678,9 +716,6 @@ burned_rhs = make_raster_from_vectors(
 
 
 # ----- Set up colours -----
-# Load colour limits info (vmin, vmax, step_size):
-dict_colours, dict_colours_diff = (
-    colour_setup.load_colour_limits(outcome_type))
 # Load colour map colours:
 dict_colours['cmap'] = colour_setup.make_colour_list(
     cmap_name,
