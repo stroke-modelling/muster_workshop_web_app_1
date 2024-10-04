@@ -763,16 +763,19 @@ def plotly_many_maps(
 def plotly_many_heatmaps(
         burned_lhs: geopandas.GeoDataFrame,
         burned_rhs: geopandas.GeoDataFrame,
+        burned_pop: geopandas.GeoDataFrame,
         gdf_catchment_lhs: geopandas.GeoDataFrame = None,
         gdf_catchment_rhs: geopandas.GeoDataFrame = None,
+        gdf_catchment_pop: geopandas.GeoDataFrame = None,
         outline_names_col: str = '',
         outline_name: str = '',
         traces_units: dict = None,
         unit_subplot_dict: dict = {},
         subplot_titles: list = [],
         legend_title: str = '',
-        dict_colours: np.array = {},
-        dict_colours_diff: np.array = {},
+        dict_colours: dict = {},
+        dict_colours_diff: dict = {},
+        dict_colours_pop: dict = {},
         transform_dict: dict = {},
         ):
     """
@@ -807,7 +810,7 @@ def plotly_many_heatmaps(
     """
     # ----- Plotting -----
     fig = make_subplots(
-        rows=1, cols=2,
+        rows=1, cols=3,
         horizontal_spacing=0.0,
         subplot_titles=subplot_titles
         )
@@ -883,12 +886,34 @@ def plotly_many_heatmaps(
         hoverinfo='skip',
     ), row='all', col=2)
 
+    fig.add_trace(go.Heatmap(
+        z=burned_pop,
+        transpose=False,
+        x0=transform_dict['xmin'],
+        dx=transform_dict['pixel_size'],
+        y0=transform_dict['ymin'],
+        dy=transform_dict['pixel_size'],
+        zmin=dict_colours_pop['vmin'],
+        zmax=dict_colours_pop['vmax'],
+        colorscale=dict_colours_pop['cmap'],
+        colorbar=dict(
+            thickness=20,
+            # tickmode='array',
+            # tickvals=tick_locs,
+            # ticktext=tick_names,
+            # ticklabelposition='outside top'
+            title=dict_colours_pop['title']
+            ),
+        name='pop',
+        hoverinfo='skip',
+    ), row='all', col=3)
+
     fig.update_traces(
         {'colorbar': {
             'orientation': 'h',
             'x': 0.0,
             'y': -0.2,
-            'len': 0.5,
+            'len': 0.333,
             'xanchor': 'left',
             'title_side': 'bottom'
             # 'xref': 'paper'
@@ -898,16 +923,27 @@ def plotly_many_heatmaps(
     fig.update_traces(
         {'colorbar': {
             'orientation': 'h',
-            'x': 1.0,
+            'x': 0.5,
             'y': -0.2,
-            'len': 0.5,
-            'xanchor': 'right',
+            'len': 0.333,
+            'xanchor': 'center',
             'title_side': 'bottom'
             # 'xref': 'paper'
             }},
         selector={'name': 'rhs'}
         )
-
+    fig.update_traces(
+        {'colorbar': {
+            'orientation': 'h',
+            'x': 1.0,
+            'y': -0.2,
+            'len': 0.333,
+            'xanchor': 'right',
+            'title_side': 'bottom'
+            # 'xref': 'paper'
+            }},
+        selector={'name': 'pop'}
+        )
 
     gdf_roads = load_roads_gdf()
 
@@ -952,6 +988,11 @@ def plotly_many_heatmaps(
     else:
         draw_outline(fig, gdf_catchment_rhs, col=2)
 
+    if gdf_catchment_pop is None:
+        pass
+    else:
+        draw_outline(fig, gdf_catchment_pop, col=3)
+
     fig.update_traces(
         hoverlabel=dict(
             bgcolor='grey',
@@ -961,6 +1002,7 @@ def plotly_many_heatmaps(
     # Equivalent to pyplot set_aspect='equal':
     fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
     fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
+    fig.update_yaxes(col=3, scaleanchor='x3', scaleratio=1)
 
     # Shared pan and zoom settings:
     fig.update_xaxes(matches='x')
@@ -1037,6 +1079,7 @@ def plotly_many_heatmaps(
     # Colour scales dict:
     dict_colourscales_lhs = {}
     dict_colourscales_rhs = {}
+    dict_colourscales_pop = {}
     import utilities.colour_setup as colour_setup
     cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
     cmaps += [c[:-2] if c.endswith('_r') else f'{c}_r' for c in cmaps]
@@ -1045,14 +1088,16 @@ def plotly_many_heatmaps(
             c, vmin=dict_colours['vmin'], vmax=dict_colours['vmax'])
         dict_colourscales_rhs[c] = colour_setup.make_colour_list_for_plotly_button(
             c, vmin=dict_colours_diff['vmin'], vmax=dict_colours_diff['vmax'])
+        dict_colourscales_pop[c] = colour_setup.make_colour_list_for_plotly_button(
+            c, vmin=dict_colours_pop['vmin'], vmax=dict_colours_pop['vmax'])
 
     fig.update_layout(
         updatemenus=[
             dict(
                 buttons=list([
                     dict(
-                        args=[{'colorscale': [dict_colourscales_lhs[c], dict_colourscales_rhs[c]]},
-                              {'traces': ['lhs', 'rhs']}],
+                        args=[{'colorscale': [dict_colourscales_lhs[c], dict_colourscales_rhs[c], dict_colourscales_pop[c]]},
+                              {'traces': ['lhs', 'rhs', 'pop']}],
                         label=c,
                         method='restyle'
                     )

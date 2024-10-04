@@ -178,15 +178,9 @@ with container_services_buttons:
 
 with tab_results:
     container_rerun = st.container()
-    container_map, container_mrs_dists_etc = st.columns([2, 1])
     # Convert the map container to empty so that the placeholder map
     # is replaced once the real map is ready.
-    with container_map:
-        container_map = st.empty()
-    # Convert mRS dists to empty so that re-running a fragment replaces
-    # the bars rather than displays the new plot in addition.
-    with container_mrs_dists_etc:
-        container_mrs_dists = st.empty()
+    container_map = st.empty()
     container_map_inputs = st.container(border=True)
     with container_map_inputs:
         st.markdown('__Plot options__')
@@ -194,10 +188,13 @@ with tab_results:
             container_input_treatment,    # cm1
             container_input_stroke_type,  # cm2
             container_input_region_type,  # cm3
-            container_input_mrs_region    # cm4
-        ) = st.columns(4)
-    with container_input_mrs_region:
-        container_input_mrs_region = st.empty()
+        ) = st.columns(3)
+
+    container_mrs_dists_etc = st.container()
+    # Convert mRS dists to empty so that re-running a fragment replaces
+    # the bars rather than displays the new plot in addition.
+    with container_mrs_dists_etc:
+        container_mrs_dists = st.empty()
     with st.expander('Full data tables'):
         container_results_tables = st.container()
 
@@ -270,10 +267,11 @@ cmap_diff_names = [
     ]
 cmap_diff_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
                     for c in cmap_diff_names]
+cmap_pop_names = cmap_diff_names
 with container_select_cmap:
     st.markdown('### Colour schemes')
-    cmap_name, cmap_diff_name = inputs.select_colour_maps(
-        cmap_names, cmap_diff_names)
+    cmap_name, cmap_diff_name, cmap_pop_name = inputs.select_colour_maps(
+        cmap_names, cmap_diff_names, cmap_pop_names)
 # If we're showing mRS scores then flip the colour maps:
 if outcome_type == 'mrs_shift':
     cmap_name += '_r'
@@ -289,6 +287,7 @@ if outcome_type == 'mrs_shift':
 # Load colour limits info (vmin, vmax, step_size):
 dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
+dict_colours_pop = {'vmin': 0.0, 'vmax': 100.0, 'step_size': 100.0}  # temp -------------
 # User inputs for vmin and vmax with loaded values as defaults:
 with container_select_vlim:
     st.markdown('### Colour limits')
@@ -312,8 +311,18 @@ with container_select_vlim:
         value=dict_colours_diff['vmax'],
         help=f'Default value: {dict_colours_diff["vmax"]}',
     )
+    vmin_pop = st.number_input(
+        'pop: minimum value',
+        value=dict_colours_pop['vmin'],
+        help=f'Default value: {dict_colours_pop["vmin"]}',
+    )
+    vmax_pop = st.number_input(
+        'pop: maximum value',
+        value=dict_colours_pop['vmax'],
+        help=f'Default value: {dict_colours_pop["vmax"]}',
+    )
     # Sanity checks:
-    if ((vmax <= vmin) | (vmax_diff <= vmin_diff)):
+    if ((vmax <= vmin) | (vmax_diff <= vmin_diff) | (vmax_pop <= vmin_pop)):
         st.error(
             'Maximum value must be less than the minimum value.', icon='❗')
         st.stop()
@@ -322,6 +331,8 @@ dict_colours['vmin'] = vmin
 dict_colours['vmax'] = vmax
 dict_colours_diff['vmin'] = vmin_diff
 dict_colours_diff['vmax'] = vmax_diff
+dict_colours_pop['vmin'] = vmin_pop
+dict_colours_pop['vmax'] = vmax_pop
 
 
 # ######################################
@@ -503,7 +514,7 @@ with container_services_map:
 # While the main calculations are happening, display a blank map.
 # Later, when the calculations are finished, replace with the actual map.
 with container_map:
-    plot_maps.plotly_blank_maps(['', ''], n_blank=2)
+    plot_maps.plotly_blank_maps(['', '', ''], n_blank=3)
 
 try:
     inputs_changed = (
@@ -647,14 +658,6 @@ else:
 df_mrs_to_plot = st.session_state['df_mrs'][
     st.session_state['df_mrs'].index.isin(lsoa_to_keep)]
 
-with container_mrs_dists_etc:
-    st.markdown(''.join([
-        'mRS distributions shown for only LSOA who would benefit ',
-        'from an MSU (i.e. "added utility" for "MSU" scenario ',
-        'is better than for "usual care" scenario).'
-        ]))
-
-
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,
 # not by guessing in advance which IVT units are included for example.
@@ -672,8 +675,19 @@ scenario_mrs = ['usual_care', 'msu']
 
 @st.fragment
 def display_mrs_dists():
-    # User input:
-    bar_option = st.selectbox('Region for mRS distributions', bar_options)
+    (
+        container_mrs_input,
+        container_bars
+    ) = st.columns(2)
+
+    with container_mrs_input:
+        # User input:
+        bar_option = st.selectbox('Region for mRS distributions', bar_options)
+        st.markdown(''.join([
+            'mRS distributions shown for only LSOA who would benefit ',
+            'from an MSU (i.e. "added utility" for "MSU" scenario ',
+            'is better than for "usual care" scenario).'
+            ]))
 
     mrs_lists_dict, region_selected, col_pretty = (
         mrs.setup_for_mrs_dist_bars(
@@ -689,8 +703,9 @@ def display_mrs_dists():
             scenarios=scenario_mrs
             ))
 
-    mrs.plot_mrs_bars(
-        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+    with container_bars:
+        mrs.plot_mrs_bars(
+            mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
 
 
 with container_mrs_dists:
@@ -758,6 +773,20 @@ except KeyError:
     # Note: this works for now because expect always no change
     # for added utility and added mrs<=2 with no treatment.
 
+# Population map:
+# Load in pop data:
+import os
+df_pop = pd.read_csv(os.path.join('data', 'collated_data_regional_LSOA.csv'))
+# Column with pop data:
+column_pop = 'population_density'
+# Merge into gdf:
+gdf = pd.merge(
+    gdf, df_pop[['LSOA', column_pop]],
+    left_on='LSOA11NM', right_on='LSOA', how='left'
+    )
+# Pick out values:
+vals_for_colours_pop = gdf[column_pop]
+
 
 # ----- Convert vectors to raster -----
 # Set up parameters for conversion to raster:
@@ -778,6 +807,14 @@ burned_rhs = make_raster_from_vectors(
     transform_dict['width'],
     transform_dict['transform']
 )
+# ... and population map:
+burned_pop = make_raster_from_vectors(
+    gdf['geometry'],
+    vals_for_colours_pop,
+    transform_dict['height'],
+    transform_dict['width'],
+    transform_dict['transform']
+)
 
 
 # ----- Set up colours -----
@@ -792,26 +829,38 @@ dict_colours_diff['cmap'] = colour_setup.make_colour_list(
     vmin=dict_colours_diff['vmin'],
     vmax=dict_colours_diff['vmax']
     )
+dict_colours_pop['cmap'] = colour_setup.make_colour_list(
+    cmap_pop_name,
+    vmin=dict_colours_pop['vmin'],
+    vmax=dict_colours_pop['vmax']
+    )
 # Colour bar titles:
 dict_colours['title'] = f'{outcome_type_str}'
 dict_colours_diff['title'] = (
     f'{outcome_type_str}: Benefit of MSU over usual care')
+dict_colours_pop['title'] = (
+    'pop')
 
 
 # ----- Region outlines -----
 if outline_name == 'None':
     outline_names_col = None
+    gdf_catchment_pop = None
     gdf_catchment_lhs = None
     gdf_catchment_rhs = None
 else:
-    outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs = (
-        calc.load_or_calculate_region_outlines(
-            outline_name, st.session_state['df_lsoa']))
+    (
+        outline_names_col,
+        gdf_catchment_pop,
+        gdf_catchment_lhs,
+        gdf_catchment_rhs
+    ) = calc.load_or_calculate_region_outlines(
+            outline_name, st.session_state['df_lsoa'])
 
 
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_catchment_lhs, gdf_catchment_rhs]
+gdfs_to_convert = [gdf_catchment_pop, gdf_catchment_lhs, gdf_catchment_rhs]
 for gdf in gdfs_to_convert:
     if gdf is None:
         pass
@@ -841,14 +890,17 @@ unit_subplot_dict = {
 # Display names:
 subplot_titles = [
     'Usual care',
-    'Benefit of MSU over usual care'
+    'Benefit of MSU over usual care',
+    'pop'
 ]
 with container_map:
     plot_maps.plotly_many_heatmaps(
         burned_lhs,
         burned_rhs,
+        burned_pop,
         gdf_catchment_lhs,
         gdf_catchment_rhs,
+        gdf_catchment_pop,
         outline_names_col,
         outline_name,
         traces_units,
@@ -856,5 +908,6 @@ with container_map:
         subplot_titles=subplot_titles,
         dict_colours=dict_colours,
         dict_colours_diff=dict_colours_diff,
+        dict_colours_pop=dict_colours_pop,
         transform_dict=transform_dict,
         )

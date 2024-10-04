@@ -828,7 +828,7 @@ def select_stroke_type(use_combo_stroke_types=False):
     return stroke_type, stroke_type_str
 
 
-def select_colour_maps(cmap_names, cmap_diff_names):
+def select_colour_maps(cmap_names, cmap_diff_names, cmap_pop_names):
     """
     User inputs.
     """
@@ -866,8 +866,9 @@ def select_colour_maps(cmap_names, cmap_diff_names):
         key='cmap_diff_name'
     )
     cmap_name = cmap_diff_name
+    cmap_pop_name = cmap_diff_name
 
-    return cmap_name, cmap_diff_name
+    return cmap_name, cmap_diff_name, cmap_pop_name
 
 
 def load_region_lists(df_unit_services_full):

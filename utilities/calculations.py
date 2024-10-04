@@ -1097,4 +1097,11 @@ def load_or_calculate_region_outlines(outline_name, df_lsoa):
     # Make a dummy column for the legend entry:
     gdf_catchment_lhs['outline_type'] = outline_name
     gdf_catchment_rhs['outline_type'] = outline_name
-    return outline_names_col, gdf_catchment_lhs, gdf_catchment_rhs
+
+    gdf_catchment_pop = gdf_catchment_lhs.copy()
+    return (
+        outline_names_col,
+        gdf_catchment_lhs,
+        gdf_catchment_rhs,
+        gdf_catchment_pop
+    )
