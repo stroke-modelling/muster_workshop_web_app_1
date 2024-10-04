@@ -283,11 +283,57 @@ if outcome_type == 'mrs_shift':
         cmap_diff_name = cmap_diff_name[:-4]
 
 
+# ----- Demographic data -----
+# Population map:
+# Load in pop data:
+import os
+df_demog = pd.read_csv(os.path.join('data', 'collated_data_regional_LSOA.csv'))
+# Convert proportions (0 -> 1) to percentages (0 -> 100)
+# to match the IMD.
+cols_prop = [c for c in df_demog if 'proportion' in c]
+df_demog[cols_prop] = df_demog[cols_prop] * 100.0
+# Columns:
+# Make column names more pretty:
+cols_prettier_dict = {
+    'population_density': 'Population density (people per square kilometre)',
+    # 'income_domain_weighted_mean': 'Income deprivation domain (weighted by population)',
+    # 'imd_weighted_mean': 'IMD (weighted by population)',
+    # 'ethnic_minority_proportion': 'Proportion ethnic minority (%)',
+    # 'bad_health_proportion': 'Proportion with bad health (%)',
+    'long_term_health_proportion': 'Proportion with long-term health issues (%)',
+    # 'population_all': 'Population',
+    'age_65_plus_proportion': 'Proportion aged 65+ (%)',
+    'proportion_rural': 'Proportion rural (%)',
+    # 'admissions_2122': 'Admissions (2021/22)'
+}
+cols_prettier_reverse_dict = dict(
+    zip(list(cols_prettier_dict.values()), list(cols_prettier_dict.keys())))
+# Column with pop data:
+column_pop_pretty = st.selectbox(
+    'Demographic data for map',
+    options=cols_prettier_reverse_dict.keys()
+)
+column_pop = cols_prettier_reverse_dict[column_pop_pretty]
+# For this column of data, use predefined colour bands.
+# if 'proportion' in column_pop:
+#     # Assume data is scaled between 0 and 1.
+#     dict_colours_pop = {
+#         'vmin': 0.0,
+#         'vmax': 100.0,
+#         'step_size': 10.0,
+#     }
+# else:
+dict_colours_pop = {
+    'vmin': min(df_demog[column_pop]),
+    'vmax': max(df_demog[column_pop]),
+    'step_size': 0.0,
+}
+
+
 # ----- Colour limits -----
 # Load colour limits info (vmin, vmax, step_size):
 dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
-dict_colours_pop = {'vmin': 0.0, 'vmax': 100.0, 'step_size': 100.0}  # temp -------------
 # User inputs for vmin and vmax with loaded values as defaults:
 with container_select_vlim:
     st.markdown('### Colour limits')
@@ -311,18 +357,22 @@ with container_select_vlim:
         value=dict_colours_diff['vmax'],
         help=f'Default value: {dict_colours_diff["vmax"]}',
     )
-    vmin_pop = st.number_input(
-        'pop: minimum value',
-        value=dict_colours_pop['vmin'],
-        help=f'Default value: {dict_colours_pop["vmin"]}',
-    )
-    vmax_pop = st.number_input(
-        'pop: maximum value',
-        value=dict_colours_pop['vmax'],
-        help=f'Default value: {dict_colours_pop["vmax"]}',
-    )
+    # vmin_pop = st.number_input(
+    #     f'{column_pop_pretty}: minimum value',
+    #     value=dict_colours_pop['vmin'],
+    #     help=f'Default value: {dict_colours_pop["vmin"]}',
+    # )
+    # vmax_pop = st.number_input(
+    #     f'{column_pop_pretty}: maximum value',
+    #     value=dict_colours_pop['vmax'],
+    #     help=f'Default value: {dict_colours_pop["vmax"]}',
+    # )
     # Sanity checks:
-    if ((vmax <= vmin) | (vmax_diff <= vmin_diff) | (vmax_pop <= vmin_pop)):
+    if (
+        (vmax <= vmin) |
+        (vmax_diff <= vmin_diff)  # |
+        # (vmax_pop <= vmin_pop)
+            ):
         st.error(
             'Maximum value must be less than the minimum value.', icon='❗')
         st.stop()
@@ -331,8 +381,8 @@ dict_colours['vmin'] = vmin
 dict_colours['vmax'] = vmax
 dict_colours_diff['vmin'] = vmin_diff
 dict_colours_diff['vmax'] = vmax_diff
-dict_colours_pop['vmin'] = vmin_pop
-dict_colours_pop['vmax'] = vmax_pop
+# dict_colours_pop['vmin'] = vmin_pop
+# dict_colours_pop['vmax'] = vmax_pop
 
 
 # ######################################
@@ -773,15 +823,10 @@ except KeyError:
     # Note: this works for now because expect always no change
     # for added utility and added mrs<=2 with no treatment.
 
-# Population map:
-# Load in pop data:
-import os
-df_pop = pd.read_csv(os.path.join('data', 'collated_data_regional_LSOA.csv'))
-# Column with pop data:
-column_pop = 'population_density'
-# Merge into gdf:
+
+# Merge demographic data into gdf:
 gdf = pd.merge(
-    gdf, df_pop[['LSOA', column_pop]],
+    gdf, df_demog[['LSOA', column_pop]],
     left_on='LSOA11NM', right_on='LSOA', how='left'
     )
 # Pick out values:
@@ -838,8 +883,7 @@ dict_colours_pop['cmap'] = colour_setup.make_colour_list(
 dict_colours['title'] = f'{outcome_type_str}'
 dict_colours_diff['title'] = (
     f'{outcome_type_str}: Benefit of MSU over usual care')
-dict_colours_pop['title'] = (
-    'pop')
+dict_colours_pop['title'] = column_pop_pretty
 
 
 # ----- Region outlines -----
