@@ -95,7 +95,7 @@ st.set_page_config(
 
 
 # #####################################
-# ########## CONTAINER SETUP ##########
+# ########## CONTAINER SETUP ########## --------------------------------------------- update me again
 # #####################################
 # Both tabs:
 # +-----------------------------------------------+
@@ -181,6 +181,7 @@ with tab_results:
     # Convert the map container to empty so that the placeholder map
     # is replaced once the real map is ready.
     container_map = st.empty()
+    container_actual_vlim = st.container()
     container_map_inputs = st.container(border=True)
     with container_map_inputs:
         st.markdown('__Plot options__')
@@ -828,6 +829,21 @@ burned_pop = make_raster_from_vectors(
     transform_dict['transform']
 )
 
+# Record actual highest and lowest values:
+actual_vmin = min(vals_for_colours)
+actual_vmax = max(vals_for_colours)
+actual_vmin_diff = min(vals_for_colours_diff)
+actual_vmax_diff = max(vals_for_colours_diff)
+actual_vmin_pop = min(vals_for_colours_pop)
+actual_vmax_pop = max(vals_for_colours_pop)
+with container_actual_vlim:
+    cols = st.columns(3)
+    with cols[0]:
+        st.markdown(f'Plotted data range: {actual_vmin:.3f} to {actual_vmax:.3f}')
+    with cols[1]:
+        st.markdown(f'Plotted data range: {actual_vmin_diff:.3f} to {actual_vmax_diff:.3f}')
+    with cols[2]:
+        st.markdown(f'Plotted data range: {actual_vmin_pop:.1f} to {actual_vmax_pop:.1f}')
 
 # ----- Set up colours -----
 # Load colour map colours:
@@ -902,7 +918,7 @@ unit_subplot_dict = {
 subplot_titles = [
     'Usual care',
     'Benefit of MSU over usual care',
-    'pop'
+    column_pop_pretty
 ]
 with container_map:
     plot_maps.plotly_many_heatmaps(

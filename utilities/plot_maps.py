@@ -1070,12 +1070,7 @@ def plotly_many_heatmaps(
     fig.update_layout(legend_itemdoubleclick=False)
 
     # BUTTONS TEST - https://plotly.com/python/custom-buttons/
-
     # Add drowdowns
-    # button_layer_1_height = 1.08
-    button_layer_1_height = 0.0
-    button_layer_2_height = 1.065
-
     # Colour scales dict:
     dict_colourscales_lhs = {}
     dict_colourscales_rhs = {}
@@ -1103,7 +1098,7 @@ def plotly_many_heatmaps(
                     )
                     for c in cmaps
                 ]),
-                type = 'buttons',
+                type='buttons',
                 direction='right',
                 pad={'r': 10, 't': 10},
                 showactive=False,
@@ -1112,46 +1107,24 @@ def plotly_many_heatmaps(
                 y=-0.25,
                 yanchor='top'
             ),
-            # dict(
-            #     buttons=list([
-            #         dict(
-            #             args=['reversescale', False],
-            #             label='False',
-            #             method='restyle'
-            #         ),
-            #         dict(
-            #             args=['reversescale', True],
-            #             label='True',
-            #             method='restyle'
-            #         )
-            #     ]),
-            #     type = 'buttons',
-            #     direction='right',
-            #     pad={'r': 10, 't': 10},
-            #     showactive=True,
-            #     x=0.13,
-            #     xanchor='left',
-            #     y=button_layer_2_height,
-            #     yanchor='top'
-            # ),
         ]
     )
 
-    fig.update_layout(
-        annotations=[
-            dict(
-                text='Colour scale:',
-                x=0.1,
-                xref='paper',
-                y=-0.28,
-                yref='paper',
-                align='left',
-                yanchor='top',
-                showarrow=False
-                ),
-            # dict(text='Reverse<br>Colorscale', x=0, xref='paper', y=1.06,
-            #                     yref='paper', showarrow=False),
-        ])
+    # Add annotations in this unusual way to prevent
+    # overwriting the subplot titles.
+    annotations = (
+        dict(
+            text='Colour scale:',
+            x=0.1,
+            xref='paper',
+            y=-0.28,
+            yref='paper',
+            align='left',
+            yanchor='top',
+            showarrow=False
+            ),  # keep this comma
+    )
+    fig['layout']['annotations'] += annotations
 
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
