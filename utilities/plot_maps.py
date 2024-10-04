@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from utilities.maps import convert_shapely_polys_into_xy
+from utilities.inputs import load_roads_gdf
 
 import stroke_maps.load_data
 
@@ -286,6 +287,21 @@ def plotly_unit_maps(
             fill="toself",
             fillcolor='rgba(0, 0, 0, 0)',
             line_color='grey',
+            showlegend=False,
+            hoverinfo='skip',
+            ), col='all', row='all')
+
+    gdf_roads = load_roads_gdf()
+
+    for i in gdf_roads.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_roads.loc[i, 'x'],
+            y=gdf_roads.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='black',
+            line_width=0.5,
             showlegend=False,
             hoverinfo='skip',
             ), col='all', row='all')
@@ -892,6 +908,21 @@ def plotly_many_heatmaps(
         selector={'name': 'rhs'}
         )
 
+
+    gdf_roads = load_roads_gdf()
+
+    for i in gdf_roads.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_roads.loc[i, 'x'],
+            y=gdf_roads.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='black',
+            line_width=0.5,
+            showlegend=False,
+            hoverinfo='skip',
+            ), col='all', row='all')
 
     def draw_outline(fig, gdf_catchment, col='all'):
         # I can't for the life of me get hovertemplate working here

@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt  # for colour maps
 import cmasher as cmr  # for additional colour maps
 from importlib_resources import files
+import os
+import geopandas
 
 import stroke_maps.load_data
 from utilities.colour_setup import make_colourbar_display_string
@@ -886,3 +888,37 @@ def load_region_lists(df_unit_services_full):
     }
 
     return region_options_dict
+
+
+@st.cache_data
+def load_roads_gdf():
+    # Load roads data:
+    path_to_roads = os.path.join('data', 'major_roads_england.geojson')
+    gdf_roads = geopandas.read_file(path_to_roads)
+    gdf_roads = gdf_roads.set_index('roadNumber')
+
+    # Convert Linestring to x and y coords:
+    x_lists = []
+    y_lists = []
+    for i in gdf_roads.index:
+        geo = gdf_roads.loc[i, 'geometry']
+        if geo.geom_type == 'LineString':
+            x, y = geo.coords.xy
+            x_lists.append(list(x))
+            y_lists.append(list(y))
+        elif geo.geom_type == 'MultiLineString':
+            x_multi = []
+            y_multi = []
+            for g in geo.geoms:
+                x, y = g.coords.xy
+                x_multi += list(x) + [None]
+                y_multi += list(y) + [None]
+            x_lists.append(np.array(x_multi))
+            y_lists.append(np.array(y_multi))
+        else:
+            # ???
+            x_lists.append([])
+            y_lists.append([])
+    gdf_roads['x'] = x_lists
+    gdf_roads['y'] = y_lists
+    return gdf_roads
