@@ -498,7 +498,8 @@ else:
     (
         outline_names_col_for_unit_map,
         gdf_catchment_lhs_for_unit_map,
-        gdf_catchment_rhs_for_unit_map
+        gdf_catchment_rhs_for_unit_map,
+        gdf_catchment_pop_for_unit_map
     ) = calc.load_or_calculate_region_outlines(outline_name_for_unit_map, geo)
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
