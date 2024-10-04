@@ -698,6 +698,7 @@ def import_stroke_unit_services(
         df_unit_services = df_unit_services.loc[mask].copy()
     else:
         pass
+
     if keep_only_england:
         # Limit to England:
         mask = df_unit_services['country'] == 'England'
@@ -707,6 +708,16 @@ def import_stroke_unit_services(
             df_unit_services['region_type'] != 'LHB'].copy()    
     else:
         pass
+
+    # Limit the units list to only units in the travel time matrix:
+    df_travel = pd.read_csv(
+        './data/inter_hospital_time_calibrated.csv',
+        index_col='from_postcode'
+        )
+    units_allowed = df_travel.index.values
+    mask_allowed = df_unit_services.index.isin(units_allowed)
+    df_unit_services = df_unit_services[mask_allowed].copy()
+
     df_unit_services_full = df_unit_services.copy()
     # Limit which columns to show:
     cols_to_keep = [
