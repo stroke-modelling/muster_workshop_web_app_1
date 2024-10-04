@@ -673,7 +673,11 @@ def select_stroke_unit_services_broad(
     return df_unit_services, df_unit_services_full
 
 
-def import_stroke_unit_services(use_msu=True):
+def import_stroke_unit_services(
+        use_msu=True,
+        keep_only_ivt_mt=False,
+        keep_only_england=True
+        ):
     # Set up stroke unit services (IVT, MT, MSU).
     df_unit_services = stroke_maps.load_data.stroke_unit_region_lookup()
 
@@ -685,18 +689,24 @@ def import_stroke_unit_services(use_msu=True):
         'use_msu': 'Use_MSU',
     })
 
-    # Remove stroke units that don't offer IVT or MT:
-    mask = (
-        (df_unit_services['Use_IVT'] == 1) |
-        (df_unit_services['Use_MT'] == 1)
-    )
-    df_unit_services = df_unit_services.loc[mask].copy()
-    # Limit to England:
-    mask = df_unit_services['country'] == 'England'
-    df_unit_services = df_unit_services.loc[mask].copy()
-    # Remove Wales:
-    df_unit_services = df_unit_services.loc[
-        df_unit_services['region_type'] != 'LHB'].copy()
+    if keep_only_ivt_mt:
+        # Remove stroke units that don't offer IVT or MT:
+        mask = (
+            (df_unit_services['Use_IVT'] == 1) |
+            (df_unit_services['Use_MT'] == 1)
+        )
+        df_unit_services = df_unit_services.loc[mask].copy()
+    else:
+        pass
+    if keep_only_england:
+        # Limit to England:
+        mask = df_unit_services['country'] == 'England'
+        df_unit_services = df_unit_services.loc[mask].copy()
+        # Remove Wales:
+        df_unit_services = df_unit_services.loc[
+            df_unit_services['region_type'] != 'LHB'].copy()    
+    else:
+        pass
     df_unit_services_full = df_unit_services.copy()
     # Limit which columns to show:
     cols_to_keep = [
