@@ -11,7 +11,12 @@ import plotly.graph_objects as go
 # from outcome_utilities.fixed_params import emoji_text_dict, plotly_colours
 
 
-def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True, use_msu=False):
+def build_data_for_timeline(
+        params_dict,
+        use_drip_ship=True,
+        use_mothership=True,
+        use_msu=False
+        ):
     """
     params_dict keys include:
     # Travel times:
@@ -52,7 +57,8 @@ def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True
             'process_time_transfer_arrival_to_puncture',
         ]
         times_values_drip_ship = [params_dict[k] for k in times_keys_drip_ship]
-        times_dict_drip_ship = time_dict | dict(zip(times_keys_drip_ship, times_values_drip_ship))
+        times_dict_drip_ship = time_dict | dict(
+            zip(times_keys_drip_ship, times_values_drip_ship))
         times_dicts['drip_ship'] = times_dict_drip_ship
 
         # times_cum_drip_ship = build_cumulative_times(list(times_dict_drip_ship.values()))
@@ -86,12 +92,11 @@ def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True
         #         times_dict_drip_ship['process_time_transfer_arrival_to_puncture']
         #     )
         # times_cum_dicts['drip_ship'] = times_cum_dict_drip_ship
-    
+
         # times_cum_label_dict_drip_ship = (
         #     build_formatted_time_str_lists_for_scenarios(times_cum_dict_drip_ship))
         # times_cum_label_dicts['drip_ship'] = times_cum_label_dict_drip_ship
 
-    
     if use_mothership:
         times_keys_mothership = [
             'process_time_call_ambulance',
@@ -101,8 +106,10 @@ def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True
             'process_time_arrival_to_needle',
             'process_time_arrival_to_puncture',
         ]
-        times_values_mothership = [params_dict[k] for k in times_keys_mothership]
-        times_dict_mothership = time_dict | dict(zip(times_keys_mothership, times_values_mothership))
+        times_values_mothership = [
+            params_dict[k] for k in times_keys_mothership]
+        times_dict_mothership = time_dict | dict(zip(
+            times_keys_mothership, times_values_mothership))
         times_dicts['mothership'] = times_dict_mothership
 
         # times_cum_mothership = build_cumulative_times(list(times_dict_mothership.values()))
@@ -131,7 +138,6 @@ def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True
         #     build_formatted_time_str_lists_for_scenarios(times_cum_dict_mothership))
         # times_cum_label_dicts['mothership'] = times_cum_label_dict_mothership
 
-
     if use_msu:
         times_keys_msu = [
             'process_time_call_ambulance',
@@ -143,7 +149,8 @@ def build_data_for_timeline(params_dict, use_drip_ship=True, use_mothership=True
             'process_time_msu_arrival_to_puncture',
         ]
         times_values_msu = [params_dict[k] for k in times_keys_msu]
-        times_dict_msu = time_dict | dict(zip(times_keys_msu, times_values_msu))
+        times_dict_msu = time_dict | dict(zip(
+            times_keys_msu, times_values_msu))
         times_dicts['msu'] = times_dict_msu
 
         # times_cum_msu = build_cumulative_times(list(times_dict_msu.values()))
@@ -199,7 +206,8 @@ def make_formatted_time_str_list(times):
     new_times = []
     for t in times:
         try:
-            t_new = (f'{int(60*(t/60)//60):2d}hr ' + f'{int(60*(t/60)%60):2d}min')
+            t_new = (f'{int(60*(t/60)//60):2d}hr ' +
+                     f'{int(60*(t/60)%60):2d}min')
         except ValueError:
             # t is NaN.
             t_new = '~'
@@ -340,7 +348,6 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
     # Remove y=0 and x=0 lines (zeroline) and grid lines:
     fig.update_xaxes(zeroline=False, showgrid=False)
     fig.update_yaxes(zeroline=False, showgrid=False)
-
 
     fig_height = 200 * y_max
     fig.update_layout(
@@ -557,18 +564,6 @@ def plot_timeline(
     # Pre-hospital timelines
     fig = go.Figure()
 
-
-    # # Draw box
-    # fig.add_trace(go.Scatter(
-    #     y=[0, 100, 100, 0],
-    #     x=[0, 0, -2, -2],
-    #     fill="toself",
-    #     hoverinfo='skip',
-    #     mode='lines',
-    #     line=dict(color="RoyalBlue", width=3),
-    #     showlegend=False
-    #     ))
-
     # Assume the keys are in the required order:
     time_names = list(time_dicts.keys())
 
@@ -610,7 +605,8 @@ def plot_timeline(
         ))
 
         # Sneaky extra scatter marker for hover text:
-        y_sneaky = np.array([np.mean([cum_times[i], cum_times[i+1]]) for i in range(len(cum_times) - 1)])
+        y_sneaky = np.array([np.mean([cum_times[i], cum_times[i+1]])
+                             for i in range(len(cum_times) - 1)])
         y_diffs = [f'{d}    ' for d in np.diff(cum_times)]
         fig.add_trace(go.Scatter(
             y=time_offset + y_sneaky,

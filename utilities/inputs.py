@@ -655,6 +655,7 @@ def select_stroke_unit_services_broad(
                 'Use_MSU': st.column_config.CheckboxColumn(),
             },
             key='units_data_editor',
+            height=700
             )
     # Do not keep a copy of the returned edited dataframe.
     # We'll update it ourselves when the script reruns.
@@ -826,47 +827,30 @@ def select_stroke_type(use_combo_stroke_types=False):
     return stroke_type, stroke_type_str
 
 
-def select_colour_maps(cmap_names, cmap_diff_names, cmap_pop_names):
+def select_colour_maps(cmap_names):
     """
     User inputs.
     """
-    # cmap_displays = [
-    #     make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
-    #     for cmap_name in cmap_names
-    #     ]
-    cmap_diff_displays = [
+    cmap_displays = [
         make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
-        for cmap_name in cmap_diff_names
+        for cmap_name in cmap_names
         ]
 
     try:
-        # cmap_name = st.session_state['cmap_name']
-        cmap_diff_name = st.session_state['cmap_diff_name']
+        cmap_name = st.session_state['cmap_name']
     except KeyError:
-        # cmap_name = cmap_names[0]
-        cmap_diff_name = cmap_diff_names[0]
-    # cmap_ind = cmap_names.index(cmap_name)
-    cmap_diff_ind = cmap_diff_names.index(cmap_diff_name)
+        cmap_name = cmap_names[0]
+    cmap_ind = cmap_names.index(cmap_name)
 
-    # cmap_name = st.radio(
-    #     'Colour display for "usual care" map',
-    #     cmap_names,
-    #     captions=cmap_displays,
-    #     index=cmap_ind,
-    #     key='cmap_name'
-    # )
-
-    cmap_diff_name = st.radio(
+    cmap_name = st.radio(
         'Default colour display for maps',
-        cmap_diff_names,
-        captions=cmap_diff_displays,
-        index=cmap_diff_ind,
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
         key='cmap_diff_name'
     )
-    cmap_name = cmap_diff_name
-    cmap_pop_name = cmap_diff_name
 
-    return cmap_name, cmap_diff_name, cmap_pop_name
+    return cmap_name
 
 
 def load_region_lists(df_unit_services_full):

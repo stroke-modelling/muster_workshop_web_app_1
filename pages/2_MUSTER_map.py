@@ -95,7 +95,7 @@ st.set_page_config(
 
 
 # #####################################
-# ########## CONTAINER SETUP ########## --------------------------------------------- update me again
+# ########## CONTAINER SETUP ##########
 # #####################################
 # Both tabs:
 # +-----------------------------------------------+
@@ -105,6 +105,8 @@ st.set_page_config(
 # Inputs tab:
 # +-----------------------------------------------+
 # |                container_inputs               |
+# |  +-----------------------------------------+  |
+# |  |         container_inputs_summary        |  |
 # |  +-----------------------------------------+  |
 # |  |           container_inputs_top          |  |
 # |  +-----------------------------------------+  |
@@ -118,22 +120,34 @@ st.set_page_config(
 # |  +-----------------------------------------+  |
 # |  |       container_services_buttons        |  |
 # |  +-----------------------------------------+  |
-# |  |     container_services_dataeditor       |  |
+# |  |      container_services_dataeditor      |  |
 # |  +-----------------------------------------+  |
 # +-----------------------------------------------+
 #
 # Results tab:
 # +-----------------------------------------------+
 # |                 container_rerun               |
-# +-------------------------+---------------------+
-# |      container_map      | container_mrs_dists |
-# +-------------------------+---------------------+
-# |              container_map_inputs             |
-# |  +---------+----------+---------+----------+  |
-# |  |   cm1   |   cm2    |   cm3   |   cm4    |  |
-# |  +---------+----------+---------+----------+  |
 # +-----------------------------------------------+
 # |            container_results_tables           |
+# +-----------------------------------------------+
+# |              container_map_inputs             |
+# |  +------------+--------------+-------------+  |
+# |  |    cm0     |     cm1      |     cm2     |  |
+# |  +------------+--------------+-------------+  |
+# +-----------------------------------------------+
+# |                 container_map                 |
+# +-----------------------------------------------+
+# |          container_input_region_type          |
+# +-----------------------------------------------+
+# |              container_actual_vlim            |
+# +-----------------------------------------------+
+# +-----------------------------------------------+
+# |             container_mrs_dists_etc           |
+# |  +-----------------------------------------+  |
+# |  |           container_mrs_dists           |  |
+# |  +--------------------+--------------------+  |
+# |  |   container_bars   | container_mrs_input|  |
+# |  +--------------------+--------------------+  |
 # +-----------------------------------------------+
 #
 # Sidebar:
@@ -175,7 +189,7 @@ with container_unit_services:
 with container_services_buttons:
     st.info(''.join([
         'To update the services, use the following buttons ',
-        'and click the tick-boxes in the table.'
+        'and/or click the tick-boxes in the table.'
         ]), icon='➡️')
 
 with tab_results:
@@ -226,7 +240,8 @@ with container_intro:
 # ----- Pathway timings and stroke units -----
 input_dict = {}
 with container_inputs_top:
-    st.info('To update the timings, use the number box options below.', icon='➡️')
+    st.info('To update the timings, use the number box options below.',
+            icon='➡️')
     st.markdown(''.join([
         'These timings affect the times to treatment for all patients ',
         'excluding the travel times to their chosen stroke units or MSU.'
@@ -279,18 +294,15 @@ with container_input_region_type:
 
 # ----- Colourmap selection -----
 cmap_names = [
-    'cosmic', 'viridis', 'inferno', 'neutral'
-    ]
-cmap_diff_names = [
     'iceburn_r', 'seaweed', 'fusion', 'waterlily'
     ]
-cmap_diff_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
-                    for c in cmap_diff_names]
-cmap_pop_names = cmap_diff_names
+cmap_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
+                    for c in cmap_names]
 with container_select_cmap:
     st.markdown('### Colour schemes')
-    cmap_name, cmap_diff_name, cmap_pop_name = inputs.select_colour_maps(
-        cmap_names, cmap_diff_names, cmap_pop_names)
+    cmap_name = inputs.select_colour_maps(cmap_names)
+    cmap_diff_name = cmap_name
+    cmap_pop_name = cmap_name
 # If we're showing mRS scores then flip the colour maps:
 if outcome_type == 'mrs_shift':
     cmap_name += '_r'
@@ -519,14 +531,23 @@ usual_care_time_to_ivt_str = (
     f'{usual_care_time_to_ivt} + 🚑 travel to nearest unit')
 usual_care_mt_no_transfer_str = (
     f'{usual_care_mt_no_transfer} + 🚑 travel to nearest unit')
-usual_care_mt_transfer_str = (
-    f'{usual_care_mt_transfer} + 🚑 travel to nearest unit + 🚑 travel between units')
+usual_care_mt_transfer_str = ' '.join([
+    f'{usual_care_mt_transfer}',
+    '+ 🚑 travel to nearest unit',
+    '+ 🚑 travel between units'
+    ])
 msu_time_to_ivt_str = (
     f'{msu_time_to_ivt} + 🚑 travel from MSU base')
-msu_time_to_mt_str = (
-    f'{msu_time_to_mt} + 🚑 travel from MSU base + 🚑 travel to MT unit')
-msu_time_to_mt_no_ivt_str = (
-    f'{msu_time_to_mt_no_ivt} + 🚑 travel from MSU base + 🚑 travel to MT unit')
+msu_time_to_mt_str = ' '.join([
+    f'{msu_time_to_mt}',
+    '+ 🚑 travel from MSU base',
+    '+ 🚑 travel to MT unit'
+    ])
+msu_time_to_mt_no_ivt_str = ' '.join([
+    f'{msu_time_to_mt_no_ivt}',
+    '+ 🚑 travel from MSU base',
+    '+ 🚑 travel to MT unit'
+    ])
 
 # Place these into a dataframe:
 df_treatment_times = pd.DataFrame(
@@ -537,20 +558,16 @@ df_treatment_times = pd.DataFrame(
     index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
 )
 
-times_explanation_usual_str = (
-'''
+times_explanation_usual_str = ('''
 For the standard pathway:
 + The "fastest" time to MT is when the first stroke unit provides MT.
 + The "slowest" time to MT is when a transfer to the MT unit is needed.
-'''
-)
-times_explanation_msu_str = (
-'''
+''')
+times_explanation_msu_str = ('''
 For the MSU:
 + The "fastest" time to MT is when thrombolysis was not given in the MSU.
 + The "slowest" time to MT is when thrombolysis has been given in the MSU.
-'''
-)
+''')
 with container_inputs_summary:
     st.markdown('Summary of treatment times:')
     st.table(df_treatment_times)
@@ -825,7 +842,7 @@ def display_mrs_dists():
             'mRS distributions are shown for only LSOA who would benefit ',
             'from an MSU. These are LSOA where the "added utility" ',
             'for the "MSU" scenario ',
-            'is better than for "usual care" scenario.'
+            'is better than for the "usual care" scenario.'
             ]))
 
     mrs_lists_dict, region_selected, col_pretty = (

@@ -11,6 +11,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from utilities.maps import convert_shapely_polys_into_xy
 from utilities.inputs import load_roads_gdf
+import utilities.colour_setup as colour_setup
 
 import stroke_maps.load_data
 
@@ -1070,28 +1071,42 @@ def plotly_many_heatmaps(
     fig.update_layout(legend_itemdoubleclick=False)
 
     # BUTTONS TEST - https://plotly.com/python/custom-buttons/
-    # Add drowdowns
     # Colour scales dict:
     dict_colourscales_lhs = {}
     dict_colourscales_rhs = {}
     dict_colourscales_pop = {}
-    import utilities.colour_setup as colour_setup
     cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
     cmaps += [c[:-2] if c.endswith('_r') else f'{c}_r' for c in cmaps]
     for c in cmaps:
-        dict_colourscales_lhs[c] = colour_setup.make_colour_list_for_plotly_button(
-            c, vmin=dict_colours['vmin'], vmax=dict_colours['vmax'])
-        dict_colourscales_rhs[c] = colour_setup.make_colour_list_for_plotly_button(
-            c, vmin=dict_colours_diff['vmin'], vmax=dict_colours_diff['vmax'])
-        dict_colourscales_pop[c] = colour_setup.make_colour_list_for_plotly_button(
-            c, vmin=dict_colours_pop['vmin'], vmax=dict_colours_pop['vmax'])
+        dict_colourscales_lhs[c] = (
+            colour_setup.make_colour_list_for_plotly_button(
+                c,
+                vmin=dict_colours['vmin'],
+                vmax=dict_colours['vmax']
+                ))
+        dict_colourscales_rhs[c] = (
+            colour_setup.make_colour_list_for_plotly_button(
+                c,
+                vmin=dict_colours_diff['vmin'],
+                vmax=dict_colours_diff['vmax']
+                ))
+        dict_colourscales_pop[c] = (
+            colour_setup.make_colour_list_for_plotly_button(
+                c,
+                vmin=dict_colours_pop['vmin'],
+                vmax=dict_colours_pop['vmax']
+                ))
 
     fig.update_layout(
         updatemenus=[
             dict(
                 buttons=list([
                     dict(
-                        args=[{'colorscale': [dict_colourscales_lhs[c], dict_colourscales_rhs[c], dict_colourscales_pop[c]]},
+                        args=[{'colorscale': [
+                                dict_colourscales_lhs[c],
+                                dict_colourscales_rhs[c],
+                                dict_colourscales_pop[c]
+                                ]},
                               {'traces': ['lhs', 'rhs', 'pop']}],
                         label=c,
                         method='restyle'
