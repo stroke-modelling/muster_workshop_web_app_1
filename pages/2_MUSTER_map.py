@@ -154,6 +154,8 @@ with tab_inputs:
     container_unit_services = st.container()
 
 with container_inputs:
+    st.markdown('## Pathway timings')
+    container_inputs_summary = st.container()
     container_inputs_top = st.container()
     (
         container_inputs_standard,     # c1
@@ -171,33 +173,39 @@ with container_unit_services:
     container_services_buttons = st.container()
     container_services_dataeditor = st.container()
 with container_services_buttons:
-    st.markdown(''.join([
+    st.info(''.join([
         'To update the services, use the following buttons ',
         'and click the tick-boxes in the table.'
-        ]))
+        ]), icon='➡️')
 
 with tab_results:
     container_rerun = st.container()
-    # Convert the map container to empty so that the placeholder map
-    # is replaced once the real map is ready.
-    container_map = st.empty()
-    container_actual_vlim = st.container()
-    container_map_inputs = st.container(border=True)
+    st.markdown('## Full results')
+    with st.expander('Full data tables'):
+        container_results_tables = st.container()
+    container_map_inputs = st.container()  # border=True)
     with container_map_inputs:
-        st.markdown('__Plot options__')
+        st.markdown('## Subgroup results')
         (
+            container_input_words,        # cm0
             container_input_treatment,    # cm1
             container_input_stroke_type,  # cm2
-            container_input_region_type,  # cm3
         ) = st.columns(3)
+        with container_input_words:
+            st.markdown('Pick the subgroup using these buttons:')
 
+    # Convert the map container to empty so that the placeholder map
+    # is replaced once the real map is ready.
+    st.markdown('### Maps of average outcomes')
+    container_map = st.empty()
+    container_input_region_type = st.container()
+    container_actual_vlim = st.container()
     container_mrs_dists_etc = st.container()
     # Convert mRS dists to empty so that re-running a fragment replaces
     # the bars rather than displays the new plot in addition.
     with container_mrs_dists_etc:
+        st.markdown('### Distributions of mRS scores')
         container_mrs_dists = st.empty()
-    with st.expander('Full data tables'):
-        container_results_tables = st.container()
 
 with st.sidebar:
     with st.expander('Accessibility & advanced options'):
@@ -218,7 +226,11 @@ with container_intro:
 # ----- Pathway timings and stroke units -----
 input_dict = {}
 with container_inputs_top:
-    st.markdown('## Pathway inputs')
+    st.info('To update the timings, use the number box options below.', icon='➡️')
+    st.markdown(''.join([
+        'These timings affect the times to treatment for all patients ',
+        'excluding the travel times to their chosen stroke units or MSU.'
+    ]))
     input_dict['process_time_call_ambulance'] = st.number_input(
         'Time to call ambulance',
         value=60,
@@ -251,12 +263,18 @@ with container_input_stroke_type:
     stroke_type, stroke_type_str = (
         inputs.select_stroke_type(use_combo_stroke_types=False))
 
+# Place the treatment type in the input dict
+# so we know which set of MSU times to use - faster with no IVT
+# or slower with IVT.
+input_dict['treatment_type'] = treatment_type
+
 # ----- Regions to draw -----
 # Name of the column in the geojson that labels the shapes:
 with container_input_region_type:
     outline_name = st.radio(
         'Region type to draw on maps',
-        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service']
+        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service'],
+        horizontal=True
         )
 
 # ----- Colourmap selection -----
@@ -285,14 +303,15 @@ if outcome_type == 'mrs_shift':
 
 
 # ----- Demographic data -----
-# Population map:
-# Load in pop data:
-import os
-df_demog = pd.read_csv(os.path.join('data', 'collated_data_regional_LSOA.csv'))
+# For population map. Load in LSOA-level demographic data:
+df_demog = inputs.load_lsoa_demog()
+# Set the column of this data that we want...
 column_pop = 'population_density'
+# ... and how the name should be displayed in the app:
 column_pop_pretty = 'Population density (people per square kilometre)'
+# Set limits for the colour scale:
 dict_colours_pop = {
-    'vmin': 10.0,
+    'vmin': 0.0,
     'vmax': 100.0,
     'step_size': 100.0,  # unused
 }
@@ -441,6 +460,106 @@ with container_timeline_msu:
         tmin=-10.0
     )
 
+# ----- Treatment times -----
+# Calculate times to treatment without travel.
+# These are just for display here - they're recalculated
+# for the main calculations.
+
+# Usual care:
+# Time to IVT:
+usual_care_time_to_ivt = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_time_ambulance_response'] +
+    input_dict['process_ambulance_on_scene_duration'] +
+    input_dict['process_time_arrival_to_needle']
+    )
+# Separate MT timings required depending on whether transfer
+# needed.
+# Timings for units needing transfers:
+usual_care_mt_transfer = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_time_ambulance_response'] +
+    input_dict['process_ambulance_on_scene_duration'] +
+    input_dict['transfer_time_delay'] +
+    input_dict['process_time_transfer_arrival_to_puncture']
+    )
+# Timings for units that do not need transfers:
+usual_care_mt_no_transfer = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_time_ambulance_response'] +
+    input_dict['process_ambulance_on_scene_duration'] +
+    input_dict['process_time_arrival_to_puncture']
+    )
+
+# MSU:
+# Time to IVT:
+msu_time_to_ivt = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_msu_dispatch'] +
+    input_dict['process_msu_thrombolysis']
+    )
+# Time to MT after IVT and...:
+msu_time_to_mt = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_msu_dispatch'] +
+    input_dict['process_msu_thrombolysis'] +
+    input_dict['process_msu_on_scene_post_thrombolysis'] +
+    input_dict['process_time_msu_arrival_to_puncture']
+    )
+# ... after no IVT:
+msu_time_to_mt_no_ivt = (
+    input_dict['process_time_call_ambulance'] +
+    input_dict['process_msu_dispatch'] +
+    input_dict['process_msu_on_scene_no_thrombolysis'] +
+    input_dict['process_time_msu_arrival_to_puncture']
+    )
+
+# Add strings to show travel times:
+usual_care_time_to_ivt_str = (
+    f'{usual_care_time_to_ivt} + 🚑 travel to nearest unit')
+usual_care_mt_no_transfer_str = (
+    f'{usual_care_mt_no_transfer} + 🚑 travel to nearest unit')
+usual_care_mt_transfer_str = (
+    f'{usual_care_mt_transfer} + 🚑 travel to nearest unit + 🚑 travel between units')
+msu_time_to_ivt_str = (
+    f'{msu_time_to_ivt} + 🚑 travel from MSU base')
+msu_time_to_mt_str = (
+    f'{msu_time_to_mt} + 🚑 travel from MSU base + 🚑 travel to MT unit')
+msu_time_to_mt_no_ivt_str = (
+    f'{msu_time_to_mt_no_ivt} + 🚑 travel from MSU base + 🚑 travel to MT unit')
+
+# Place these into a dataframe:
+df_treatment_times = pd.DataFrame(
+    [[usual_care_time_to_ivt_str, msu_time_to_ivt_str],
+     [usual_care_mt_no_transfer_str, msu_time_to_mt_no_ivt_str],
+     [usual_care_mt_transfer_str, msu_time_to_mt_str]],
+    columns=['Standard pathway', 'Mobile Stroke Unit'],
+    index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
+)
+
+times_explanation_usual_str = (
+'''
+For the standard pathway:
++ The "fastest" time to MT is when the first stroke unit provides MT.
++ The "slowest" time to MT is when a transfer to the MT unit is needed.
+'''
+)
+times_explanation_msu_str = (
+'''
+For the MSU:
++ The "fastest" time to MT is when thrombolysis was not given in the MSU.
++ The "slowest" time to MT is when thrombolysis has been given in the MSU.
+'''
+)
+with container_inputs_summary:
+    st.markdown('Summary of treatment times:')
+    st.table(df_treatment_times)
+    cols = st.columns(2)
+    with cols[0]:
+        st.markdown(times_explanation_usual_str)
+    with cols[1]:
+        st.markdown(times_explanation_msu_str)
+
 
 # ----- Maps -----
 # Stroke unit scatter markers:
@@ -556,7 +675,7 @@ except KeyError:
     inputs_changed = False
 
 with container_rerun:
-    if st.button('Calculate results'):
+    if st.button('Calculate results', type='primary'):
         st.session_state['input_dict'] = input_dict
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
         st.session_state['df_unit_services_full_on_last_run'] = (
@@ -695,17 +814,18 @@ scenario_mrs = ['usual_care', 'msu']
 @st.fragment
 def display_mrs_dists():
     (
+        container_bars,
         container_mrs_input,
-        container_bars
     ) = st.columns(2)
 
     with container_mrs_input:
         # User input:
         bar_option = st.selectbox('Region for mRS distributions', bar_options)
         st.markdown(''.join([
-            'mRS distributions shown for only LSOA who would benefit ',
-            'from an MSU (i.e. "added utility" for "MSU" scenario ',
-            'is better than for "usual care" scenario).'
+            'mRS distributions are shown for only LSOA who would benefit ',
+            'from an MSU. These are LSOA where the "added utility" ',
+            'for the "MSU" scenario ',
+            'is better than for "usual care" scenario.'
             ]))
 
     mrs_lists_dict, region_selected, col_pretty = (
@@ -735,6 +855,13 @@ with container_mrs_dists:
 # ########## SETUP FOR MAPS ##########
 # ####################################
 # Keep this below the results above because the map creation is slow.
+
+# Display names:
+subplot_titles = [
+    'Usual care',
+    'Benefit of MSU over usual care',
+    column_pop_pretty
+]
 
 # ----- Set up geodataframe -----
 gdf = maps.load_lsoa_gdf()
@@ -837,14 +964,21 @@ actual_vmin_diff = min(vals_for_colours_diff)
 actual_vmax_diff = max(vals_for_colours_diff)
 actual_vmin_pop = min(vals_for_colours_pop)
 actual_vmax_pop = max(vals_for_colours_pop)
+# Put these into a DataFrame:
+df_actual_vlim = pd.DataFrame(
+    [[actual_vmin, actual_vmin_diff, actual_vmin_pop],
+     [actual_vmax, actual_vmax_diff, actual_vmax_pop]],
+    columns=subplot_titles,
+    index=['Minimum', 'Maximum']
+)
 with container_actual_vlim:
-    cols = st.columns(3)
-    with cols[0]:
-        st.markdown(f'Plotted data range: {actual_vmin:.3f} to {actual_vmax:.3f}')
-    with cols[1]:
-        st.markdown(f'Plotted data range: {actual_vmin_diff:.3f} to {actual_vmax_diff:.3f}')
-    with cols[2]:
-        st.markdown(f'Plotted data range: {actual_vmin_pop:.1f} to {actual_vmax_pop:.1f}')
+    st.markdown('Ranges of the plotted data:')
+    st.dataframe(df_actual_vlim)
+    st.markdown(''.join([
+        'The range of the colour scales in the maps can be changed ',
+        'using the options in the sidebar.'
+        ]))
+
 
 # ----- Set up colours -----
 # Load colour map colours:
@@ -915,12 +1049,6 @@ unit_subplot_dict = {
 
 
 # ----- Plot -----
-# Display names:
-subplot_titles = [
-    'Usual care',
-    'Benefit of MSU over usual care',
-    column_pop_pretty
-]
 with container_map:
     plot_maps.plotly_many_heatmaps(
         burned_lhs,

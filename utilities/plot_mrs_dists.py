@@ -243,6 +243,8 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
     fig.update_yaxes(title_text='Cumulative probability', row=2, col=1)
 
     # Figure setup.
+    # Give enough of a top margin that the main title doesn't
+    # clash with the top subplot title.
     fig.update_layout(
         # width=1200,
         height=700,

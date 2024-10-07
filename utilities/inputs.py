@@ -5,9 +5,6 @@ All of the content for the Inputs section.
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt  # for colour maps
-import cmasher as cmr  # for additional colour maps
-from importlib_resources import files
 import os
 import geopandas
 
@@ -65,7 +62,7 @@ def select_parameters_map(input_dict={}):
         value=40,
         help=f"Reference value: {40}",
         # key=key
-        )    
+        )
 
     st.markdown('')
     st.markdown('__No transfer required for MT__')
@@ -155,7 +152,6 @@ def select_parameters_msu(input_dict={}):
         help=f"Reference value: {1.0}",
         # key=key
         )
-
 
     # Write an example for how the MSU speed affects the timings.
     time_not_msu = 20.0
@@ -547,7 +543,7 @@ def select_stroke_unit_services(use_msu=True):
     # Display and store any changes from the user:
     df_unit_services = st.data_editor(
         df_unit_services,
-        disabled=['postcode', 'stroke_team', 'isdn'],
+        disabled=['postcode', 'ssnap_name', 'isdn'],
         # height=180  # limit height to show fewer rows
         )
 
@@ -650,7 +646,7 @@ def select_stroke_unit_services_broad(
     with container_dataeditor:
         df_unit_services_edited = st.data_editor(
             df_unit_services,
-            disabled=['postcode', 'stroke_team', 'isdn'],
+            disabled=['postcode', 'ssnap_name', 'isdn'],
             # height=180  # limit height to show fewer rows
             # Make columns display as checkboxes instead of 0/1 ints:
             column_config={
@@ -705,7 +701,7 @@ def import_stroke_unit_services(
         df_unit_services = df_unit_services.loc[mask].copy()
         # Remove Wales:
         df_unit_services = df_unit_services.loc[
-            df_unit_services['region_type'] != 'LHB'].copy()    
+            df_unit_services['region_type'] != 'LHB'].copy()
     else:
         pass
 
@@ -721,7 +717,7 @@ def import_stroke_unit_services(
     df_unit_services_full = df_unit_services.copy()
     # Limit which columns to show:
     cols_to_keep = [
-        'stroke_team',
+        'ssnap_name',
         'Use_IVT',
         'Use_MT',
         # 'region',
@@ -738,7 +734,7 @@ def import_stroke_unit_services(
     # Change 1/0 columns to bool for formatting:
     # df_unit_services[cols_use] = df_unit_services[cols_use].astype(bool)
     # Sort by ISDN name for nicer display:
-    df_unit_services = df_unit_services.sort_values('isdn')
+    df_unit_services = df_unit_services.sort_values(['isdn', 'ssnap_name'])
 
     return df_unit_services, df_unit_services_full, cols_use
 
@@ -795,7 +791,8 @@ def select_treatment_type():
         'Treatment type',
         ['IVT', 'MT', 'IVT & MT'],
         index=2,  # IVT & MT as default
-        # horizontal=True
+        horizontal=True,
+        label_visibility='collapsed'
         )
     # Match the input string to the file name string:
     treatment_type_dict = {
@@ -816,7 +813,8 @@ def select_stroke_type(use_combo_stroke_types=False):
     stroke_type_str = st.radio(
         'Stroke type',
         options,
-        # horizontal=True
+        horizontal=True,
+        label_visibility='collapsed'
         )
     # Match the input string to the file name string:
     stroke_type_dict = {
@@ -899,7 +897,8 @@ def load_region_lists(df_unit_services_full):
     # Use names not postcodes here to match ICB and ISDN names
     # and have nicer display on the app.
     mask = df_unit_services_full['Use_IVT'] == 1
-    nearest_ivt_unit_names_list = sorted(df_unit_services_full.loc[mask, 'stroke_team'])
+    nearest_ivt_unit_names_list = sorted(
+        df_unit_services_full.loc[mask, 'ssnap_name'])
 
     # Key for region type, value for list of options.
     region_options_dict = {
@@ -944,3 +943,9 @@ def load_roads_gdf():
     gdf_roads['x'] = x_lists
     gdf_roads['y'] = y_lists
     return gdf_roads
+
+
+def load_lsoa_demog():
+    df_demog = pd.read_csv(os.path.join(
+        'data', 'collated_data_regional_LSOA.csv'))
+    return df_demog

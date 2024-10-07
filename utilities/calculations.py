@@ -59,10 +59,10 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
     for col in cols_postcode:
         if col in df_lsoa.columns:
             df_lsoa = pd.merge(
-                df_lsoa, df_unit_services['stroke_team'],
+                df_lsoa, df_unit_services['ssnap_name'],
                 left_on=col, right_index=True, how='left'
                 )
-            df_lsoa = df_lsoa.rename(columns={'stroke_team': f'{col}_name'})
+            df_lsoa = df_lsoa.rename(columns={'ssnap_name': f'{col}_name'})
             # Reorder columns so name appears next to postcode.
             i = df_lsoa.columns.tolist().index(col)
             df_lsoa = df_lsoa[
@@ -326,7 +326,7 @@ def make_outcome_inputs_msu(pathway_dict, df_travel_times):
 
     # Time to MT:
     # If required, everyone goes directly to the nearest MT unit.
-    time_to_mt = (
+    time_to_mt_with_ivt = (
         pathway_dict['process_time_call_ambulance'] +
         pathway_dict['process_msu_dispatch'] +
         (df_travel_times['nearest_msu_time'].values *
@@ -337,6 +337,20 @@ def make_outcome_inputs_msu(pathway_dict, df_travel_times):
          pathway_dict['scale_msu_travel_times']) +
         pathway_dict['process_time_msu_arrival_to_puncture']
         )
+    time_to_mt_no_ivt = (
+        pathway_dict['process_time_call_ambulance'] +
+        pathway_dict['process_msu_dispatch'] +
+        (df_travel_times['nearest_msu_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_msu_on_scene_no_thrombolysis'] +
+        (df_travel_times['nearest_mt_time'].values *
+         pathway_dict['scale_msu_travel_times']) +
+        pathway_dict['process_time_msu_arrival_to_puncture']
+        )
+    if 'ivt' in pathway_dict['treatment_type']:
+        time_to_mt = time_to_mt_with_ivt
+    else:
+        time_to_mt = time_to_mt_no_ivt
 
     # Bonus times - not needed for outcome model but calculated anyway.
     msu_occupied_treatment = (
@@ -568,7 +582,7 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
     df_nearest_ivt = df_nearest_ivt.groupby('nearest_ivt_unit').mean()
     # Merge back in the unit names:
     df_nearest_ivt = pd.merge(
-        df_unit_services['stroke_team'],
+        df_unit_services['ssnap_name'],
         df_nearest_ivt, how='right', left_on='Postcode', right_index=True)
 
     # Round the values.
