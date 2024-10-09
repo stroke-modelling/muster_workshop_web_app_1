@@ -10,6 +10,7 @@ done in functions stored in files named container_(something).py
 # ----- Imports -----
 import streamlit as st
 import pandas as pd
+from pympler import tracker
 
 # Custom functions:
 import utilities.calculations as calc
@@ -25,29 +26,99 @@ import utilities.plot_timeline as timeline
 
 
 @st.cache_data
-def main_calculations(input_dict, df_unit_services):
+def main_calculations(input_dict, df_unit_services, treatment_time_dict):
+
+    
+    print('\n\n\nStart of main_calculations')
+    # tr0 = tracker.SummaryTracker()
+    # tr0.print_diff()
     # Times to treatment:
     geo = calc.calculate_geography(df_unit_services)
     # Travel times for each LSOA:
-    df_travel_times = geo.combined_data[
-        [c for c in geo.combined_data.columns if 'time' in c] +
+    df_travel_times = geo[
+        [c for c in geo.columns if 'time' in c] +
         ['transfer_required', 'LSOA']
         ]
     df_travel_times = df_travel_times.set_index('LSOA')
 
+    print('\n\n\nmake_outcome_inputs_usual_care')
+    # tr0 = tracker.SummaryTracker()
+
     # Add travel times to the pathway timings to get treatment times.
     df_outcome_uc = calc.make_outcome_inputs_usual_care(
-        input_dict, df_travel_times)
+        input_dict,
+        df_travel_times,
+        treatment_time_dict['usual_care_time_to_ivt'],
+        treatment_time_dict['usual_care_mt_transfer'],
+        treatment_time_dict['usual_care_mt_no_transfer'],
+        )
     df_outcome_msu = calc.make_outcome_inputs_msu(
-        input_dict, df_travel_times)
+        input_dict,
+        df_travel_times,
+        treatment_time_dict['msu_time_to_ivt'],
+        treatment_time_dict['msu_time_to_mt'],
+        msu_gives_ivt=True
+        )
+    df_outcome_msu_no_ivt = calc.make_outcome_inputs_msu(
+        input_dict,
+        df_travel_times,
+        treatment_time_dict['msu_time_to_ivt'],
+        treatment_time_dict['msu_time_to_mt_no_ivt'],
+        msu_gives_ivt=False
+        )
     dict_outcome_inputs = {
         'usual_care': df_outcome_uc,
         'msu': df_outcome_msu,
+        'msu_no_ivt': df_outcome_msu_no_ivt,
     }
+
+    # tr0.print_diff()
+
+    # print('\n\n\ncalculate_outcomes')
+    # tr0 = tracker.SummaryTracker()
 
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(
-        dict_outcome_inputs, df_unit_services, geo.combined_data)
+        dict_outcome_inputs, df_unit_services, geo)
+
+    # st.stop()
+    # tr0.print_diff()
+
+    # Combine the two sets of MSU data.
+    # Use the "with IVT" set for most things except for treatment
+    # with MT only, which needs the "without IVT" set.
+    # LSOA:
+    # Names of columns that need replacing:
+    cols_lsoa = [c for c in df_lsoa.columns if (
+                (c.startswith('msu')) & ('mt' in c) & ('ivt' not in c))]
+    # Names of columns that will replace them:
+    cols_lsoa_no_ivt = [c.replace('msu', 'msu_no_ivt') for c in cols_lsoa]
+    df_lsoa[cols_lsoa] = df_lsoa[cols_lsoa_no_ivt]
+    # Keep a copy of the time to treatment:
+    df_lsoa['msu_mt_time_no_ivt'] = df_lsoa['msu_no_ivt_mt_time']
+    # Remove "no IVT" columns:
+    cols_lsoa = [c for c in df_lsoa.columns
+                    if not c.startswith('msu_no_ivt')]
+    df_lsoa = df_lsoa[cols_lsoa]
+    # Drop repeated "msu_occupied" columns and rename:
+    df_lsoa = df_lsoa.drop(
+        ['msu_occupied_ivt_msu_no_ivt', 'msu_occupied_no_ivt_msu_no_ivt'],
+        axis='columns'
+        )
+    df_lsoa = df_lsoa.rename(columns={
+        'msu_occupied_ivt_msu_no_ivt': 'msu_occupied_ivt',
+        'msu_occupied_no_ivt_msu_no_ivt': 'msu_occupied_no_ivt',
+        })
+    # mRS:
+    # Names of columns that need replacing:
+    cols_mrs = [c for c in df_mrs.columns if (
+                (c.startswith('msu')) & ('mt' in c) & ('ivt' not in c))]
+    # Names of columns that will replace them:
+    cols_mrs_no_ivt = [c.replace('msu', 'msu_no_ivt') for c in cols_mrs]
+    df_mrs[cols_mrs] = df_mrs[cols_mrs_no_ivt]
+    # Remove "no IVT" columns:
+    cols_mrs = [c for c in df_mrs.columns if not c.startswith('msu_no_ivt')]
+    df_mrs = df_mrs[cols_mrs]
 
     # Calculate diff - msu minus usual care:
     df_lsoa = calc.combine_results_by_diff(
@@ -60,7 +131,7 @@ def main_calculations(input_dict, df_unit_services):
         combine_mrs_dists=True
         )
 
-    # Place probabilities of death into st.session_state['df_lsoa'] data
+    # Place probabilities of death into df_lsoa data
     # so that they are displayed in the results tables.
     cols_probs_of_death = [
         'usual_care_lvo_ivt_mrs_dists_noncum_6',
@@ -265,6 +336,17 @@ df_unit_services, df_unit_services_full = (
         container_services_dataeditor,
     ))
 
+# Calculate times to treatment without travel.
+# These are used in the main_calculations and also displayed on
+# the inputs page as a sanity check.
+treatment_times_without_travel = (
+    calc.calculate_times_to_treatment_without_travel_usual_care(input_dict))
+treatment_times_without_travel_msu = (
+    calc.calculate_times_to_treatment_without_travel_msu(input_dict))
+# Combine these:
+treatment_times_without_travel = (
+    treatment_times_without_travel | treatment_times_without_travel_msu)
+
 # These do not change the underlying data,
 # but do change what is shown in the plots.
 
@@ -278,10 +360,6 @@ with container_input_stroke_type:
     stroke_type, stroke_type_str = (
         inputs.select_stroke_type(use_combo_stroke_types=False))
 
-# Place the treatment type in the input dict
-# so we know which set of MSU times to use - faster with no IVT
-# or slower with IVT.
-input_dict['treatment_type'] = treatment_type
 
 # ----- Regions to draw -----
 # Name of the column in the geojson that labels the shapes:
@@ -297,7 +375,7 @@ cmap_names = [
     'iceburn_r', 'seaweed', 'fusion', 'waterlily'
     ]
 cmap_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
-                    for c in cmap_names]
+               for c in cmap_names]
 with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name = inputs.select_colour_maps(cmap_names)
@@ -473,78 +551,31 @@ with container_timeline_msu:
     )
 
 # ----- Treatment times -----
-# Calculate times to treatment without travel.
-# These are just for display here - they're recalculated
-# for the main calculations.
-
-# Usual care:
-# Time to IVT:
-usual_care_time_to_ivt = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_time_ambulance_response'] +
-    input_dict['process_ambulance_on_scene_duration'] +
-    input_dict['process_time_arrival_to_needle']
-    )
-# Separate MT timings required depending on whether transfer
-# needed.
-# Timings for units needing transfers:
-usual_care_mt_transfer = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_time_ambulance_response'] +
-    input_dict['process_ambulance_on_scene_duration'] +
-    input_dict['transfer_time_delay'] +
-    input_dict['process_time_transfer_arrival_to_puncture']
-    )
-# Timings for units that do not need transfers:
-usual_care_mt_no_transfer = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_time_ambulance_response'] +
-    input_dict['process_ambulance_on_scene_duration'] +
-    input_dict['process_time_arrival_to_puncture']
-    )
-
-# MSU:
-# Time to IVT:
-msu_time_to_ivt = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_msu_dispatch'] +
-    input_dict['process_msu_thrombolysis']
-    )
-# Time to MT after IVT and...:
-msu_time_to_mt = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_msu_dispatch'] +
-    input_dict['process_msu_thrombolysis'] +
-    input_dict['process_msu_on_scene_post_thrombolysis'] +
-    input_dict['process_time_msu_arrival_to_puncture']
-    )
-# ... after no IVT:
-msu_time_to_mt_no_ivt = (
-    input_dict['process_time_call_ambulance'] +
-    input_dict['process_msu_dispatch'] +
-    input_dict['process_msu_on_scene_no_thrombolysis'] +
-    input_dict['process_time_msu_arrival_to_puncture']
-    )
-
 # Add strings to show travel times:
-usual_care_time_to_ivt_str = (
-    f'{usual_care_time_to_ivt} + 🚑 travel to nearest unit')
-usual_care_mt_no_transfer_str = (
-    f'{usual_care_mt_no_transfer} + 🚑 travel to nearest unit')
+usual_care_time_to_ivt_str = ' '.join([
+    f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
+    '+ 🚑 travel to nearest unit'
+    ])
+usual_care_mt_no_transfer_str = ' '.join([
+    f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
+    '+ 🚑 travel to nearest unit'
+    ])
 usual_care_mt_transfer_str = ' '.join([
-    f'{usual_care_mt_transfer}',
+    f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
     '+ 🚑 travel to nearest unit',
     '+ 🚑 travel between units'
     ])
-msu_time_to_ivt_str = (
-    f'{msu_time_to_ivt} + 🚑 travel from MSU base')
+msu_time_to_ivt_str = ' '.join([
+    f'{treatment_times_without_travel["msu_time_to_ivt"]}',
+    '+ 🚑 travel from MSU base'
+    ])
 msu_time_to_mt_str = ' '.join([
-    f'{msu_time_to_mt}',
+    f'{treatment_times_without_travel["msu_time_to_mt"]}',
     '+ 🚑 travel from MSU base',
     '+ 🚑 travel to MT unit'
     ])
 msu_time_to_mt_no_ivt_str = ' '.join([
-    f'{msu_time_to_mt_no_ivt}',
+    f'{treatment_times_without_travel["msu_time_to_mt_no_ivt"]}',
     '+ 🚑 travel from MSU base',
     '+ 🚑 travel to MT unit'
     ])
@@ -557,7 +588,7 @@ df_treatment_times = pd.DataFrame(
     columns=['Standard pathway', 'Mobile Stroke Unit'],
     index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
 )
-
+# Display the times:
 times_explanation_usual_str = ('''
 For the standard pathway:
 + The "fastest" time to MT is when the first stroke unit provides MT.
@@ -619,13 +650,14 @@ if outline_name_for_unit_map == 'None':
 else:
     if outline_name_for_unit_map == 'Nearest service':
         # Times to treatment:
-        geo = calc.calculate_geography(df_unit_services).combined_data
+        geo = calc.calculate_geography(df_unit_services)
         # Put columns in the format expected by the region outline
         # function:
         geo = geo.rename(columns={
             'LSOA': 'lsoa',
             'nearest_ivt_unit': 'nearest_ivt_unit_name',
             'nearest_mt_unit': 'nearest_mt_unit_name',
+            'nearest_msu_unit': 'nearest_msu_unit_name',
             })
         geo = geo.set_index(['lsoa', 'nearest_ivt_unit_name'])
     else:
@@ -636,7 +668,9 @@ else:
         gdf_catchment_lhs_for_unit_map,
         gdf_catchment_rhs_for_unit_map,
         gdf_catchment_pop_for_unit_map
-    ) = calc.load_or_calculate_region_outlines(outline_name_for_unit_map, geo)
+    ) = calc.load_or_calculate_region_outlines(
+        outline_name_for_unit_map, geo, use_msu=True)
+
 # ----- Process geography for plotting -----
 # Convert gdf polygons to xy cartesian coordinates:
 gdfs_to_convert = [
@@ -661,6 +695,7 @@ with container_services_map:
         outline_name_for_unit_map,
         subplot_titles=['Usual care', 'Mobile Stroke Unit']
         )
+
 
 
 # #######################################
@@ -691,8 +726,17 @@ except KeyError:
     # First run of the app.
     inputs_changed = False
 
+
 with container_rerun:
     if st.button('Calculate results', type='primary'):
+
+        print('\n\n\nStart of calculate results')
+        # tr0 = tracker.SummaryTracker()
+        # tr0.print_diff()
+
+        
+        print('\n\n\nMain calculations')
+        # tr0 = tracker.SummaryTracker()
         st.session_state['input_dict'] = input_dict
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
         st.session_state['df_unit_services_full_on_last_run'] = (
@@ -704,7 +748,18 @@ with container_rerun:
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = main_calculations(input_dict, df_unit_services)
+        ) = main_calculations(
+            input_dict,
+            df_unit_services,
+            treatment_times_without_travel
+            )
+        # tr0.print_diff()
+
+        
+        print('\n\n\nEnd of calculate results')
+        # tr0 = tracker.SummaryTracker()
+        # tr0.print_diff()
+
     else:
         if inputs_changed:
             with container_rerun:
@@ -722,6 +777,9 @@ else:
     # This hasn't been created yet and so the results cannot be drawn.
     st.stop()
 
+# st.stop()
+
+
 # #########################################
 # ########## RESULTS - FULL DATA ##########
 # #########################################
@@ -734,24 +792,18 @@ with container_results_tables:
         'Full results by LSOA'
         ])
 
-    # Set some columns to bool for nicer display:
-    cols_bool = ['transfer_required', 'England']
-    for col in cols_bool:
-        for df in [
-            st.session_state['df_icb'],
-            st.session_state['df_isdn'],
-            st.session_state['df_nearest_ivt'],
-            st.session_state['df_ambo'],
-            st.session_state['df_lsoa']
-        ]:
-            df[col] = df[col].astype(bool)
-
     with results_tabs[0]:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each IVT unit catchment area.'
             ]))
-        st.dataframe(st.session_state['df_nearest_ivt'])
+        st.dataframe(
+            st.session_state['df_nearest_ivt'],
+            # Set some columns to bool for nicer display:
+            column_config={
+                'transfer_required': st.column_config.CheckboxColumn()
+                }
+            )
 
     with results_tabs[1]:
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
@@ -769,8 +821,22 @@ with container_results_tables:
         st.dataframe(st.session_state['df_ambo'])
 
     with results_tabs[4]:
-        st.dataframe(st.session_state['df_lsoa'])
+        st.dataframe(
+            st.session_state['df_lsoa'],
+            # Set some columns to bool for nicer display:
+            column_config={
+                'transfer_required': st.column_config.CheckboxColumn()
+                }
+            )
 
+
+# print('\n\n\nStart of mRS dists')
+# tr0 = tracker.SummaryTracker()
+# tr0.print_diff()
+
+
+# print('\n\n\nmRS dists')
+# tr0 = tracker.SummaryTracker()
 
 # #########################################
 # ########## RESULTS - mRS DISTS ##########
@@ -809,9 +875,6 @@ else:
     lsoa_to_keep = st.session_state['df_lsoa'].index[
         (st.session_state['df_lsoa'][c1] > 0.0)]
 
-# mRS distributions that meet the criteria:
-df_mrs_to_plot = st.session_state['df_mrs'][
-    st.session_state['df_mrs'].index.isin(lsoa_to_keep)]
 
 # Select mRS distribution region.
 # Select a region based on what's actually in the data,
@@ -854,7 +917,9 @@ def display_mrs_dists():
             treatment_type_str,
             st.session_state['df_lsoa'][
                 ['nearest_ivt_unit', 'nearest_ivt_unit_name']],
-            df_mrs_to_plot,
+            # mRS distributions that meet the criteria:
+            st.session_state['df_mrs'][
+                st.session_state['df_mrs'].index.isin(lsoa_to_keep)],
             input_dict,
             scenarios=scenario_mrs
             ))
@@ -867,6 +932,12 @@ def display_mrs_dists():
 with container_mrs_dists:
     display_mrs_dists()
 
+
+# tr0.print_diff()
+
+
+# print('\n\n\nMaps')
+# tr0 = tracker.SummaryTracker()
 
 # ####################################
 # ########## SETUP FOR MAPS ##########
@@ -974,6 +1045,8 @@ burned_pop = make_raster_from_vectors(
     transform_dict['transform']
 )
 
+# tr0.print_diff()
+
 # Record actual highest and lowest values:
 actual_vmin = min(vals_for_colours)
 actual_vmax = max(vals_for_colours)
@@ -1030,11 +1103,11 @@ if outline_name == 'None':
 else:
     (
         outline_names_col,
-        gdf_catchment_pop,
         gdf_catchment_lhs,
-        gdf_catchment_rhs
+        gdf_catchment_rhs,
+        gdf_catchment_pop,
     ) = calc.load_or_calculate_region_outlines(
-            outline_name, st.session_state['df_lsoa'])
+            outline_name, st.session_state['df_lsoa'], use_msu=True)
 
 
 # ----- Process geography for plotting -----

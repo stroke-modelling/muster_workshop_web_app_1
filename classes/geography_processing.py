@@ -209,6 +209,9 @@ class Geoprocessing(object):
                 self.lsoa_travel_time.index.isin(lsoa_eng)].copy()
             # self.geodata = self.geodata.loc[mask].copy(deep=True)
 
+            # Remove the "England" column:
+            self.admissions = self.admissions.drop('England', axis='columns')
+
             # # Index shenanigans.
             # # I don't know why, but it quietly breaks some of the LSOA
             # # when the index is mostly range index integers but has

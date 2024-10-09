@@ -7,7 +7,6 @@ import pandas as pd
 
 # Imports from the stroke_outcome package:
 from stroke_outcome.continuous_outcome import Continuous_outcome
-import stroke_outcome.outcome_utilities as outcome_utilities
 
 
 class Model(object):
@@ -36,46 +35,32 @@ class Model(object):
         """
 
         # set up table and add results
-        self.full_results = self.geodata.copy(deep=True)
+        self.full_results = self.geodata.copy()  # deep=True)
 
         # Place mRS distributions in here:
         self.full_mrs_dists = self.geodata[
-            ['LSOA', 'Admissions']].copy(deep=True)
+            ['LSOA', 'Admissions']].copy()  # deep=True)
 
         for scen, df_outcome_inputs in self.dict_outcome_inputs.items():
+            # Calculate results:
             scenario_results, scenario_mrs = self.add_scenario(
                 df_outcome_inputs, scen)
+            # Merge into full results dataframes:
             self.full_results = pd.merge(
                 self.full_results, scenario_results,
-                left_on='LSOA', right_on='LSOA', how='left')
+                left_on='LSOA', right_on='LSOA', how='left',
+                suffixes=['', f'_{scen}'])
             self.full_mrs_dists = pd.merge(
                 self.full_mrs_dists, scenario_mrs,
-                left_on='LSOA', right_on='LSOA', how='left')
+                left_on='LSOA', right_on='LSOA', how='left',
+                suffixes=['', f'_{scen}'])
 
-        # Make non-cumulative mRS distributions:
-        cols = self.full_mrs_dists.columns.values
-        cols = sorted(list(set(
-            ['_'.join(c.split('_')[:-1]) for c in cols
-             if c not in ['LSOA', 'Admissions']]
-             )))
-        for c in cols:
-            cols_cumsum = [f'{c}_{i}' for i in range(7)]
-            cols_noncum = [f'{c}_noncum_{i}' for i in range(7)]
-
-            new_data = self.full_mrs_dists[cols_cumsum]
-            # Take the difference between mRS bands:
-            new_data = np.diff(new_data, prepend=0.0, axis=1)
-            # Round the values:
-            new_data = np.round(new_data, 3)
-            # Store:
-            self.full_mrs_dists[cols_noncum] = new_data
+        self.convert_mrs_dists_to_noncum()
 
         # Reindex on LSOA
         self.full_results.set_index('LSOA', inplace=True)
         self.full_mrs_dists.set_index('LSOA', inplace=True)
         self.summary_results = self.full_results.describe().T
-
-        # self.save_results()
 
     def add_scenario(self, outcome_inputs_df, scenario_name='scen'):
         """
@@ -85,7 +70,28 @@ class Model(object):
         Define column name variables to make the lines shorter.
         Used to also find 'utility' outcomes.
         """
+        outcomes_by_stroke_type = self.run_outcome_model(outcome_inputs_df)
 
+        mask_mt_better = self.find_patients_with_mt_better_than_ivt(
+            outcomes_by_stroke_type,
+            occ='lvo',
+            )
+
+        scenario_results = self.gather_outcome_results(
+            outcome_inputs_df,
+            outcomes_by_stroke_type,
+            scenario_name,
+            mask_mt_better,
+            )
+        scenario_mrs_dists = self.gather_mrs_dist_results(
+            outcome_inputs_df,
+            outcomes_by_stroke_type,
+            scenario_name,
+            mask_mt_better
+            )
+        return scenario_results, scenario_mrs_dists
+
+    def run_outcome_model(self, outcome_inputs_df):
         # Set up outcome object
         continuous_outcome = Continuous_outcome()
 
@@ -131,14 +137,48 @@ class Model(object):
                         outcomes_by_stroke_type[c2][:, 2])
                 except KeyError:
                     pass
+        return outcomes_by_stroke_type
 
-        # Store results in here. Outcomes...
+    def find_patients_with_mt_better_than_ivt(
+            self,
+            scenario_results,
+            occ='lvo',
+            ):
+        # The results for IVT & MT use whichever is the better of
+        # the separate IVT-only and MT-only results.
+        # Which is better may be different for each patient.
+        # Here, define "better" as more patients in the mRS<=2 band.
+        # Convert input dict into DataFrame:
+        cols = [
+            f'{occ}_ivt_each_patient_mrs_0-2',
+            f'{occ}_mt_each_patient_mrs_0-2'
+            ]
+        scenario_results = pd.DataFrame(
+            np.array([scenario_results[c] for c in cols]).T,
+            columns=cols
+            )
+        # Find which is better:
+        inds = scenario_results[cols].idxmax(axis=1)
+        # "inds" has one value per patient and the value is either
+        # the string (not the mRS value, not the index)
+        # f'{occ}_ivt_mrs_0-2' or
+        # f'{occ}_mt_mrs_0-2' depending.
+
+        # Patients where MT is better than IVT:
+        mask = np.where(inds.str.contains('_mt_'))
+        return mask
+
+    def gather_outcome_results(
+            self,
+            outcome_inputs_df,
+            outcomes_by_stroke_type,
+            scenario_name,
+            mask_mt_better,
+            ):
+        # Store results in here. Outcomes
         scenario_results = pd.DataFrame()
-        # ... and mRS distributions:
-        scenario_mrs_dists = pd.DataFrame()
         # Include LSOA names:
         scenario_results['LSOA'] = outcome_inputs_df['LSOA']
-        scenario_mrs_dists['LSOA'] = outcome_inputs_df['LSOA']
         # Include treatment times:
         scenario_results[f'{scenario_name}_ivt_time'] = (
             outcome_inputs_df['onset_to_needle_mins'])
@@ -153,101 +193,130 @@ class Model(object):
         bonus_cols = [c for c in bonus_cols if c not in cols_to_remove]
         scenario_results[bonus_cols] = outcome_inputs_df[bonus_cols]
 
-        cols_before = []
-        cols_after = []
+        cols_outcomes_before = []
+        cols_outcomes_after = []
         for occ in ['lvo', 'nlvo']:
             for tre in ['ivt', 'mt']:
                 if occ == 'nlvo' and tre == 'mt':
                     pass
                 else:
-                    # --- Outcome results ---
-                    cols_before += [
+                    cols_outcomes_before += [
                         f'{occ}_{tre}_each_patient_mrs_0-2',
                         f'{occ}_{tre}_each_patient_mrs_shift',
                         f'{occ}_{tre}_each_patient_utility_shift'
                     ]
-                    cols_after += [
+                    cols_outcomes_after += [
                         f'{scenario_name}_{occ}_{tre}_mrs_0-2',
                         f'{scenario_name}_{occ}_{tre}_mrs_shift',
                         f'{scenario_name}_{occ}_{tre}_utility_shift'
                     ]
 
-                    # --- mRS distributions ---
+        for c, cb in enumerate(cols_outcomes_before):
+            scenario_results[cols_outcomes_after[c]] = outcomes_by_stroke_type[cb]
+
+        # --- IVT & MT results ---
+        # Only do the following for LVO:
+        occ = 'lvo'
+        for out in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+            c1 = f'{scenario_name}_{occ}_ivt_{out}'
+            c2 = f'{scenario_name}_{occ}_mt_{out}'
+            outs_ivt = scenario_results[c1].values.copy()
+            outs_mt = scenario_results[c2].values.copy()
+            # Initially copy over all the IVT data,
+            # then update with MT data where necessary:
+            outs = outs_ivt.copy()
+            outs[mask_mt_better] = outs_mt[mask_mt_better].copy()
+            # Place into the results df:
+            c3 = f'{scenario_name}_{occ}_ivt_mt_{out}'
+            scenario_results[c3] = outs
+
+        # Sort columns alphabetically to group similar results:
+        scenario_results = scenario_results[
+            sorted(scenario_results.columns.tolist())]
+        return scenario_results
+
+    def gather_mrs_dist_results(
+            self,
+            outcome_inputs_df,
+            outcomes_by_stroke_type,
+            scenario_name,
+            mask_mt_better
+            ):
+        # Store results in here. mRS distributions:
+        scenario_mrs_dists = pd.DataFrame()
+        # Include LSOA names:
+        scenario_mrs_dists['LSOA'] = outcome_inputs_df['LSOA']
+
+        cols_mrs_before = []
+        cols_mrs_after = []
+        for occ in ['lvo', 'nlvo']:
+            for tre in ['ivt', 'mt']:
+                if occ == 'nlvo' and tre == 'mt':
+                    pass
+                else:
                     # One list of mRS values per row (patient) in the data.
                     # Give each mRS band its own column...
                     c1 = [f'{scenario_name}_{occ}_{tre}_mrs_dists_{i}'
                           for i in range(7)]
+                    cols_mrs_after.append(c1)
                     # ... but in the original data it's just one column:
                     c2 = f'{occ}_{tre}_each_patient_mrs_dist_post_stroke'
+                    cols_mrs_before.append(c2)
                     # Round the mRS values to remove unnecessary precision:
                     outs = outcomes_by_stroke_type[c2].copy()
                     outs = np.round(outs, 5).tolist()
                     scenario_mrs_dists[c1] = outs
 
-        for c, cb in enumerate(cols_before):
-            scenario_results[cols_after[c]] = outcomes_by_stroke_type[cb]
-
         # --- IVT & MT results ---
-        for occ in ['lvo']:
-            # The results for IVT & MT use whichever is the better of
-            # the separate IVT-only and MT-only results.
-            # Which is better may be different for each patient.
-            # Here, define "better" as more patients in the mRS<=2 band.
-            # Find which is better:
-            inds = scenario_results[
-                [f'{scenario_name}_{occ}_ivt_mrs_0-2',
-                 f'{scenario_name}_{occ}_mt_mrs_0-2'
-                 ]].idxmax(axis=1)
-            # "inds" has one value per patient and the value is either
-            # the string (not the mRS value, not the index)
-            # f'{scenario_name}_{occ}_ivt_mrs_0-2' or
-            # f'{scenario_name}_{occ}_mt_mrs_0-2' depending.
-
-            # Patients where MT is better than IVT:
-            mask = np.where(inds.str.contains('_mt_'))
-
-            # --- Outcome results ---
-            for out in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
-                c1 = f'{scenario_name}_{occ}_ivt_{out}'
-                c2 = f'{scenario_name}_{occ}_mt_{out}'
-                outs_ivt = scenario_results[c1].values.copy()
-                outs_mt = scenario_results[c2].values.copy()
-                # Initially copy over all the IVT data,
-                # then update with MT data where necessary:
-                outs = outs_ivt.copy()
-                outs[mask] = outs_mt[mask].copy()
-                # Place into the results df:
-                c3 = f'{scenario_name}_{occ}_ivt_mt_{out}'
-                scenario_results[c3] = outs
-
-            # --- mRS distributions ---
-            # Pick out IVT and MT results:
-            c1 = f'{occ}_ivt_each_patient_mrs_dist_post_stroke'
-            c2 = f'{occ}_mt_each_patient_mrs_dist_post_stroke'
-            outs_ivt = outcomes_by_stroke_type[c1].copy()
-            outs_mt = outcomes_by_stroke_type[c2].copy()
-            # Initially copy over all the IVT data,
-            # then update with MT data where necessary:
-            outs = outs_ivt.copy()
-            outs[mask, :] = outs_mt[mask, :].copy()
-            # Reshape as normal:
-            outs = np.round(outs, 5).tolist()
-            # Place each mRS band in its own column in the new results:
-            cols_mrs = [f'{scenario_name}_{occ}_ivt_mt_mrs_dists_{i}'
-                        for i in range(7)]
-            scenario_mrs_dists[cols_mrs] = outs
+        # Only do the following for LVO:
+        occ = 'lvo'
+        # Pick out IVT and MT results:
+        c1 = f'{occ}_ivt_each_patient_mrs_dist_post_stroke'
+        c2 = f'{occ}_mt_each_patient_mrs_dist_post_stroke'
+        outs_ivt = outcomes_by_stroke_type[c1].copy()
+        outs_mt = outcomes_by_stroke_type[c2].copy()
+        # Initially copy over all the IVT data,
+        # then update with MT data where necessary:
+        outs = outs_ivt.copy()
+        outs[mask_mt_better, :] = outs_mt[mask_mt_better, :].copy()
+        # Reshape as normal:
+        outs = np.round(outs, 5).tolist()
+        # Place each mRS band in its own column in the new results:
+        cols_mrs = [f'{scenario_name}_{occ}_ivt_mt_mrs_dists_{i}'
+                    for i in range(7)]
+        scenario_mrs_dists[cols_mrs] = outs
 
         # Sort columns alphabetically to group similar results:
         scenario_mrs_dists = scenario_mrs_dists[
             sorted(scenario_mrs_dists.columns.tolist())]
-        scenario_results = scenario_results[
-            sorted(scenario_results.columns.tolist())]
 
-        return scenario_results, scenario_mrs_dists
+        return scenario_mrs_dists
 
-    def save_results(self):
-        """Save results to output folder"""
+    def convert_mrs_dists_to_noncum(self):
+        # Make non-cumulative mRS distributions:
+        cols = self.full_mrs_dists.columns.values
+        cols = sorted(list(set(
+            ['_'.join(c.split('_')[:-1]) for c in cols
+             if c not in ['LSOA', 'Admissions']]
+             )))
+        for c in cols:
+            cols_cumsum = [f'{c}_{i}' for i in range(7)]
+            cols_noncum = [f'{c}_noncum_{i}' for i in range(7)]
 
-        if self.scenario.save_lsoa_results:
-            self.full_results.to_csv(f'./output/lsoa_results_scen_{self.scenario.name}.csv')
-            self.summary_results.to_csv(f'./output/summary_results_scen_{self.scenario.name}.csv')
+            new_data = self.full_mrs_dists[cols_cumsum]
+            # Take the difference between mRS bands:
+            new_data = np.diff(new_data, prepend=0.0, axis=1)
+            # Round the values:
+            new_data = np.round(new_data, 3)
+            # Drop the cumulative data:
+            self.full_mrs_dists = self.full_mrs_dists.drop(
+                cols_cumsum, axis='columns'
+            )
+            # Store:
+            self.full_mrs_dists[cols_noncum] = new_data
+
+    def get_full_results(self):
+        return self.full_results
+
+    def get_full_mrs_dists(self):
+        return self.full_mrs_dists

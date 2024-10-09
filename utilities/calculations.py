@@ -20,6 +20,7 @@ from utilities.maps import dissolve_polygons_by_value
 # Containers:
 
 
+@st.cache_data
 def calculate_geography(df_unit_services):
     # Process and save geographic data (only needed when hospital data changes)
     geo = Geoprocessing(
@@ -30,10 +31,15 @@ def calculate_geography(df_unit_services):
 
     # Reset index because Model expects a column named 'lsoa':
     geo.combined_data = geo.combined_data.reset_index()
-    return geo
+
+    df_geo = geo.combined_data.copy()
+
+    del geo
+
+    return df_geo
 
 
-@st.cache_data
+# @st.cache_data
 def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
     """
 
@@ -46,12 +52,9 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
 
     # TO DO - merge in the geographical data to the outcome results.
 
-    df_lsoa = model.full_results.copy()
+    df_lsoa = model.get_full_results()
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
-
-    # # No-treatment data:
-    # dist_dict = load_reference_mrs_dists()
 
     # Copy stroke unit names over. Currently has only postcodes.
     cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
@@ -68,36 +71,6 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
             df_lsoa = df_lsoa[
                 [*df_lsoa.columns[:i], f'{col}_name', *df_lsoa.columns[i:-1]]]
 
-    # # Make a copy of nLVO IVT results for nLVO IVT+MT results:
-    # cols_ivt_mt = [c for c in df_lsoa.columns if 'ivt_mt' in c]
-    # for col in cols_ivt_mt:
-    #     # Find the equivalent column for nLVO:
-    #     col_nlvo = col.replace('lvo', 'nlvo')
-    #     # Find the equivalent column for ivt-only:
-    #     col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
-    #     # Copy over the data:
-    #     df_lsoa[col_nlvo] = df_lsoa[col_ivt]
-    # # Set the nLVO MT results to be the nLVO no-treatment results:
-    # cols_mt = [c for c in df_lsoa.columns if
-    #            (('_mt_' in c) & ('_ivt_' not in c))]
-    # for col in cols_mt:
-    #     # Find the equivalent column for nLVO:
-    #     col_nlvo = col.replace('lvo', 'nlvo')
-    #     if (('utility_shift' in col_nlvo) | ('mrs_shift' in col_nlvo)):
-    #         # No change from non-treatment.
-    #         df_lsoa[col_nlvo] = 0.0
-    #     elif 'utility' in col_nlvo:
-    #         df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_utility']
-    #     elif 'mrs_0-2' in col_nlvo:
-    #         df_lsoa[col_nlvo] = df_lsoa['nlvo_no_treatment_mrs_0-2']
-
-    # TO DO - the results df contains a mix of scenarios
-    # (drip and ship, mothership, msu) in the column names.
-    # Pull them out and put them into 'scenario' header.
-    # Also need to do something with separate nlvo, lvo, treatment types
-    # because current setup just wants some averaged added utility outcome
-    # rather than split by stroke type.
-
     # Outcome columns and numbers of decimal places:
     dict_outcomes_dp = {
         'mrs_0-2': 3,
@@ -110,61 +83,117 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
         for col in cols:
             df_lsoa[col] = np.round(df_lsoa[col], dp)
 
-    df_mrs = model.full_mrs_dists.copy()
+    df_mrs = model.get_full_mrs_dists()
     df_mrs.index.names = ['lsoa']
     df_mrs.columns.names = ['property']
 
-    # TO DO - more carefully pick out the 7 mRS columns and update the
-    # 7 reference mRS values.
-
-    # # Make a copy of nLVO IVT results for nLVO IVT+MT results:
-    # cols_ivt_mt = [c for c in df_mrs.columns if 'ivt_mt' in c]
-    # # Find the col names without _mrs at the end:
-    # cols_ivt_mt_prefixes = sorted(list(set(
-    #     ['_'.join(c.split('_')[:-1]) for c in cols_ivt_mt])))
-    # for col in cols_ivt_mt_prefixes:
-    #     # Find the equivalent column for nLVO:
-    #     col_nlvo = col.replace('lvo', 'nlvo')
-    #     # Find the equivalent column for ivt-only:
-    #     col_ivt = col_nlvo.replace('ivt_mt', 'ivt')
-
-    #     # Add mRS suffixes back on:
-    #     cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
-    #     cols_ivt = [f'{col_ivt}_{i}' for i in range(7)]
-    #     # Copy over the data:
-    #     df_mrs[cols_nlvo] = df_mrs[cols_ivt]
-    # # Set the nLVO MT results to be the nLVO no-treatment results:
-    # cols_mt = [c for c in df_mrs.columns if
-    #            (('_mt_' in c) & ('_ivt_' not in c))]
-    # # Find the col names without _mrs at the end:
-    # cols_mt_prefixes = sorted(list(set(
-    #     ['_'.join(c.split('_')[:-1]) for c in cols_mt])))
-    # for col in cols_mt_prefixes:
-    #     # Find the equivalent column for nLVO:
-    #     col_nlvo = col.replace('lvo', 'nlvo')
-    #     # Add the suffixes back in:
-    #     cols_nlvo = [f'{col_nlvo}_{i}' for i in range(7)]
-    #     if 'noncum' in col_nlvo:
-    #         dist = dist_dict['nlvo_no_treatment_noncum']
-    #     else:
-    #         dist = dist_dict['nlvo_no_treatment']
-    #     # Copy over the data:
-    #     df_mrs[cols_nlvo] = dist
+    del model
 
     return df_lsoa, df_mrs
 
 
 # ##########################################
+# ##### TREATMENT TIMES WITHOUT TRAVEL #####
+# ##########################################
+def calculate_times_to_treatment_without_travel_usual_care(input_dict):
+    # Usual care:
+    # Time to IVT:
+    usual_care_time_to_ivt = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['process_time_arrival_to_needle']
+        )
+    # Separate MT timings required depending on whether transfer
+    # needed.
+    # Timings for units needing transfers:
+    usual_care_mt_transfer = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['transfer_time_delay'] +
+        input_dict['process_time_transfer_arrival_to_puncture']
+        )
+    # Timings for units that do not need transfers:
+    usual_care_mt_no_transfer = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['process_time_arrival_to_puncture']
+        )
+
+    # Gather these into a dictionary:
+    d = {
+        'usual_care_time_to_ivt': usual_care_time_to_ivt,
+        'usual_care_mt_transfer': usual_care_mt_transfer,
+        'usual_care_mt_no_transfer': usual_care_mt_no_transfer,
+    }
+    return d
+
+
+def calculate_times_to_treatment_without_travel_msu(input_dict):
+    # MSU:
+    # Time to IVT:
+    msu_time_to_ivt = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_msu_dispatch'] +
+        input_dict['process_msu_thrombolysis']
+        )
+    # Time to MT after IVT and...:
+    msu_time_to_mt = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_msu_dispatch'] +
+        input_dict['process_msu_thrombolysis'] +
+        input_dict['process_msu_on_scene_post_thrombolysis'] +
+        input_dict['process_time_msu_arrival_to_puncture']
+        )
+    # ... after no IVT:
+    msu_time_to_mt_no_ivt = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_msu_dispatch'] +
+        input_dict['process_msu_on_scene_no_thrombolysis'] +
+        input_dict['process_time_msu_arrival_to_puncture']
+        )
+
+    # Gather these into a dictionary:
+    d = {
+        'msu_time_to_ivt': msu_time_to_ivt,
+        'msu_time_to_mt': msu_time_to_mt,
+        'msu_time_to_mt_no_ivt': msu_time_to_mt_no_ivt,
+    }
+    return d
+
+
+# ##########################################
 # ##### BUILD INPUTS FOR OUTCOME MODEL #####
 # ##########################################
-def make_outcome_inputs_usual_care(pathway_dict, df_travel_times):
+@st.cache_data
+def make_outcome_inputs_usual_care(
+        pathway_dict,
+        df_travel_times,
+        time_to_ivt_without_travel=-1000.0,
+        time_to_mt_with_transfer_without_travel=-1000.0,
+        time_to_mt_without_transfer_without_travel=-1000.0,
+        ):
+    # If any of the treatment times are below zero, assume
+    # they need to be calculated afresh from the dict.
+    recalculate_times = (
+        (time_to_ivt_without_travel < 0.0) |
+        (time_to_mt_with_transfer_without_travel < 0.0) |
+        (time_to_mt_without_transfer_without_travel < 0.0)
+        )
+    if recalculate_times:
+        time_dict = calculate_times_to_treatment_without_travel_usual_care(
+            pathway_dict)
+        time_to_ivt_without_travel = time_dict['usual_care_time_to_ivt']
+        time_to_mt_with_transfer_without_travel = (
+            time_dict['usual_care_mt_transfer'])
+        time_to_mt_without_transfer_without_travel = (
+            time_dict['usual_care_mt_no_transfer'])
     # Time to IVT:
     time_to_ivt = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_time_ambulance_response'] +
-        pathway_dict['process_ambulance_on_scene_duration'] +
-        df_travel_times['nearest_ivt_time'].values +
-        pathway_dict['process_time_arrival_to_needle']
+        time_to_ivt_without_travel +
+        df_travel_times['nearest_ivt_time'].values
         )
 
     # Separate MT timings required depending on whether transfer
@@ -172,21 +201,14 @@ def make_outcome_inputs_usual_care(pathway_dict, df_travel_times):
     mask_transfer = np.where(df_travel_times['transfer_required'].values)
     # Timings for units needing transfers:
     mt_transfer = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_time_ambulance_response'] +
-        pathway_dict['process_ambulance_on_scene_duration'] +
+        time_to_mt_with_transfer_without_travel +
         df_travel_times['nearest_ivt_time'].values +
-        pathway_dict['transfer_time_delay'] +
-        df_travel_times['transfer_time'].values +
-        pathway_dict['process_time_transfer_arrival_to_puncture']
+        df_travel_times['transfer_time'].values
         )
     # Timings for units that do not need transfers:
     mt_no_transfer = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_time_ambulance_response'] +
-        pathway_dict['process_ambulance_on_scene_duration'] +
-        df_travel_times['nearest_ivt_time'].values +
-        pathway_dict['process_time_arrival_to_puncture']
+        time_to_mt_without_transfer_without_travel +
+        df_travel_times['nearest_ivt_time'].values
         )
     # Combine the two sets of MT times:
     time_to_mt = mt_no_transfer
@@ -314,61 +336,67 @@ def make_outcome_inputs_redirection_approved(pathway_dict, df_travel_times):
     return outcome_inputs_df
 
 
-def make_outcome_inputs_msu(pathway_dict, df_travel_times):
+@st.cache_data
+def make_outcome_inputs_msu(
+        pathway_dict,
+        df_travel_times,
+        time_to_ivt_without_travel=-1000.0,
+        time_to_mt_without_travel=-1000.0,
+        msu_gives_ivt=True
+        ):
+    # If any of the treatment times are below zero, assume
+    # they need to be calculated afresh from the dict.
+    recalculate_times = (
+        (time_to_ivt_without_travel < 0.0) |
+        (time_to_mt_without_travel < 0.0)
+        )
+    if recalculate_times:
+        time_dict = calculate_times_to_treatment_without_travel_msu(
+            pathway_dict)
+        time_to_ivt_without_travel = time_dict['msu_time_to_ivt']
+        time_to_mt_with_ivt_without_travel = time_dict['msu_time_to_mt']
+        time_to_mt_without_ivt_without_travel = (
+            time_dict['msu_time_to_mt_no_ivt'])
+        if msu_gives_ivt:
+            time_to_mt_without_travel = time_to_mt_with_ivt_without_travel
+        else:
+            time_to_mt_without_travel = time_to_mt_without_ivt_without_travel
+
+    # To shorten lines:
+    s = pathway_dict['scale_msu_travel_times']
+
     # Time to IVT:
     time_to_ivt = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_msu_dispatch'] +
-        (df_travel_times['nearest_msu_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_msu_thrombolysis']
+        time_to_ivt_without_travel +
+        (df_travel_times['nearest_msu_time'].values * s)
         )
 
     # Time to MT:
     # If required, everyone goes directly to the nearest MT unit.
-    time_to_mt_with_ivt = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_msu_dispatch'] +
-        (df_travel_times['nearest_msu_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_msu_thrombolysis']  +
-        pathway_dict['process_msu_on_scene_post_thrombolysis'] +
-        (df_travel_times['nearest_mt_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_time_msu_arrival_to_puncture']
+    time_to_mt = (
+        time_to_mt_without_travel +
+        (df_travel_times['nearest_msu_time'].values * s) +
+        (df_travel_times['nearest_mt_time'].values * s)
         )
-    time_to_mt_no_ivt = (
-        pathway_dict['process_time_call_ambulance'] +
-        pathway_dict['process_msu_dispatch'] +
-        (df_travel_times['nearest_msu_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_msu_on_scene_no_thrombolysis'] +
-        (df_travel_times['nearest_mt_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_time_msu_arrival_to_puncture']
-        )
-    if 'ivt' in pathway_dict['treatment_type']:
-        time_to_mt = time_to_mt_with_ivt
-    else:
-        time_to_mt = time_to_mt_no_ivt
 
     # Bonus times - not needed for outcome model but calculated anyway.
     msu_occupied_treatment = (
         pathway_dict['process_msu_dispatch'] +
-        (df_travel_times['nearest_msu_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
+        (df_travel_times['nearest_msu_time'].values * s) +
         pathway_dict['process_msu_thrombolysis'] +
         pathway_dict['process_msu_on_scene_post_thrombolysis'] +
-        (df_travel_times['nearest_mt_time'].values *
-         pathway_dict['scale_msu_travel_times'])
+        (df_travel_times['nearest_mt_time'].values * s)
         )
 
     msu_occupied_no_treatment = (
         pathway_dict['process_msu_dispatch'] +
-        (df_travel_times['nearest_msu_time'].values *
-         pathway_dict['scale_msu_travel_times']) +
-        pathway_dict['process_msu_on_scene_no_thrombolysis']
+        (df_travel_times['nearest_msu_time'].values * s) +
+        pathway_dict['process_msu_on_scene_no_thrombolysis'] +
+        (df_travel_times['nearest_mt_time'].values * s)
         )
+    # Where does the MSU go after leaving the scene?
+    # Always to MT unit? But patients might not need MT...
+    # Does return it to base though.
 
     # Set up input table for stroke outcome package.
     outcome_inputs_df = pd.DataFrame()
@@ -386,8 +414,8 @@ def make_outcome_inputs_msu(pathway_dict, df_travel_times):
     # but useful later for matching these results to their LSOA.
     outcome_inputs_df['LSOA'] = df_travel_times.index
     # Also store bonus times:
-    outcome_inputs_df['msu_occupied_treatment'] = msu_occupied_treatment
-    outcome_inputs_df['msu_occupied_no_treatment'] = msu_occupied_no_treatment
+    outcome_inputs_df['msu_occupied_ivt'] = msu_occupied_treatment
+    outcome_inputs_df['msu_occupied_no_ivt'] = msu_occupied_no_treatment
 
     return outcome_inputs_df
 
@@ -433,7 +461,8 @@ def group_results_by_region(df_lsoa, df_unit_services):
     mask = df_lsoa['transfer_required']
     df_lsoa.loc[~mask, 'transfer_time'] = pd.NA
 
-    # Remove string columns:
+    # Remove string columns and columns that won't make sense
+    # when averaged (e.g. admissions numbers).
     # (temporary - I don't know how else to groupby a df with
     # some object columns)
     cols_to_drop = [
@@ -447,13 +476,22 @@ def group_results_by_region(df_lsoa, df_unit_services):
         'transfer_unit_name',
         'nearest_msu_unit_name',
         'short_code',
-        'country'
+        'country',
+        'England',
+        'Admissions'
         ]
     # Only keep cols that exist (sometimes have MSU, sometimes not):
     cols_to_drop = [c for c in cols_to_drop if c in df_lsoa.columns]
     df_lsoa = df_lsoa.drop(cols_to_drop, axis='columns')
 
     df_nearest_ivt = group_results_by_nearest_ivt(df_lsoa, df_unit_services)
+
+    # Drop extra columns that won't make sense when averaged.
+    cols_to_drop = ['transfer_required']
+    # Only keep cols that exist:
+    cols_to_drop = [c for c in cols_to_drop if c in df_lsoa.columns]
+    df_lsoa = df_lsoa.drop(cols_to_drop, axis='columns')
+
     df_icb = group_results_by_icb(df_lsoa)
     df_isdn = group_results_by_isdn(df_lsoa)
     df_ambo = group_results_by_ambo(df_lsoa)
@@ -1053,7 +1091,7 @@ def combine_results_by_diff(
     return df_lsoa
 
 
-def load_or_calculate_region_outlines(outline_name, df_lsoa):
+def load_or_calculate_region_outlines(outline_name, df_lsoa, use_msu=False):
     """
     Don't replace these outlines with stroke-maps!
     These versions match the simplified LSOA shapes.
@@ -1085,13 +1123,14 @@ def load_or_calculate_region_outlines(outline_name, df_lsoa):
         gdf_catchment_lhs = gdf_catchment_lhs.rename(
             columns={'nearest_ivt_unit_name': 'Nearest service'})
 
+        col = 'nearest_msu_unit_name' if use_msu else 'nearest_mt_unit_name'
         gdf_catchment_rhs = dissolve_polygons_by_value(
-            df_lsoa.copy().reset_index()[['lsoa', 'nearest_mt_unit_name']],
-            col='nearest_mt_unit_name',
+            df_lsoa.copy().reset_index()[['lsoa', col]],
+            col=col,
             load_msoa=True
             )
         gdf_catchment_rhs = gdf_catchment_rhs.rename(
-            columns={'nearest_mt_unit_name': 'Nearest service'})
+            columns={col: 'Nearest service'})
 
     if load_gdf_catchment:
         gdf_catchment_lhs = geopandas.read_file(outline_file)
