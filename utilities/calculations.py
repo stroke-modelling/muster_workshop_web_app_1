@@ -488,11 +488,11 @@ def group_results_by_region(df_lsoa, df_unit_services):
 
     df_nearest_ivt = group_results_by_nearest_ivt(df_lsoa, df_unit_services)
 
-    # Drop extra columns that won't make sense when averaged.
-    cols_to_drop = ['transfer_required']
-    # Only keep cols that exist:
-    cols_to_drop = [c for c in cols_to_drop if c in df_lsoa.columns]
-    df_lsoa = df_lsoa.drop(cols_to_drop, axis='columns')
+    # # Drop extra columns that won't make sense when averaged.
+    # cols_to_drop = ['transfer_required']
+    # # Only keep cols that exist:
+    # cols_to_drop = [c for c in cols_to_drop if c in df_lsoa.columns]
+    # df_lsoa = df_lsoa.drop(cols_to_drop, axis='columns')
 
     df_icb = group_results_by_icb(df_lsoa)
     df_isdn = group_results_by_isdn(df_lsoa)

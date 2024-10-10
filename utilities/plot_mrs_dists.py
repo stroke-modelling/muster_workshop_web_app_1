@@ -5,6 +5,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 import numpy as np
+import pandas as pd
+from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
+
+import stroke_maps.load_data
 
 import utilities.calculations as calc
 from utilities.utils import load_reference_mrs_dists
@@ -16,39 +20,14 @@ def setup_for_mrs_dist_bars(
         treat_type,
         stroke_type_str,
         treatment_type_str,
-        df_nearest_units,
-        df_mrs,
+        col_to_mask_mrs,
+        df_mrs_usual_care,
+        df_mrs_msu,
+        df_mrs_ivt,
+        df_mrs_mt,
         input_dict,
         scenarios=['drip_ship', 'redirect']
         ):
-    # Set up where the data should come from -
-    # which of the input dataframes, and which column within it.
-    # Also keep a copy of the name of the selected region.
-    if bar_option.startswith('ISDN: '):
-        str_selected_region = bar_option.split('ISDN: ')[-1]
-        col_region = 'isdn'
-    elif bar_option.startswith('ICB: '):
-        str_selected_region = bar_option.split('ICB: ')[-1]
-        col_region = 'icb'
-    elif bar_option.startswith('Ambulance service: '):
-        str_selected_region = bar_option.split('Ambulance service: ')[-1]
-        col_region = 'ambo22'
-    elif bar_option.startswith('Nearest unit: '):
-        str_selected_region = bar_option.split('Nearest unit: ')[-1]
-        col_region = 'nearest_ivt_unit_name'
-    else:
-        str_selected_region = 'National'
-        col_region = ''
-
-    col_vals = [str_selected_region]
-
-    # Create the data for this region:
-    df = calc.group_mrs_dists_by_region(
-        df_mrs, df_nearest_units, col_region=col_region, col_vals=col_vals)
-
-    col = f'{scenarios[0]}_{occ_type}_{treat_type}_mrs_dists'
-    col2 = f'{scenarios[1]}_{occ_type}_{treat_type}_mrs_dists'
-
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
         f'{stroke_type_str}, ',
@@ -75,66 +54,207 @@ def setup_for_mrs_dist_bars(
         )
         dist_ref_cum = np.cumsum(dist_ref_noncum)
 
-    # Gather mRS distributions.
-    try:
+    # Set up where the data should come from -
+    # which of the input dataframes, and which column within it.
+    # Also keep a copy of the name of the selected region.
+    if bar_option.startswith('ISDN: '):
+        str_selected_region = bar_option.split('ISDN: ')[-1]
+        col_region = 'isdn'
+    elif bar_option.startswith('ICB: '):
+        str_selected_region = bar_option.split('ICB: ')[-1]
+        col_region = 'icb'
+    elif bar_option.startswith('Ambulance service: '):
+        str_selected_region = bar_option.split('Ambulance service: ')[-1]
+        col_region = 'ambo22'
+    elif bar_option.startswith('Nearest unit: '):
+        str_selected_region = bar_option.split('Nearest unit: ')[-1]
+        col_region = 'nearest_ivt_unit_name'
+    else:
+        str_selected_region = 'National'
+        col_region = ''
+
+    use_ref_data = False
+    if (occ_type == 'nlvo') & (treat_type == 'mt'):
+        use_ref_data = True
+        # mRS dists don't exist. Use reference data.
         # Selected region:
-        dist_noncum = df.loc[str_selected_region,
-                            [f'{col}_noncum_{i}' for i in range(7)]].values
-        dist_cum = df.loc[str_selected_region,
-                        [f'{col}_{i}' for i in range(7)]].values
-        dist_std = df.loc[str_selected_region,
-                        [f'{col}_noncum_std_{i}' for i in range(7)]].values
-
+        dist_noncum = dist_ref_noncum
+        dist_cum = dist_ref_cum
+        dist_std = None
         # Redirect:
-        dist2_noncum = df.loc[str_selected_region,
-                            [f'{col2}_noncum_{i}' for i in range(7)]].values
-        dist2_cum = df.loc[str_selected_region,
-                        [f'{col2}_{i}' for i in range(7)]].values
-        dist2_std = df.loc[str_selected_region,
-                        [f'{col2}_noncum_std_{i}' for i in range(7)]].values
-    except KeyError:
-        # The data doesn't exist.
-        if (('mt' in treat_type) & ('ivt' not in treat_type)):
-            # MT-only. Use reference data.
-            # Selected region:
-            dist_noncum = dist_ref_noncum
-            dist_cum = dist_ref_cum
-            dist_std = None
-            # Redirect:
-            dist2_noncum = dist_ref_noncum
-            dist2_cum = dist_ref_cum
-            dist2_std = None
-        else:
-            # Use IVT-only data.
-            col = f'{scenarios[0]}_{occ_type}_ivt_mrs_dists'
-            col2 = f'{scenarios[1]}_{occ_type}_ivt_mrs_dists'
-            # Selected region:
-            dist_noncum = df.loc[
-                str_selected_region,
-                [f'{col}_noncum_{i}' for i in range(7)]
-                ].values
-            dist_cum = df.loc[
-                str_selected_region,
-                [f'{col}_{i}' for i in range(7)]
-                ].values
-            dist_std = df.loc[
-                str_selected_region,
-                [f'{col}_noncum_std_{i}' for i in range(7)]
-                ].values
+        dist2_noncum = dist_ref_noncum
+        dist2_cum = dist_ref_cum
+        dist2_std = None
+    elif (occ_type == 'nlvo') & ('mt' in treat_type):
+        # Use IVT data instead of IVT & MT.
+        treat_type = 'ivt'
 
-            # Redirect:
-            dist2_noncum = df.loc[
-                str_selected_region,
-                [f'{col2}_noncum_{i}' for i in range(7)]
-                ].values
-            dist2_cum = df.loc[
-                str_selected_region,
-                [f'{col2}_{i}' for i in range(7)]
-                ].values
-            dist2_std = df.loc[
-                str_selected_region,
-                [f'{col2}_noncum_std_{i}' for i in range(7)]
-                ].values
+    if use_ref_data is False:
+        # First limit the LSOA available to only those that benefit from
+        # the MSU.
+        try:
+            lsoa_names_benefit = df_mrs_usual_care.loc[
+                df_mrs_usual_care[col_to_mask_mrs] > 0.0].index.values
+        except KeyError:
+            # This column doesn't exist.
+            lsoa_names_benefit = []
+
+        # Then limit the LSOA available to only those that are in the
+        # selected region.
+        if col_region == '':
+            # Just keep everything.
+            lsoa_names = df_mrs_usual_care.index
+        elif col_region == 'nearest_ivt_unit_name':
+            # Find which LSOA are nearest to this IVT unit
+            # from the outcomes data.
+            mask_nearest = (
+                df_mrs_usual_care['nearest_ivt_unit_name'] == str_selected_region)
+            # Which LSOA are in this catchment area?
+            lsoa_names = df_mrs_usual_care.loc[mask_nearest].index.values
+        elif col_region == 'ambo22':
+            # Load ambulance service data:
+            df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+            df_lsoa_ambo = df_lsoa_ambo.reset_index()
+            # Only keep this ambulance region:
+            mask_ambo = df_lsoa_ambo['ambo22'] == str_selected_region
+            df_lsoa_ambo = df_lsoa_ambo.loc[mask_ambo]
+            # Which LSOA are in this ambulance region?
+            lsoa_names = df_lsoa_ambo['LSOA11NM'].values
+        else:
+            # Load region info for each LSOA:
+            df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
+            df_lsoa_regions = df_lsoa_regions.reset_index()
+            # Load further region data linking SICBL to other regions:
+            df_regions = stroke_maps.load_data.region_lookup()
+            df_regions = df_regions.reset_index()
+            # Drop columns already in df_lsoa:
+            df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+            df_lsoa_regions = pd.merge(
+                df_lsoa_regions, df_regions,
+                left_on='region_code', right_on='region_code', how='left'
+                )
+            # Only keep rows in the selected region:
+            mask_region = df_lsoa_regions[col_region] == str_selected_region
+            df_lsoa_regions = df_lsoa_regions.loc[mask_region]
+            # Which LSOA are in this region?
+            lsoa_names = df_lsoa_regions['lsoa'].values
+        # Combine this with the previous mask:
+        lsoa_names = list(set(lsoa_names) & set(lsoa_names_benefit))
+
+        # Keep only these LSOA rows.
+        df_mrs_usual_care = df_mrs_usual_care.loc[
+            df_mrs_usual_care.index.isin(lsoa_names)].copy()
+        df_mrs_msu = df_mrs_msu.loc[df_mrs_msu.index.isin(lsoa_names)].copy()
+        # Jettison the LSOA names:
+        df_mrs_usual_care = df_mrs_usual_care.reset_index().drop('lsoa', axis='columns')
+        df_mrs_msu = df_mrs_msu.reset_index().drop('lsoa', axis='columns')
+
+        if treat_type == 'ivt':
+            # Only look at the IVT columns.
+            # How many admissions are there for each treatment time?
+            df_mrs_usual_care = df_mrs_usual_care[
+                ['Admissions', 'time_to_ivt']].groupby('time_to_ivt').sum()
+            df_mrs_msu = df_mrs_msu[
+                ['Admissions', 'time_to_ivt']].groupby('time_to_ivt').sum()
+            # Which mRS dist columns do we want?
+            dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
+                        for i in range(7)]
+            # Merge in the mRS dists:
+            df_mrs_usual_care = pd.merge(
+                df_mrs_usual_care.reset_index(),
+                df_mrs_ivt[['time_to_ivt'] + dist_cols],
+                on='time_to_ivt', how='left'
+            )
+            df_mrs_msu = pd.merge(
+                df_mrs_msu.reset_index(), df_mrs_ivt[['time_to_ivt'] + dist_cols],
+                on='time_to_ivt', how='left'
+            )
+        elif treat_type == 'mt':
+            # Only look at the MT columns.
+            # How many admissions are there for each treatment time?
+            df_mrs_usual_care = df_mrs_usual_care[
+                ['Admissions', 'time_to_mt']].groupby('time_to_mt').sum()
+            df_mrs_msu = df_mrs_msu[
+                ['Admissions', 'time_to_mt']].groupby('time_to_mt').sum()
+            # Which mRS dist columns do we want?
+            dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
+                        for i in range(7)]
+            # Merge in the mRS dists:
+            df_mrs_usual_care = pd.merge(
+                df_mrs_usual_care.reset_index(),
+                df_mrs_mt[['time_to_mt'] + dist_cols],
+                on='time_to_mt', how='left'
+            )
+            df_mrs_msu = pd.merge(
+                df_mrs_msu.reset_index(), df_mrs_mt[['time_to_mt'] + dist_cols],
+                on='time_to_mt', how='left'
+            )
+        else:
+            # Pull in a mix of IVT and MT data.
+            # How many patients have each combination of time to treatment
+            # and treatment souce (IVT or MT dist)?
+            cols_group = ['time_to_mt', 'time_to_ivt', 'lvo_ivt_better_than_mt']
+            df_mrs_usual_care = df_mrs_usual_care.groupby(cols_group).sum().reset_index()
+            df_mrs_msu = df_mrs_msu.groupby(cols_group).sum().reset_index()
+
+            # Set up column names:
+            dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
+                         for i in range(7)]
+            dist_mt_cols = [f'{occ_type}_mt_mrs_dists_noncum_{i}'
+                            for i in range(7)]
+            dist_ivt_cols = [f'{occ_type}_ivt_mrs_dists_noncum_{i}'
+                             for i in range(7)]
+
+            # "for" loop didn't work here so stick it in a function:
+            def merge_mrs_ivt_mt(df):
+                mask_ivt_better = df['lvo_ivt_better_than_mt'] == True
+                # Initially copy over all MT results:
+                df = pd.merge(
+                    df, df_mrs_mt[['time_to_mt'] + dist_mt_cols],
+                    on='time_to_mt', how='left'
+                )
+                # Rename "mt" to "ivt_mt":
+                df = df.rename(columns=dict(zip(dist_mt_cols, dist_cols)))
+                # Now copy over all IVT results:
+                df = pd.merge(
+                    df, df_mrs_ivt[['time_to_ivt'] + dist_ivt_cols],
+                    on='time_to_ivt', how='left'
+                )
+                # Update the "ivt_mt" column where IVT is better:
+                df.loc[mask_ivt_better, dist_cols] = df.loc[
+                    mask_ivt_better, dist_ivt_cols].values
+                # Now remove the separate IVT columns:
+                df = df.drop(dist_ivt_cols, axis='columns')
+                return df
+
+            df_mrs_usual_care = merge_mrs_ivt_mt(df_mrs_usual_care)
+            df_mrs_msu = merge_mrs_ivt_mt(df_mrs_msu)
+
+
+        # Calculate averaged mRS dists:
+        def calculate_average_mrs_dists(df, cols_here):
+            # Split list of values into one column per mRS band
+            # and keep one row per LSOA.
+            vals = df[cols_here].copy()
+
+            # Create stats from these data:
+            weighted_stats = DescrStatsW(
+                vals, weights=df['Admissions'], ddof=0)
+            # Means (one value per mRS):
+            means = weighted_stats.mean
+            # Standard deviations (one value per mRS):
+            stds = weighted_stats.std
+            # Cumulative probability from the mean bins:
+            cumulatives = np.cumsum(means)
+
+            # Return:
+            return means, cumulatives, stds
+
+        dist_noncum, dist_cum, dist_std = (
+            calculate_average_mrs_dists(df_mrs_usual_care, dist_cols))
+        dist2_noncum, dist2_cum, dist2_std = (
+            calculate_average_mrs_dists(df_mrs_msu, dist_cols))
+
 
     # Display names for the data:
     display_name_dict = {
