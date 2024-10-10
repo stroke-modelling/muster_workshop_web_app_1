@@ -13,6 +13,7 @@ import stroke_maps.load_data
 # For running outcomes:
 from classes.geography_processing import Geoprocessing
 from classes.model import Model
+# import classes.model_module as model
 
 # Custom functions:
 from utilities.utils import load_reference_mrs_dists
@@ -30,13 +31,11 @@ def calculate_geography(df_unit_services):
     geo.run()
 
     # Reset index because Model expects a column named 'lsoa':
-    geo.combined_data = geo.combined_data.reset_index()
-
-    df_geo = geo.combined_data.copy()
+    df_geo = geo.get_combined_data().copy().reset_index()
 
     del geo
 
-    return df_geo
+    return df_geo.copy()
 
 
 # @st.cache_data
@@ -50,11 +49,19 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
     # Run model
     model.run()
 
-    # TO DO - merge in the geographical data to the outcome results.
+    # df_lsoa, df_mrs = model.run(geodata, dict_outcome_inputs)
 
-    df_lsoa = model.get_full_results()
+    # # TO DO - merge in the geographical data to the outcome results.
+
+    df_lsoa = model.get_full_results().copy(deep=True)
     df_lsoa.index.names = ['lsoa']
     df_lsoa.columns.names = ['property']
+
+    df_mrs = model.get_full_mrs_dists().copy(deep=True)
+    df_mrs.index.names = ['lsoa']
+    df_mrs.columns.names = ['property']
+
+    del model
 
     # Copy stroke unit names over. Currently has only postcodes.
     cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
@@ -80,16 +87,13 @@ def calculate_outcomes(dict_outcome_inputs, df_unit_services, geodata):
     }
     for suff, dp in dict_outcomes_dp.items():
         cols = [c for c in df_lsoa.columns if c.endswith(suff)]
-        for col in cols:
-            df_lsoa[col] = np.round(df_lsoa[col], dp)
+        df_lsoa[cols] = np.round(df_lsoa[cols], dp)
 
-    df_mrs = model.get_full_mrs_dists()
-    df_mrs.index.names = ['lsoa']
-    df_mrs.columns.names = ['property']
 
-    del model
-
-    return df_lsoa, df_mrs
+    return df_lsoa.copy(), df_mrs.copy()
+    # return 'plop', 'cats'
+    # return df_mrs.copy()
+    # return df_lsoa.copy()
 
 
 # ##########################################
@@ -167,7 +171,6 @@ def calculate_times_to_treatment_without_travel_msu(input_dict):
 # ##########################################
 # ##### BUILD INPUTS FOR OUTCOME MODEL #####
 # ##########################################
-@st.cache_data
 def make_outcome_inputs_usual_care(
         pathway_dict,
         df_travel_times,
@@ -230,7 +233,7 @@ def make_outcome_inputs_usual_care(
     # but useful later for matching these results to their LSOA.
     outcome_inputs_df['LSOA'] = df_travel_times.index
 
-    return outcome_inputs_df
+    return outcome_inputs_df.copy()
 
 
 def make_outcome_inputs_redirection_rejected(pathway_dict, df_travel_times):
@@ -336,7 +339,6 @@ def make_outcome_inputs_redirection_approved(pathway_dict, df_travel_times):
     return outcome_inputs_df
 
 
-@st.cache_data
 def make_outcome_inputs_msu(
         pathway_dict,
         df_travel_times,
@@ -417,7 +419,7 @@ def make_outcome_inputs_msu(
     outcome_inputs_df['msu_occupied_ivt'] = msu_occupied_treatment
     outcome_inputs_df['msu_occupied_no_ivt'] = msu_occupied_no_treatment
 
-    return outcome_inputs_df
+    return outcome_inputs_df.copy()
 
 
 # ###########################
@@ -523,14 +525,12 @@ def group_results_by_icb(df_lsoa):
         (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
-    for col in cols_outcome:
-        df_icb[col] = np.round(df_icb[col], 3)
+    df_icb[cols_outcome] = np.round(df_icb[cols_outcome], 3)
 
     # Times:
     cols_time = [c for c in df_icb.columns if 'time' in c]
-    for col in cols_time:
-        df_icb[col] = np.round(df_icb[col], 2)
-    return df_icb
+    df_icb[cols_time] = np.round(df_icb[cols_time], 2)
+    return df_icb.copy()
 
 
 def group_results_by_isdn(df_lsoa):
@@ -557,14 +557,12 @@ def group_results_by_isdn(df_lsoa):
         (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
-    for col in cols_outcome:
-        df_isdn[col] = np.round(df_isdn[col], 3)
+    df_isdn[cols_outcome] = np.round(df_isdn[cols_outcome], 3)
 
     # Times:
     cols_time = [c for c in df_isdn.columns if 'time' in c]
-    for col in cols_time:
-        df_isdn[col] = np.round(df_isdn[col], 2)
-    return df_isdn
+    df_isdn[cols_time] = np.round(df_isdn[cols_time], 2)
+    return df_isdn.copy()
 
 
 def group_results_by_ambo(df_lsoa):
@@ -591,14 +589,12 @@ def group_results_by_ambo(df_lsoa):
         (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
-    for col in cols_outcome:
-        df_ambo[col] = np.round(df_ambo[col], 3)
+    df_ambo[cols_outcome] = np.round(df_ambo[cols_outcome], 3)
 
     # Times:
     cols_time = [c for c in df_ambo.columns if 'time' in c]
-    for col in cols_time:
-        df_ambo[col] = np.round(df_ambo[col], 2)
-    return df_ambo
+    df_ambo[cols_time] = np.round(df_ambo[cols_time], 2)
+    return df_ambo.copy()
 
 
 def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
@@ -629,14 +625,12 @@ def group_results_by_nearest_ivt(df_lsoa, df_unit_services):
         (c.endswith('utility_shift')) |
         (c.endswith('mrs_0-2')) | (c.endswith('mrs_shift'))
         )]
-    for col in cols_outcome:
-        df_nearest_ivt[col] = np.round(df_nearest_ivt[col], 3)
+    df_nearest_ivt[cols_outcome] = np.round(df_nearest_ivt[cols_outcome], 3)
 
     # Times:
     cols_time = [c for c in df_nearest_ivt.columns if 'time' in c]
-    for col in cols_time:
-        df_nearest_ivt[col] = np.round(df_nearest_ivt[col], 2)
-    return df_nearest_ivt
+    df_nearest_ivt[cols_time] = np.round(df_nearest_ivt[cols_time], 2)
+    return df_nearest_ivt.copy()
 
 
 # #############################
@@ -682,7 +676,7 @@ def group_mrs_dists_by_region(df_lsoa, nearest_ivt_units, **kwargs):
                        left_on='lsoa', right_index=True)
 
     df = group_mrs_dists_by_column(df_lsoa, **kwargs)
-    return df
+    return df.copy()
 
 
 def group_mrs_dists_by_column(df_lsoa, col_region='', col_vals=[]):
@@ -744,9 +738,8 @@ def group_mrs_dists_by_column(df_lsoa, col_region='', col_vals=[]):
     # Round the values.
     # Outcomes:
     cols_to_round = [c for c in df_by_region.columns if 'dist' in c]
-    for col in cols_to_round:
-        df_by_region[col] = np.round(df_by_region[col], 3)
-    return df_by_region
+    df_by_region[cols_to_round] = np.round(df_by_region[cols_to_round], 3)
+    return df_by_region.copy()
 
 
 # ###########################
@@ -871,8 +864,8 @@ def combine_results_by_occlusion_type(
 
     # Round the values:
     dp = 3
-    for col in combo_data.columns:
-        combo_data[col] = np.round(combo_data[col], dp)
+    combo_data[combo_data.columns] = np.round(
+        combo_data[combo_data.columns], dp)
     # # Update column names to mark them as combined:
     # combo_data.columns = [
     #     '_'.join(col.split('_')[0], 'combo', col.split('_')[1:])
@@ -880,7 +873,7 @@ def combine_results_by_occlusion_type(
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
 
-    return df_lsoa
+    return df_lsoa.copy()
 
 
 def combine_results_by_redirection(
@@ -973,14 +966,14 @@ def combine_results_by_redirection(
 
         # Round the values:
         dp = 3
-        for col in combo_data.columns:
-            combo_data[col] = np.round(combo_data[col], dp)
+        combo_data[combo_data.columns] = np.round(
+            combo_data[combo_data.columns], dp)
 
         # Merge this new data into the starting dataframe:
         df_lsoa = pd.merge(df_lsoa, combo_data,
                            left_index=True, right_index=True)
 
-    return df_lsoa
+    return df_lsoa.copy()
 
 
 def combine_results_by_diff(
@@ -1071,8 +1064,8 @@ def combine_results_by_diff(
 
     # Round the values:
     dp = 3
-    for col in combo_data.columns:
-        combo_data[col] = np.round(combo_data[col], dp)
+    combo_data[combo_data.columns] = np.round(
+        combo_data[combo_data.columns], dp)
 
     # Update column names to mark them as combined:
     combo_cols = [
@@ -1088,7 +1081,7 @@ def combine_results_by_diff(
     df_lsoa = pd.merge(df_lsoa, combo_data,
                        left_index=True, right_index=True)
 
-    return df_lsoa
+    return df_lsoa.copy()
 
 
 def load_or_calculate_region_outlines(outline_name, df_lsoa, use_msu=False):

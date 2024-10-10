@@ -263,3 +263,6 @@ class Geoprocessing(object):
 
         self.combined_data.to_csv(
             './processed_data/processed_data.csv', index_label='LSOA')
+
+    def get_combined_data(self):
+        return self.combined_data

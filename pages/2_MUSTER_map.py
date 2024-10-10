@@ -24,6 +24,9 @@ import utilities.inputs as inputs
 import utilities.colour_setup as colour_setup
 import utilities.plot_timeline as timeline
 
+# debug
+import sys
+
 
 @st.cache_data
 def main_calculations(input_dict, df_unit_services, treatment_time_dict):
@@ -32,6 +35,7 @@ def main_calculations(input_dict, df_unit_services, treatment_time_dict):
     print('\n\n\nStart of main_calculations')
     # tr0 = tracker.SummaryTracker()
     # tr0.print_diff()
+    print('\n\n\ncalculate_geography')
     # Times to treatment:
     geo = calc.calculate_geography(df_unit_services)
     # Travel times for each LSOA:
@@ -40,6 +44,9 @@ def main_calculations(input_dict, df_unit_services, treatment_time_dict):
         ['transfer_required', 'LSOA']
         ]
     df_travel_times = df_travel_times.set_index('LSOA')
+    print('df_travel_times ', len(df_travel_times.columns), len(df_travel_times))
+    print(sys.getsizeof(df_travel_times))
+    # tr0.print_diff()
 
     print('\n\n\nmake_outcome_inputs_usual_care')
     # tr0 = tracker.SummaryTracker()
@@ -71,18 +78,28 @@ def main_calculations(input_dict, df_unit_services, treatment_time_dict):
         'msu': df_outcome_msu,
         'msu_no_ivt': df_outcome_msu_no_ivt,
     }
+    print('df_outcome_uc ', len(df_outcome_uc.columns), len(df_outcome_uc))
+    print(sys.getsizeof(df_outcome_uc))
 
     # tr0.print_diff()
 
-    # print('\n\n\ncalculate_outcomes')
+    print('\n\n\ncalculate_outcomes')
     # tr0 = tracker.SummaryTracker()
 
     # Process LSOA and calculate outcomes:
     df_lsoa, df_mrs = calc.calculate_outcomes(
         dict_outcome_inputs, df_unit_services, geo)
+    # df_lsoa = calc.calculate_outcomes(
+    #     dict_outcome_inputs, df_unit_services, geo)
+    # df_mrs = calc.calculate_outcomes(
+    #     dict_outcome_inputs, df_unit_services, geo)
 
-    # st.stop()
+    # print('df_lsoa ', len(df_lsoa.columns), len(df_lsoa))
+    # print('df_mrs ', len(df_mrs.columns), len(df_mrs))
+    # print(sys.getsizeof(df_lsoa))
+    # print(sys.getsizeof(df_mrs))
     # tr0.print_diff()
+    st.stop()
 
     # Combine the two sets of MSU data.
     # Use the "with IVT" set for most things except for treatment
@@ -150,6 +167,11 @@ def main_calculations(input_dict, df_unit_services, treatment_time_dict):
 
     df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa, df_unit_services)
+
+    print(sys.getsizeof(df_icb))
+    print(sys.getsizeof(df_isdn))
+    print(sys.getsizeof(df_nearest_ivt))
+    print(sys.getsizeof(df_ambo))
 
     return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
@@ -335,6 +357,7 @@ df_unit_services, df_unit_services_full = (
         container_services_buttons,
         container_services_dataeditor,
     ))
+
 
 # Calculate times to treatment without travel.
 # These are used in the main_calculations and also displayed on
@@ -697,7 +720,6 @@ with container_services_map:
         )
 
 
-
 # #######################################
 # ########## MAIN CALCULATIONS ##########
 # #######################################
@@ -734,7 +756,6 @@ with container_rerun:
         # tr0 = tracker.SummaryTracker()
         # tr0.print_diff()
 
-        
         print('\n\n\nMain calculations')
         # tr0 = tracker.SummaryTracker()
         st.session_state['input_dict'] = input_dict
@@ -755,7 +776,6 @@ with container_rerun:
             )
         # tr0.print_diff()
 
-        
         print('\n\n\nEnd of calculate results')
         # tr0 = tracker.SummaryTracker()
         # tr0.print_diff()
@@ -777,7 +797,7 @@ else:
     # This hasn't been created yet and so the results cannot be drawn.
     st.stop()
 
-# st.stop()
+st.stop()
 
 
 # #########################################

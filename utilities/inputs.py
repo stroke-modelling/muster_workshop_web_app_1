@@ -932,4 +932,7 @@ def load_roads_gdf():
 def load_lsoa_demog():
     df_demog = pd.read_csv(os.path.join(
         'data', 'collated_data_regional_LSOA.csv'))
+
+    # Only keep some columns:
+    df_demog = df_demog[['LSOA', 'population_density']]
     return df_demog

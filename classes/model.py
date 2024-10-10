@@ -26,8 +26,8 @@ class Model(object):
         """
         Constructor class for Model.
         """
-        self.dict_outcome_inputs = dict_outcome_inputs
-        self.geodata = geodata
+        self.dict_outcome_inputs = dict_outcome_inputs.copy()
+        self.geodata = geodata.copy()
 
     def run(self):
         """
@@ -45,6 +45,10 @@ class Model(object):
             # Calculate results:
             scenario_results, scenario_mrs = self.add_scenario(
                 df_outcome_inputs, scen)
+            # scenario_mrs = self.add_scenario(
+            #     df_outcome_inputs, scen)
+            # scenario_results = self.add_scenario(
+            #     df_outcome_inputs, scen)
             # Merge into full results dataframes:
             self.full_results = pd.merge(
                 self.full_results, scenario_results,
@@ -137,6 +141,11 @@ class Model(object):
                         outcomes_by_stroke_type[c2][:, 2])
                 except KeyError:
                     pass
+
+        outcomes_by_stroke_type = outcomes_by_stroke_type.copy()
+
+        del continuous_outcome
+
         return outcomes_by_stroke_type
 
     def find_patients_with_mt_better_than_ivt(
