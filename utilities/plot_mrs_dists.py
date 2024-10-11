@@ -14,6 +14,7 @@ import utilities.calculations as calc
 from utilities.utils import load_reference_mrs_dists
 
 
+@st.cache_data
 def setup_for_mrs_dist_bars(
         bar_option,
         occ_type,

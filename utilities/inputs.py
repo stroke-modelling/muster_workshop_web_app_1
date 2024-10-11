@@ -557,15 +557,15 @@ def select_stroke_unit_services_broad(
         container_dataeditor,
         use_msu=True
         ):
-    df_unit_services, df_unit_services_full, cols_use = (
-        import_stroke_unit_services(use_msu))
 
     # If this has already been loaded in, keep that version instead
     # so changes are retained:
     try:
         df_unit_services = st.session_state['df_unit_services']
+        df_unit_services_full = st.session_state['df_unit_services_full']
     except KeyError:
-        pass
+        df_unit_services, df_unit_services_full = (
+            import_stroke_unit_services(use_msu))
 
     # Select either:
     # + MSU at all IVT-only units
@@ -665,7 +665,10 @@ def select_stroke_unit_services_broad(
     # Gather the rest of the data that was previously hidden
     # from the user:
     df_unit_services, df_unit_services_full = update_stroke_unit_services(
-        df_unit_services, df_unit_services_full, cols_use)
+        df_unit_services, df_unit_services_full)#, cols_use)
+
+    # Store a copy of the dataframe with our edits:
+    st.session_state['df_unit_services_full'] = df_unit_services_full.copy()
 
     return df_unit_services, df_unit_services_full
 
@@ -737,24 +740,25 @@ def import_stroke_unit_services(
     # Sort by ISDN name for nicer display:
     df_unit_services = df_unit_services.sort_values(['isdn', 'ssnap_name'])
 
-    return df_unit_services, df_unit_services_full, cols_use
+    return df_unit_services, df_unit_services_full  # , cols_use
 
 
 def update_stroke_unit_services(
         df_unit_services,
         df_unit_services_full,
-        cols_use
+        # cols_use
         ):
     # # Restore dtypes:
     # df_unit_services[cols_use] = df_unit_services[cols_use].astype(int)
 
     # Update the full data (for maps) with the changes:
-    cols_to_merge = cols_use  # + ['transfer_unit_postcode']
+    # cols_to_merge = cols_use  # + ['transfer_unit_postcode']
+    cols_shared = [c for c in df_unit_services_full.columns if c in df_unit_services.columns]
     df_unit_services_full = df_unit_services_full.drop(
-        cols_to_merge, axis='columns')
+        cols_shared, axis='columns')
     df_unit_services_full = pd.merge(
         df_unit_services_full,
-        df_unit_services[cols_to_merge].copy(),
+        df_unit_services[cols_shared].copy(),
         left_index=True, right_index=True, how='left'
         )
     return df_unit_services, df_unit_services_full

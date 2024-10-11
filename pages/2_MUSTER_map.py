@@ -30,73 +30,44 @@ import utilities.plot_timeline as timeline
 import sys
 
 
-@st.cache_data
-def main_calculations(input_dict, df_unit_services, treatment_time_dict):
+# @st.cache_data
+def main_calculations(df_unit_services, treatment_time_dict):
 
-    
-    # print('\n\n\nStart of main_calculations')
-    # tr0 = tracker.SummaryTracker()
-    # tr0.print_diff()
-    # print('\n\n\ncalculate_geography')
-    # Times to treatment:
-    df_travel_times = calc.calculate_geography(df_unit_services)
-    # # Travel times for each LSOA:
-    # df_travel_times = df_travel_times[
-    #     [c for c in df_travel_times.columns if 'time' in c] +
-    #     ['transfer_required', 'LSOA']
-    #     ]
+    # ---- Travel times -----
+    # One row per LSOA:
+    df_travel_times = calc.calculate_geography(df_unit_services).copy()
     df_travel_times = df_travel_times.set_index('LSOA')
-    # print('df_travel_times ', len(df_travel_times.columns), len(df_travel_times))
-    # print(sys.getsizeof(df_travel_times))
-    # tr0.print_diff()
+
+    # Copy stroke unit names over. Currently has only postcodes.
+    cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
+                     'transfer_unit', 'nearest_msu_unit']
+    cols_postcode = [c for c in cols_postcode if c in df_travel_times.columns]
+    for col in cols_postcode:
+        df_travel_times = pd.merge(
+            df_travel_times, df_unit_services['ssnap_name'],
+            left_on=col, right_index=True, how='left'
+            )
+        df_travel_times = df_travel_times.rename(columns={
+            'ssnap_name': f'{col}_name'})
+        # Reorder columns so name appears next to postcode.
+        i = df_travel_times.columns.tolist().index(col)
+        cols_reorder = [
+            *df_travel_times.columns[:i],
+            f'{col}_name',
+            *df_travel_times.columns[i:-1]
+            ]
+        df_travel_times = df_travel_times[cols_reorder]
 
     # ---- Treatment times -----
-    df_travel_times['usual_care_ivt'] = (
-        treatment_time_dict['usual_care_time_to_ivt'] +
-        df_travel_times['nearest_ivt_time']
-    )
-    # First set MT times assuming no transfer...
-    df_travel_times['usual_care_mt'] = (
-        treatment_time_dict['usual_care_mt_no_transfer'] +
-        df_travel_times['nearest_ivt_time']
-    )
-    # ... then update the values that need a transfer:
-    mask_usual_care_transfer = (df_travel_times['transfer_required'] == True)
-    df_travel_times.loc[mask_usual_care_transfer, 'usual_care_mt'] = (
-        treatment_time_dict['usual_care_mt_transfer'] +
-        df_travel_times.loc[mask_usual_care_transfer, 'nearest_ivt_time'] +
-        df_travel_times.loc[mask_usual_care_transfer, 'transfer_time']
-    )
-    # MSU IVT:
-    df_travel_times['msu_ivt'] = (
-        treatment_time_dict['msu_time_to_ivt'] +
-        df_travel_times['nearest_msu_time']
-    )
-    # Time to MT when IVT is given:
-    df_travel_times['msu_mt_with_ivt'] = (
-        treatment_time_dict['msu_time_to_mt'] +
-        df_travel_times['nearest_msu_time'] +
-        df_travel_times['nearest_mt_time']
-    )
-    # Time to MT when IVT is not given:
-    df_travel_times['msu_mt_no_ivt'] = (
-        treatment_time_dict['msu_time_to_mt_no_ivt'] +
-        df_travel_times['nearest_msu_time'] +
-        df_travel_times['nearest_mt_time']
-    )
-    # Round all of these times to the nearest minute:
-    cols_treatment_time = [
-        'usual_care_ivt',
-        'usual_care_mt',
-        'msu_ivt',
-        'msu_mt_with_ivt',
-        'msu_mt_no_ivt'
-    ]
-    df_travel_times[cols_treatment_time] = np.round(
-        df_travel_times[cols_treatment_time], 0)
+    # Find the times to IVT and MT in each scenario and for each
+    # LSOA. The times are rounded to the nearest minute.
+    # One row per LSOA:
+    df_travel_times = calc.calculate_treatment_times_each_lsoa(
+        df_travel_times, treatment_time_dict)
 
-    # st.write(df_travel_times)
-
+    # ----- Unique treatment times -----
+    # Find the complete set of times to IVT and times to MT.
+    # Don't need the combinations of IVT and MT times yet.
     # Find set of treatment times:
     times_to_ivt = sorted(list(set(
         df_travel_times[['usual_care_ivt', 'msu_ivt']].values.flatten())))
@@ -104,446 +75,70 @@ def main_calculations(input_dict, df_unit_services, treatment_time_dict):
         df_travel_times[['usual_care_mt', 'msu_mt_with_ivt', 'msu_mt_no_ivt']
                         ].values.flatten())))
 
+    # ----- Outcomes for unique treatment times -----
+    # Run the outcome model for only the unique treatment times
+    # instead of one row per LSOA.
+    # Run results for IVT and for MT separately.
+    outcomes_by_stroke_type_ivt_only, outcomes_by_stroke_type_mt_only = (
+        calc.run_outcome_model_for_unique_times(times_to_ivt, times_to_mt))
 
-    # Set up input table for stroke outcome package.
-    outcome_inputs_df_ivt_only = pd.DataFrame()
-    # Provide a dummy stroke type code for now -
-    # it will be overwritten when the outcomes are calculated so that
-    # both nLVO and LVO results are calculated from one scenario.
-    outcome_inputs_df_ivt_only['stroke_type_code'] = np.repeat(1, len(times_to_ivt))
-    # Set everyone to receive both treatment types.
-    outcome_inputs_df_ivt_only['ivt_chosen_bool'] = 1
-    outcome_inputs_df_ivt_only['mt_chosen_bool'] = 0
-    # And include the times we've just calculated:
-    outcome_inputs_df_ivt_only['onset_to_needle_mins'] = times_to_ivt
-    outcome_inputs_df_ivt_only['onset_to_puncture_mins'] = np.NaN
-
-    # Set up input table for stroke outcome package.
-    outcome_inputs_df_mt_only = pd.DataFrame()
-    # Provide a dummy stroke type code for now -
-    # it will be overwritten when the outcomes are calculated so that
-    # both nLVO and LVO results are calculated from one scenario.
-    outcome_inputs_df_mt_only['stroke_type_code'] = np.repeat(1, len(times_to_mt))
-    # Set everyone to receive both treatment types.
-    outcome_inputs_df_mt_only['ivt_chosen_bool'] = 0
-    outcome_inputs_df_mt_only['mt_chosen_bool'] = 1
-    # And include the times we've just calculated:
-    outcome_inputs_df_mt_only['onset_to_needle_mins'] = np.NaN
-    outcome_inputs_df_mt_only['onset_to_puncture_mins'] = times_to_mt
-
-    # Run the outcome model for just these times.
-    outcomes_by_stroke_type_ivt_only = model.run_outcome_model(outcome_inputs_df_ivt_only)
-    outcomes_by_stroke_type_mt_only = model.run_outcome_model(outcome_inputs_df_mt_only)
-
-    # Gather outcomes for these times:
-    keys_for_df_ivt = [
-        'nlvo_ivt_each_patient_mrs_shift',
-        'nlvo_ivt_each_patient_utility_shift',
-        'nlvo_ivt_each_patient_mrs_0-2',
-        'lvo_ivt_each_patient_mrs_shift',
-        'lvo_ivt_each_patient_utility_shift',
-        'lvo_ivt_each_patient_mrs_0-2',
-    ]
-    df_outcomes_ivt = pd.DataFrame(
-        [times_to_ivt] + [outcomes_by_stroke_type_ivt_only[k] for k in keys_for_df_ivt],
-        index=['time_to_ivt'] + keys_for_df_ivt
-    ).transpose()
-
-    keys_for_df_mt = [
-        'lvo_mt_each_patient_mrs_shift',
-        'lvo_mt_each_patient_utility_shift',
-        'lvo_mt_each_patient_mrs_0-2',
-    ]
-    df_outcomes_mt = pd.DataFrame(
-        [times_to_mt] + [outcomes_by_stroke_type_mt_only[k] for k in keys_for_df_mt],
-        index=['time_to_mt'] + keys_for_df_mt
-    ).transpose()
-
-    # Outcome columns and numbers of decimal places:
-    dict_outcomes_dp = {
-        'mrs_0-2': 3,
-        'mrs_shift': 3,
-        # 'utility': 3,
-        'utility_shift': 3,
-    }
-    for suff, dp in dict_outcomes_dp.items():
-        for df in [df_outcomes_mt, df_outcomes_ivt]:
-            cols = [c for c in df.columns if c.endswith(suff)]
-            df[cols] = np.round(df[cols], dp)
-
-    # Gather mRS distributions for these times:
-    keys_for_df_mrs_ivt = [
-        'nlvo_ivt_each_patient_mrs_dist_post_stroke',
-        'lvo_ivt_each_patient_mrs_dist_post_stroke',
-    ]
-    column_names = (
-        [f'nlvo_ivt_mrs_dists_{i}' for i in range(7)] +
-        [f'lvo_ivt_mrs_dists_{i}' for i in range(7)]
+    # Convert these results dictionaries into dataframes:
+    df_outcomes_ivt, df_outcomes_mt = (
+        calc.convert_outcome_dicts_to_df_outcomes(
+            times_to_ivt,
+            times_to_mt,
+            outcomes_by_stroke_type_ivt_only,
+            outcomes_by_stroke_type_mt_only
+            )
+        )
+    df_mrs_ivt, df_mrs_mt = (
+        calc.convert_outcome_dicts_to_df_mrs(
+            times_to_ivt,
+            times_to_mt,
+            outcomes_by_stroke_type_ivt_only,
+            outcomes_by_stroke_type_mt_only
+            )
+        )
+    return (
+        df_travel_times,
+        df_outcomes_ivt,
+        df_outcomes_mt,
+        df_mrs_ivt,
+        df_mrs_mt
     )
 
-    df_mrs_ivt = pd.DataFrame(
-        np.hstack(
-            [np.array(times_to_ivt).reshape((len(times_to_ivt), 1))] +
-            [outcomes_by_stroke_type_ivt_only[k] for k in keys_for_df_mrs_ivt]
-            ),
-        columns=['time_to_ivt'] + column_names
+
+# @st.cache_data
+def gather_outcomes_by_region(
+            df_travel_times,
+            df_outcomes_ivt,
+            df_outcomes_mt,
+            df_mrs_ivt,
+            df_mrs_mt
+            ):
+    df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
+            df_travel_times,
+            df_outcomes_ivt,
+            df_outcomes_mt,
+            df_mrs_ivt,
+            df_mrs_mt,
     )
-
-    keys_for_df_mrs_mt = [
-        'lvo_mt_each_patient_mrs_dist_post_stroke',
-    ]
-    column_names = (
-        [f'lvo_mt_mrs_dists_{i}' for i in range(7)]
-    )
-    df_mrs_mt = pd.DataFrame(
-        np.hstack(
-            [np.array(times_to_mt).reshape((len(times_to_mt), 1))] +
-            [outcomes_by_stroke_type_mt_only[k] for k in keys_for_df_mrs_mt]
-            ),
-        columns=['time_to_mt'] + column_names
-    )
-
-    # Remove "each patient" from column names:
-    df_outcomes_ivt = df_outcomes_ivt.rename(columns=dict(zip(
-        df_outcomes_ivt.columns, [c.replace('_each_patient', '') for c in df_outcomes_ivt.columns]
-    )))
-    df_outcomes_mt = df_outcomes_mt.rename(columns=dict(zip(
-        df_outcomes_mt.columns, [c.replace('_each_patient', '') for c in df_outcomes_mt.columns]
-    )))
-    df_mrs_ivt = df_mrs_ivt.rename(columns=dict(zip(
-        df_mrs_ivt.columns, [c.replace('_each_patient', '') for c in df_mrs_ivt.columns]
-    )))
-    df_mrs_mt = df_mrs_mt.rename(columns=dict(zip(
-        df_mrs_mt.columns, [c.replace('_each_patient', '') for c in df_mrs_mt.columns]
-    )))
-    keys_for_df_ivt = [k.replace('_each_patient', '') for k in keys_for_df_ivt]
-    keys_for_df_mt = [k.replace('_each_patient', '') for k in keys_for_df_mt]
-    keys_for_df_mrs_ivt = [k.replace('_each_patient', '') for k in keys_for_df_mrs_ivt]
-    keys_for_df_mrs_mt = [k.replace('_each_patient', '') for k in keys_for_df_mrs_mt]
-
-    # Calculate non-cumulative probabilities:
-    col_names_nlvo_ivt = (
-        [f'nlvo_ivt_mrs_dists_{i}' for i in range(7)])
-    col_names_lvo_ivt = (
-        [f'lvo_ivt_mrs_dists_{i}' for i in range(7)])
-    col_names_lvo_mt = (
-        [f'lvo_mt_mrs_dists_{i}' for i in range(7)])
-
-    col_names_noncum_nlvo_ivt = (
-        [f'nlvo_ivt_mrs_dists_noncum_{i}' for i in range(7)])
-    col_names_noncum_lvo_ivt = (
-        [f'lvo_ivt_mrs_dists_noncum_{i}' for i in range(7)])
-    col_names_noncum_lvo_mt = (
-        [f'lvo_mt_mrs_dists_noncum_{i}' for i in range(7)])
-
-    df_mrs_ivt[col_names_noncum_nlvo_ivt] = np.diff(df_mrs_ivt[col_names_nlvo_ivt].values, prepend=0.0)
-    df_mrs_ivt[col_names_noncum_lvo_ivt] = np.diff(df_mrs_ivt[col_names_lvo_ivt].values, prepend=0.0)
-    df_mrs_mt[col_names_noncum_lvo_mt] = np.diff(df_mrs_mt[col_names_lvo_mt].values, prepend=0.0)
-
-    # Apply these results to the treatment times in each scenario.
-    df_lsoa = df_travel_times.copy().reset_index()
-
-    # Copy stroke unit names over. Currently has only postcodes.
-    cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
-                     'transfer_unit', 'nearest_msu_unit']
-    for col in cols_postcode:
-        if col in df_lsoa.columns:
-            df_lsoa = pd.merge(
-                df_lsoa, df_unit_services['ssnap_name'],
-                left_on=col, right_index=True, how='left'
-                )
-            df_lsoa = df_lsoa.rename(columns={'ssnap_name': f'{col}_name'})
-            # Reorder columns so name appears next to postcode.
-            i = df_lsoa.columns.tolist().index(col)
-            df_lsoa = df_lsoa[
-                [*df_lsoa.columns[:i], f'{col}_name', *df_lsoa.columns[i:-1]]]
-
-    # Usual care:
-    # IVT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_outcomes_ivt,
-        left_on='usual_care_ivt', right_on='time_to_ivt', how='left'
-        )
-    keys_usual_care_from_df_ivt = [f'usual_care_{k}' for k in keys_for_df_ivt]
-    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns=dict(
-        zip(keys_for_df_ivt, keys_usual_care_from_df_ivt)))
-    # MT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_outcomes_mt,
-        left_on='usual_care_mt', right_on='time_to_mt', how='left'
-        )
-    keys_usual_care_from_df_mt = [f'usual_care_{k}' for k in keys_for_df_mt]
-    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns=dict(
-        zip(keys_for_df_mt, keys_usual_care_from_df_mt)))
-    # IVT & MT:
-    cols_lvo_ivt_mt = [
-        'lvo_ivt_mt_mrs_shift',
-        'lvo_ivt_mt_utility_shift',
-        'lvo_ivt_mt_mrs_0-2',
-    ]
-    cols_lvo_ivt = [
-        'lvo_ivt_mrs_shift',
-        'lvo_ivt_utility_shift',
-        'lvo_ivt_mrs_0-2',
-    ]
-    cols_lvo_mt = [
-        'lvo_mt_mrs_shift',
-        'lvo_mt_utility_shift',
-        'lvo_mt_mrs_0-2'
-    ]
-    cols_usual_care_lvo_ivt_mt = [f'usual_care_{k}' for k in cols_lvo_ivt_mt]
-    cols_usual_care_lvo_ivt = [f'usual_care_{k}' for k in cols_lvo_ivt]
-    cols_usual_care_lvo_mt = [f'usual_care_{k}' for k in cols_lvo_mt]
-    # Initially copy over the MT data:
-    df_lsoa[cols_usual_care_lvo_ivt_mt] = df_lsoa[cols_usual_care_lvo_mt].copy()
-    # Find whether IVT is better than MT:
-    mask_usual_care_ivt_better = (
-        df_lsoa['usual_care_lvo_mt_mrs_0-2'] <
-        df_lsoa['usual_care_lvo_ivt_mrs_0-2']
-    )
-    # Store this mask for later use of picking out mRS dists:
-    df_lsoa['usual_care_lvo_ivt_better_than_mt'] = mask_usual_care_ivt_better
-    # Update outcomes for those patients:
-    # (keep the .values because the column names don't match)
-    df_lsoa.loc[mask_usual_care_ivt_better, cols_usual_care_lvo_ivt_mt] = (
-        df_lsoa.loc[mask_usual_care_ivt_better, cols_usual_care_lvo_ivt].values)
-
-    # Copy over probability of death:
-    # IVT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_mrs_ivt[['time_to_ivt', 'nlvo_ivt_mrs_dists_noncum_6', 'lvo_ivt_mrs_dists_noncum_6']],
-        left_on='usual_care_ivt', right_on='time_to_ivt', how='left'
-        )
-    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns={
-        'nlvo_ivt_mrs_dists_noncum_6': 'usual_care_probdeath_nlvo_ivt',
-        'lvo_ivt_mrs_dists_noncum_6': 'usual_care_probdeath_lvo_ivt',
-        })
-    # MT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
-        left_on='usual_care_mt', right_on='time_to_mt', how='left'
-        )
-    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns={'lvo_mt_mrs_dists_noncum_6': 'usual_care_probdeath_lvo_mt'})
-    # IVT & MT:
-    # Initially copy over the MT data:
-    df_lsoa['usual_care_probdeath_lvo_ivt_mt'] = df_lsoa['usual_care_probdeath_lvo_mt'].copy()
-    # Update values where IVT is better than MT:
-    # (keep the .values because the column names don't match)
-    df_lsoa.loc[mask_usual_care_ivt_better, 'usual_care_probdeath_lvo_ivt_mt'] = (
-        df_lsoa.loc[mask_usual_care_ivt_better, 'usual_care_probdeath_lvo_ivt'].values)
-
-
-    # MSU:
-    # IVT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_outcomes_ivt,
-        left_on='msu_ivt', right_on='time_to_ivt', how='left'
-        )
-    keys_msu_from_df_ivt = [f'msu_{k}' for k in keys_for_df_ivt]
-    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns=dict(
-        zip(keys_for_df_ivt, keys_msu_from_df_ivt)))
-    # MT only:
-    df_lsoa = pd.merge(
-        df_lsoa, df_outcomes_mt,
-        left_on='msu_mt_no_ivt', right_on='time_to_mt', how='left'
-        )
-    keys_msu_from_df_mt = [f'msu_{k}' for k in keys_for_df_mt]
-    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns=dict(
-        zip(keys_for_df_mt, keys_msu_from_df_mt)))
-    # IVT & MT:
-    # First copy over MT results:
-    cols_msu_lvo_ivt_mt = [f'msu_{k}' for k in cols_lvo_ivt_mt]
-    cols_msu_lvo_ivt = [f'msu_{k}' for k in cols_lvo_ivt]
-    cols_msu_lvo_mt = [f'msu_{k}' for k in cols_lvo_mt]
-    df_lsoa = pd.merge(
-        df_lsoa, df_outcomes_mt,
-        left_on='msu_mt_with_ivt', right_on='time_to_mt', how='left'
-        )
-    keys_msu_ivt_mt_from_df_mt = [f'msu_{k}'.replace('_mt_', '_ivt_mt_') for k in keys_for_df_mt]
-    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns=dict(
-        zip(keys_for_df_mt, keys_msu_ivt_mt_from_df_mt)))
-    # Find whether IVT is better than MT:
-    mask_msu_ivt_better = (
-        df_lsoa['msu_lvo_ivt_mt_mrs_0-2'] <
-        df_lsoa['msu_lvo_ivt_mrs_0-2']
-    )
-    # Store this mask for later use of picking out mRS dists:
-    df_lsoa['msu_lvo_ivt_better_than_mt'] = mask_msu_ivt_better
-    # Update outcomes for those patients:
-    # (keep the .values because the column names don't match)
-    df_lsoa.loc[mask_msu_ivt_better, cols_msu_lvo_ivt_mt] = (
-        df_lsoa.loc[mask_msu_ivt_better, cols_msu_lvo_ivt].values)
-
-    # Copy over probability of death:
-    # IVT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_mrs_ivt[['time_to_ivt', 'nlvo_ivt_mrs_dists_noncum_6', 'lvo_ivt_mrs_dists_noncum_6']],
-        left_on='msu_ivt', right_on='time_to_ivt', how='left'
-        )
-    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns={
-        'nlvo_ivt_mrs_dists_noncum_6': 'msu_probdeath_nlvo_ivt',
-        'lvo_ivt_mrs_dists_noncum_6': 'msu_probdeath_lvo_ivt',
-        })
-    # MT:
-    df_lsoa = pd.merge(
-        df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
-        left_on='msu_mt_no_ivt', right_on='time_to_mt', how='left'
-        )
-    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
-    df_lsoa = df_lsoa.rename(columns={
-        'lvo_mt_mrs_dists_noncum_6': 'msu_probdeath_lvo_mt'})
-    # IVT & MT:
-    # Initially copy over the MT data:
-    df_lsoa['msu_probdeath_lvo_ivt_mt'] = df_lsoa['msu_probdeath_lvo_mt'].copy()
-    # Update values where IVT is better than MT:
-    # (keep the .values because the column names don't match)
-    df_lsoa.loc[mask_msu_ivt_better, 'msu_probdeath_lvo_ivt_mt'] = (
-        df_lsoa.loc[mask_msu_ivt_better, 'msu_probdeath_lvo_ivt'].values)
 
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
-
-    # print('\n\n\nmake_outcome_inputs_usual_care')
-    # tr0 = tracker.SummaryTracker()
-
-    # st.stop()
-
-    # # Apply these mRS dist results to the treatment times in each scenario.
-    # df_lsoa = df_travel_times.copy().reset_index()
-
-
-
-    # # Add travel times to the pathway timings to get treatment times.
-    # df_outcome_uc = calc.make_outcome_inputs_usual_care(
-    #     input_dict,
-    #     df_travel_times,
-    #     treatment_time_dict['usual_care_time_to_ivt'],
-    #     treatment_time_dict['usual_care_mt_transfer'],
-    #     treatment_time_dict['usual_care_mt_no_transfer'],
-    #     )
-    # df_outcome_msu = calc.make_outcome_inputs_msu(
-    #     input_dict,
-    #     df_travel_times,
-    #     treatment_time_dict['msu_time_to_ivt'],
-    #     treatment_time_dict['msu_time_to_mt'],
-    #     msu_gives_ivt=True
-    #     )
-    # df_outcome_msu_no_ivt = calc.make_outcome_inputs_msu(
-    #     input_dict,
-    #     df_travel_times,
-    #     treatment_time_dict['msu_time_to_ivt'],
-    #     treatment_time_dict['msu_time_to_mt_no_ivt'],
-    #     msu_gives_ivt=False
-    #     )
-    # dict_outcome_inputs = {
-    #     'usual_care': df_outcome_uc,
-    #     'msu': df_outcome_msu,
-    #     'msu_no_ivt': df_outcome_msu_no_ivt,
-    # }
-    # print('df_outcome_uc ', len(df_outcome_uc.columns), len(df_outcome_uc))
-    # print(sys.getsizeof(df_outcome_uc))
-
-    # tr0.print_diff()
-
-    print('\n\n\ncalculate_outcomes')
-    # tr0 = tracker.SummaryTracker()
-
-    # # Process LSOA and calculate outcomes:
-    # df_lsoa, df_mrs = calc.calculate_outcomes(
-    #     dict_outcome_inputs, df_unit_services, geo)
-    # # df_lsoa = calc.calculate_outcomes(
-    # #     dict_outcome_inputs, df_unit_services, geo)
-    # # df_mrs = calc.calculate_outcomes(
-    # #     dict_outcome_inputs, df_unit_services, geo)
-
-    # # print('df_lsoa ', len(df_lsoa.columns), len(df_lsoa))
-    # # print('df_mrs ', len(df_mrs.columns), len(df_mrs))
-    # # print(sys.getsizeof(df_lsoa))
-    # # print(sys.getsizeof(df_mrs))
-    # # tr0.print_diff()
-    # # st.stop()
-
-    # # Combine the two sets of MSU data.
-    # # Use the "with IVT" set for most things except for treatment
-    # # with MT only, which needs the "without IVT" set.
-    # # LSOA:
-    # # Names of columns that need replacing:
-    # cols_lsoa = [c for c in df_lsoa.columns if (
-    #             (c.startswith('msu')) & ('mt' in c) & ('ivt' not in c))]
-    # # Names of columns that will replace them:
-    # cols_lsoa_no_ivt = [c.replace('msu', 'msu_no_ivt') for c in cols_lsoa]
-    # df_lsoa[cols_lsoa] = df_lsoa[cols_lsoa_no_ivt]
-    # # Keep a copy of the time to treatment:
-    # df_lsoa['msu_mt_time_no_ivt'] = df_lsoa['msu_no_ivt_mt_time']
-    # # Remove "no IVT" columns:
-    # cols_lsoa = [c for c in df_lsoa.columns
-    #                 if not c.startswith('msu_no_ivt')]
-    # df_lsoa = df_lsoa[cols_lsoa]
-    # # Drop repeated "msu_occupied" columns and rename:
-    # df_lsoa = df_lsoa.drop(
-    #     ['msu_occupied_ivt_msu_no_ivt', 'msu_occupied_no_ivt_msu_no_ivt'],
-    #     axis='columns'
-    #     )
-    # df_lsoa = df_lsoa.rename(columns={
-    #     'msu_occupied_ivt_msu_no_ivt': 'msu_occupied_ivt',
-    #     'msu_occupied_no_ivt_msu_no_ivt': 'msu_occupied_no_ivt',
-    #     })
-    # # mRS:
-    # # Names of columns that need replacing:
-    # cols_mrs = [c for c in df_mrs.columns if (
-    #             (c.startswith('msu')) & ('mt' in c) & ('ivt' not in c))]
-    # # Names of columns that will replace them:
-    # cols_mrs_no_ivt = [c.replace('msu', 'msu_no_ivt') for c in cols_mrs]
-    # df_mrs[cols_mrs] = df_mrs[cols_mrs_no_ivt]
-    # # Remove "no IVT" columns:
-    # cols_mrs = [c for c in df_mrs.columns if not c.startswith('msu_no_ivt')]
-    # df_mrs = df_mrs[cols_mrs]
 
     # Calculate diff - msu minus usual care:
     df_lsoa = calc.combine_results_by_diff(
         df_lsoa,
         scenario_types=['msu', 'usual_care']
         )
-    # df_mrs = calc.combine_results_by_diff(
-    #     df_mrs,
-    #     scenario_types=['msu', 'usual_care'],
-    #     combine_mrs_dists=True
-    #     )
-
-    # # Place probabilities of death into df_lsoa data
-    # # so that they are displayed in the results tables.
-    # cols_probs_of_death = [
-    #     'usual_care_lvo_ivt_mrs_dists_noncum_6',
-    #     'usual_care_lvo_ivt_mt_mrs_dists_noncum_6',
-    #     'usual_care_lvo_mt_mrs_dists_noncum_6',
-    #     'usual_care_nlvo_ivt_mrs_dists_noncum_6',
-    #     'msu_lvo_ivt_mrs_dists_noncum_6',
-    #     'msu_lvo_ivt_mt_mrs_dists_noncum_6',
-    #     'msu_lvo_mt_mrs_dists_noncum_6',
-    #     'msu_nlvo_ivt_mrs_dists_noncum_6',
-    # ]
-    # df_lsoa = pd.merge(
-    #     df_lsoa, df_mrs[cols_probs_of_death],
-    #     left_index=True, right_index=True, how='left'
-    # )
 
     df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}), df_unit_services)
+        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
+        df_unit_services
+        )
 
-    # print(sys.getsizeof(df_icb))
-    # print(sys.getsizeof(df_isdn))
-    # print(sys.getsizeof(df_nearest_ivt))
-    # print(sys.getsizeof(df_ambo))
-
-    return df_lsoa, df_mrs_ivt, df_mrs_mt, df_icb, df_isdn, df_nearest_ivt, df_ambo
+    return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
 
 # ###########################
@@ -1133,18 +728,29 @@ with container_rerun:
         st.session_state['df_unit_services_full_on_last_run'] = (
             df_unit_services_full)
         (
-            st.session_state['df_lsoa'],
+            df_travel_times,
+            df_outcomes_ivt,
+            df_outcomes_mt,
             st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'],
+        ) = main_calculations(
+            df_unit_services,
+            treatment_times_without_travel
+            )
+        (
+            st.session_state['df_lsoa'],
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = main_calculations(
-            input_dict,
-            df_unit_services,
-            treatment_times_without_travel
+        ) = gather_outcomes_by_region(
+            df_travel_times,
+            df_outcomes_ivt,
+            df_outcomes_mt,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
             )
+
         # tr0.print_diff()
 
         print('\n\n\nEnd of calculate results')
@@ -1168,6 +774,7 @@ else:
     # This hasn't been created yet and so the results cannot be drawn.
     st.stop()
 
+st.stop()
 
 # #########################################
 # ########## RESULTS - FULL DATA ##########
