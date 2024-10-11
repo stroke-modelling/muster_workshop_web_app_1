@@ -514,8 +514,8 @@ time_keys_standard = [
     'ivt_mt_unit',
 ]
 time_dicts_standard = dict([(k, time_dicts[k]) for k in time_keys_standard])
-time_offsets_standard = dict([(k, time_offsets[k])
-                              for k in time_keys_standard])
+time_offsets_standard = dict([
+    (k, time_offsets[k]) for k in time_keys_standard])
 # MSU:
 time_keys_msu = [
     'msu_dispatch',
