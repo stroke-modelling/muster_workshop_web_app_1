@@ -71,7 +71,7 @@ class Geoprocessing(object):
 
         save_processed_data
             Save combined data
-                
+
         """
         # Overwrite default values (can take named arguments or a dictionary)
         for dictionary in args:
@@ -81,11 +81,12 @@ class Geoprocessing(object):
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
+        self.load_data()
+
     def run(self):
         """
         Run all processing methods.
         """
-        self.load_data()
         self.find_nearest_ivt_unit()
         self.find_nearest_mt_unit()
         self.find_nearest_msu_unit()
@@ -232,8 +233,6 @@ class Geoprocessing(object):
             self.inter_hospital_time = self.inter_hospital_time[
                 [c for c in self.inter_hospital_time.columns if c in units_eng]
                 ].copy()
-
-
 
 
     def update_unit_services(self):

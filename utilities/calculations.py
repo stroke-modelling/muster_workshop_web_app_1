@@ -23,17 +23,27 @@ from utilities.maps import dissolve_polygons_by_value
 
 @st.cache_data
 def calculate_geography(df_unit_services):
-    # Process and save geographic data (only needed when hospital data changes)
-    geo = Geoprocessing(
-        df_unit_services=df_unit_services,
-        limit_to_england=True
-        )
+    try:
+        geo = st.session_state['geo']
+    except KeyError:
+        # Process and save geographic data (only needed when hospital data changes)
+        geo = Geoprocessing(
+            limit_to_england=True
+            )
+
+    # Update units:
+    geo.df_unit_services = df_unit_services
+    geo.update_unit_services()
+
+    # Rerun geography:
     geo.run()
 
     # Reset index because Model expects a column named 'lsoa':
-    df_geo = geo.get_combined_data().copy().reset_index()
+    df_geo = geo.get_combined_data().copy(deep=True).reset_index()
 
-    del geo
+    # Cache the geo class so that on the next run all of the big
+    # data files are not loaded in another time.
+    st.session_state['geo'] = geo
 
     return df_geo.copy()
 
@@ -250,9 +260,9 @@ def run_outcome_model_for_unique_times(times_to_ivt, times_to_mt):
 
     # Run the outcome model for just these times.
     outcomes_by_stroke_type_ivt_only = model.run_outcome_model(
-        outcome_inputs_df_ivt_only)
+        outcome_inputs_df_ivt_only).copy()
     outcomes_by_stroke_type_mt_only = model.run_outcome_model(
-        outcome_inputs_df_mt_only)
+        outcome_inputs_df_mt_only).copy()
     return (outcomes_by_stroke_type_ivt_only,
             outcomes_by_stroke_type_mt_only)
 
@@ -813,39 +823,14 @@ def build_full_lsoa_outcomes_from_unique_time_results(
 # ##### AVERAGE RESULTS #####
 # ###########################
 @st.cache_data
-def group_results_by_region(df_lsoa, df_unit_services):
+def group_results_by_region(df_lsoa, df_unit_services, df_lsoa_regions):
     df_lsoa = df_lsoa.copy()
     # ----- LSOAs for grouping results -----
     # Merge in other region info.
-
-    # Load region info for each LSOA:
-    # Relative import from package files:
-    df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
-    df_lsoa_regions = df_lsoa_regions.reset_index()
     df_lsoa = pd.merge(
         df_lsoa, df_lsoa_regions,
-        left_on='lsoa', right_on='lsoa', how='left'
+        on='lsoa', how='left'
         )
-
-    # Load further region data linking SICBL to other regions:
-    df_regions = stroke_maps.load_data.region_lookup()
-    df_regions = df_regions.reset_index()
-    # Drop columns already in df_lsoa:
-    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
-    df_lsoa = pd.merge(
-        df_lsoa, df_regions,
-        left_on='region_code', right_on='region_code', how='left'
-        )
-
-    # Load ambulance service data:
-    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
-    df_lsoa_ambo = df_lsoa_ambo.reset_index()
-    # Merge in:
-    df_lsoa = pd.merge(
-        df_lsoa, df_lsoa_ambo[['LSOA11NM', 'ambo22']],
-        left_on='lsoa', right_on='LSOA11NM', how='left'
-        ).drop('LSOA11NM', axis='columns')
-
     # Replace some zeros with NaN:
     mask = df_lsoa['transfer_required']
     df_lsoa.loc[~mask, 'transfer_time'] = pd.NA

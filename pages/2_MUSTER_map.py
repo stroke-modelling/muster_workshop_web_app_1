@@ -31,7 +31,7 @@ import sys
 
 
 # @st.cache_data
-def main_calculations(df_unit_services, treatment_time_dict):
+def calculate_treatment_times_each_lsoa(df_unit_services, treatment_time_dict):
 
     # ---- Travel times -----
     # One row per LSOA:
@@ -64,15 +64,18 @@ def main_calculations(df_unit_services, treatment_time_dict):
     # One row per LSOA:
     df_travel_times = calc.calculate_treatment_times_each_lsoa(
         df_travel_times, treatment_time_dict)
+    return df_travel_times
 
+
+def main_calculations(df_times):
     # ----- Unique treatment times -----
     # Find the complete set of times to IVT and times to MT.
     # Don't need the combinations of IVT and MT times yet.
     # Find set of treatment times:
     times_to_ivt = sorted(list(set(
-        df_travel_times[['usual_care_ivt', 'msu_ivt']].values.flatten())))
+        df_times[['usual_care_ivt', 'msu_ivt']].values.flatten())))
     times_to_mt = sorted(list(set(
-        df_travel_times[['usual_care_mt', 'msu_mt_with_ivt', 'msu_mt_no_ivt']
+        df_times[['usual_care_mt', 'msu_mt_with_ivt', 'msu_mt_no_ivt']
                         ].values.flatten())))
 
     # ----- Outcomes for unique treatment times -----
@@ -100,7 +103,6 @@ def main_calculations(df_unit_services, treatment_time_dict):
             )
         )
     return (
-        df_travel_times,
         df_outcomes_ivt,
         df_outcomes_mt,
         df_mrs_ivt,
@@ -110,14 +112,15 @@ def main_calculations(df_unit_services, treatment_time_dict):
 
 # @st.cache_data
 def gather_outcomes_by_region(
-            df_travel_times,
+            df_times,
             df_outcomes_ivt,
             df_outcomes_mt,
             df_mrs_ivt,
-            df_mrs_mt
+            df_mrs_mt,
+            df_lsoa_regions
             ):
     df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_travel_times,
+            df_times,
             df_outcomes_ivt,
             df_outcomes_mt,
             df_mrs_ivt,
@@ -135,10 +138,12 @@ def gather_outcomes_by_region(
 
     df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
-        df_unit_services
+        df_unit_services,
+        df_lsoa_regions
         )
 
     return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
+
 
 
 # ###########################
@@ -382,7 +387,10 @@ if outcome_type == 'mrs_shift':
 
 # ----- Demographic data -----
 # For population map. Load in LSOA-level demographic data:
-df_demog = inputs.load_lsoa_demog()
+try:
+    df_demog = st.session_state['df_demog']
+except KeyError:
+    df_demog = inputs.load_lsoa_demog()
 # Set the column of this data that we want...
 column_pop = 'population_density'
 # ... and how the name should be displayed in the app:
@@ -713,6 +721,13 @@ except KeyError:
     # First run of the app.
     inputs_changed = False
 
+try:
+    df_lsoa_regions = st.session_state['df_lsoa_regions']
+except KeyError:
+    df_lsoa_regions = inputs.load_lsoa_region_lookups()
+    st.session_state['df_lsoa_regions'] = df_lsoa_regions
+
+new_results_run = False
 
 with container_rerun:
     if st.button('Calculate results', type='primary'):
@@ -727,16 +742,21 @@ with container_rerun:
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
         st.session_state['df_unit_services_full_on_last_run'] = (
             df_unit_services_full)
+
+        df_times = calculate_treatment_times_each_lsoa(
+            df_unit_services, treatment_times_without_travel)
+
+        # st.stop()
+
         (
-            df_travel_times,
             df_outcomes_ivt,
             df_outcomes_mt,
             st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'],
-        ) = main_calculations(
-            df_unit_services,
-            treatment_times_without_travel
-            )
+        ) = main_calculations(df_times)
+
+        # st.stop()
+
         (
             st.session_state['df_lsoa'],
             st.session_state['df_icb'],
@@ -744,12 +764,15 @@ with container_rerun:
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
         ) = gather_outcomes_by_region(
-            df_travel_times,
+            df_times,
             df_outcomes_ivt,
             df_outcomes_mt,
             st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'],
+            df_lsoa_regions
             )
+
+        new_results_run = True
 
         # tr0.print_diff()
 
@@ -774,21 +797,23 @@ else:
     # This hasn't been created yet and so the results cannot be drawn.
     st.stop()
 
-st.stop()
 
 # #########################################
 # ########## RESULTS - FULL DATA ##########
 # #########################################
 with container_results_tables:
-    results_tabs = st.tabs([
-        'Results by IVT unit catchment',
-        'Results by ISDN',
-        'Results by ICB',
-        'Results by ambulance service',
-        'Full results by LSOA'
-        ])
+    table_choice = st.selectbox(
+        'Display the following results table:',
+        options = [
+            'Results by IVT unit catchment',
+            'Results by ISDN',
+            'Results by ICB',
+            'Results by ambulance service',
+            'Full results by LSOA'
+            ]
+        )
 
-    with results_tabs[0]:
+    if 'IVT unit' in table_choice:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each IVT unit catchment area.'
@@ -800,23 +825,22 @@ with container_results_tables:
                 'transfer_required': st.column_config.CheckboxColumn()
                 }
             )
-
-    with results_tabs[1]:
+    elif 'ISDN' in table_choice:
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
         st.dataframe(st.session_state['df_isdn'])
 
-    with results_tabs[2]:
+    elif 'ICB' in table_choice:
         st.markdown('Results are the mean values of all LSOA in each ICB.')
         st.dataframe(st.session_state['df_icb'])
 
-    with results_tabs[3]:
+    elif 'ambulance' in table_choice:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each ambulance service.'
             ]))
         st.dataframe(st.session_state['df_ambo'])
 
-    with results_tabs[4]:
+    else:
         st.dataframe(
             st.session_state['df_lsoa'],
             # Set some columns to bool for nicer display:
@@ -833,6 +857,7 @@ with container_results_tables:
 
 # print('\n\n\nmRS dists')
 # tr0 = tracker.SummaryTracker()
+
 
 # #########################################
 # ########## RESULTS - mRS DISTS ##########
@@ -851,6 +876,17 @@ with container_results_tables:
 # +---------------------------+------------+------------+------------------+
 #
 # There is not a separate column for "no treatment" to save space.
+
+# Select mRS distribution region.
+# Select a region based on what's actually in the data,
+# not by guessing in advance which IVT units are included for example.
+region_options_dict = inputs.load_region_lists(df_unit_services_full)
+bar_options = ['National']
+for key, region_list in region_options_dict.items():
+    bar_options += [f'{key}: {v}' for v in region_list]
+
+# Which mRS distributions will be shown on the bars:
+scenario_mrs = ['usual_care', 'msu']
 
 # Limit the mRS data to only LSOA that benefit from an MSU,
 # i.e. remove anything where the added utility of MSU is not better
@@ -872,21 +908,11 @@ else:
     # lsoa_to_keep = st.session_state['df_lsoa'].index[
     #     (st.session_state['df_lsoa'][c1] > 0.0)]
 
-
-# Select mRS distribution region.
-# Select a region based on what's actually in the data,
-# not by guessing in advance which IVT units are included for example.
-region_options_dict = inputs.load_region_lists(df_unit_services_full)
-bar_options = ['National']
-for key, region_list in region_options_dict.items():
-    bar_options += [f'{key}: {v}' for v in region_list]
-
-# Which mRS distributions will be shown on the bars:
-scenario_mrs = ['usual_care', 'msu']
-
+# if inputs_changed:
+#     pass
+# else:
 # Keep this in its own fragment so that choosing a new region
 # to plot doesn't re-run the maps too.
-
 
 # Pick out useful bits from the full outcome results:
 cols_to_copy = [
@@ -899,7 +925,7 @@ cols_to_copy = [
 if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
     cols_to_copy.append(col_to_mask_mrs)
 df_mrs_usual_care = st.session_state['df_lsoa'][cols_to_copy].copy()
-df_mrs_usual_care = df_mrs_usual_care.rename(columns={    
+df_mrs_usual_care = df_mrs_usual_care.rename(columns={
     'usual_care_ivt': 'time_to_ivt',
     'usual_care_mt': 'time_to_mt',
     'usual_care_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
@@ -926,6 +952,16 @@ df_mrs_msu = df_mrs_msu.rename(columns={
     'msu_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
 })
 
+# Merge in region info:
+df_mrs_usual_care = pd.merge(
+    df_mrs_usual_care.reset_index(), df_lsoa_regions,
+    on='lsoa', how='left'
+    ).set_index('lsoa')
+df_mrs_msu = pd.merge(
+    df_mrs_msu.reset_index(), df_lsoa_regions,
+    on='lsoa', how='left'
+    ).set_index('lsoa')
+
 
 @st.fragment
 def display_mrs_dists():
@@ -944,6 +980,12 @@ def display_mrs_dists():
             'is better than for the "usual care" scenario.'
             ]))
 
+    # if inputs_changed:
+    #     if 'fig_mrs' in st.session_state.keys():
+    #         pass
+    #     else:
+    #         st.stop()
+    # else:
     mrs_lists_dict, region_selected, col_pretty = (
         mrs.setup_for_mrs_dist_bars(
             bar_option,
@@ -962,9 +1004,36 @@ def display_mrs_dists():
             scenarios=scenario_mrs
             ))
 
+    st.session_state['fig_mrs'] = mrs.plot_mrs_bars(
+        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+
+
     with container_bars:
-        mrs.plot_mrs_bars(
-            mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+        # Options for the mode bar.
+        # (which doesn't appear on touch devices.)
+        plotly_config = {
+            # Mode bar always visible:
+            # 'displayModeBar': True,
+            # Plotly logo in the mode bar:
+            'displaylogo': False,
+            # Remove the following from the mode bar:
+            'modeBarButtonsToRemove': [
+                # 'zoom',
+                # 'pan',
+                'select',
+                # 'zoomIn',
+                # 'zoomOut',
+                'autoScale',
+                'lasso2d'
+                ],
+            # Options when the image is saved:
+            'toImageButtonOptions': {'height': None, 'width': None},
+            }
+        st.plotly_chart(
+            st.session_state['fig_mrs'],
+            use_container_width=True,
+            config=plotly_config
+            )
 
 
 with container_mrs_dists:
@@ -972,6 +1041,8 @@ with container_mrs_dists:
 
 
 # tr0.print_diff()
+
+# st.stop()
 
 
 # print('\n\n\nMaps')
@@ -990,14 +1061,26 @@ subplot_titles = [
 ]
 
 # ----- Set up geodataframe -----
-gdf = maps.load_lsoa_gdf()
+try:
+    gdf = st.session_state['gdf']
+except KeyError:
+    gdf = maps.load_lsoa_gdf()
+    st.session_state['gdf_cols'] = gdf.columns
 
-# Merge in outcomes data:
-gdf = pd.merge(
-    gdf, st.session_state['df_lsoa'],
-    left_on='LSOA11NM', right_on='lsoa', how='left'
-    )
-
+if new_results_run:
+    # Remove results from last run:
+    gdf = gdf[st.session_state['gdf_cols']]
+    # Merge in outcomes data:
+    gdf = pd.merge(
+        gdf, st.session_state['df_lsoa'],
+        left_on='LSOA11NM', right_on='lsoa', how='left'
+        )
+    # Merge demographic data into gdf:
+    gdf = pd.merge(
+        gdf, df_demog[['LSOA', column_pop]],
+        left_on='LSOA11NM', right_on='LSOA', how='left'
+        )
+st.session_state['gdf'] = gdf
 
 # ----- Find data for colours -----
 
@@ -1046,11 +1129,7 @@ except KeyError:
     # for added utility and added mrs<=2 with no treatment.
 
 
-# Merge demographic data into gdf:
-gdf = pd.merge(
-    gdf, df_demog[['LSOA', column_pop]],
-    left_on='LSOA11NM', right_on='LSOA', how='left'
-    )
+
 # Pick out values:
 vals_for_colours_pop = gdf[column_pop]
 
@@ -1095,7 +1174,7 @@ actual_vmax_pop = max(vals_for_colours_pop)
 # Put these into a DataFrame:
 df_actual_vlim = pd.DataFrame(
     [[actual_vmin, actual_vmin_diff, actual_vmin_pop],
-     [actual_vmax, actual_vmax_diff, actual_vmax_pop]],
+    [actual_vmax, actual_vmax_diff, actual_vmax_pop]],
     columns=subplot_titles,
     index=['Minimum', 'Maximum']
 )
@@ -1177,21 +1256,49 @@ unit_subplot_dict = {
 
 
 # ----- Plot -----
+st.session_state['fig_maps'] = plot_maps.plotly_many_heatmaps(
+    burned_lhs,
+    burned_rhs,
+    burned_pop,
+    gdf_catchment_lhs,
+    gdf_catchment_rhs,
+    gdf_catchment_pop,
+    outline_names_col,
+    outline_name,
+    traces_units,
+    unit_subplot_dict,
+    subplot_titles=subplot_titles,
+    dict_colours=dict_colours,
+    dict_colours_diff=dict_colours_diff,
+    dict_colours_pop=dict_colours_pop,
+    transform_dict=transform_dict,
+    )
+
+
 with container_map:
-    plot_maps.plotly_many_heatmaps(
-        burned_lhs,
-        burned_rhs,
-        burned_pop,
-        gdf_catchment_lhs,
-        gdf_catchment_rhs,
-        gdf_catchment_pop,
-        outline_names_col,
-        outline_name,
-        traces_units,
-        unit_subplot_dict,
-        subplot_titles=subplot_titles,
-        dict_colours=dict_colours,
-        dict_colours_diff=dict_colours_diff,
-        dict_colours_pop=dict_colours_pop,
-        transform_dict=transform_dict,
-        )
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    st.plotly_chart(
+            st.session_state['fig_maps'],
+            use_container_width=True,
+            config=plotly_config
+            )

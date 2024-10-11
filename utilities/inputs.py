@@ -934,9 +934,32 @@ def load_roads_gdf():
 
 
 def load_lsoa_demog():
-    df_demog = pd.read_csv(os.path.join(
-        'data', 'collated_data_regional_LSOA.csv'))
-
-    # Only keep some columns:
-    df_demog = df_demog[['LSOA', 'population_density']]
+    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
     return df_demog
+
+
+def load_lsoa_region_lookups():
+    # Load region info for each LSOA:
+    # Relative import from package files:
+    df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
+    df_lsoa_regions = df_lsoa_regions.reset_index()
+
+    # Load further region data linking SICBL to other regions:
+    df_regions = stroke_maps.load_data.region_lookup()
+    df_regions = df_regions.reset_index()
+    # Drop columns already in df_lsoa:
+    df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
+    df_lsoa_regions = pd.merge(
+        df_lsoa_regions, df_regions,
+        left_on='region_code', right_on='region_code', how='left'
+        )
+
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    df_lsoa_ambo = df_lsoa_ambo.reset_index()
+    # Merge in:
+    df_lsoa_regions = pd.merge(
+        df_lsoa_regions, df_lsoa_ambo[['LSOA11NM', 'ambo22']],
+        left_on='lsoa', right_on='LSOA11NM', how='left'
+        ).drop('LSOA11NM', axis='columns')
+    return df_lsoa_regions

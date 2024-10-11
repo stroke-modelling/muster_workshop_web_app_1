@@ -105,40 +105,12 @@ def setup_for_mrs_dist_bars(
         if col_region == '':
             # Just keep everything.
             lsoa_names = df_mrs_usual_care.index
-        elif col_region == 'nearest_ivt_unit_name':
-            # Find which LSOA are nearest to this IVT unit
-            # from the outcomes data.
+        else:
             mask_nearest = (
-                df_mrs_usual_care['nearest_ivt_unit_name'] == str_selected_region)
+                df_mrs_usual_care[col_region] == str_selected_region)
             # Which LSOA are in this catchment area?
             lsoa_names = df_mrs_usual_care.loc[mask_nearest].index.values
-        elif col_region == 'ambo22':
-            # Load ambulance service data:
-            df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
-            df_lsoa_ambo = df_lsoa_ambo.reset_index()
-            # Only keep this ambulance region:
-            mask_ambo = df_lsoa_ambo['ambo22'] == str_selected_region
-            df_lsoa_ambo = df_lsoa_ambo.loc[mask_ambo]
-            # Which LSOA are in this ambulance region?
-            lsoa_names = df_lsoa_ambo['LSOA11NM'].values
-        else:
-            # Load region info for each LSOA:
-            df_lsoa_regions = stroke_maps.load_data.lsoa_region_lookup()
-            df_lsoa_regions = df_lsoa_regions.reset_index()
-            # Load further region data linking SICBL to other regions:
-            df_regions = stroke_maps.load_data.region_lookup()
-            df_regions = df_regions.reset_index()
-            # Drop columns already in df_lsoa:
-            df_regions = df_regions.drop(['region', 'region_type'], axis='columns')
-            df_lsoa_regions = pd.merge(
-                df_lsoa_regions, df_regions,
-                left_on='region_code', right_on='region_code', how='left'
-                )
-            # Only keep rows in the selected region:
-            mask_region = df_lsoa_regions[col_region] == str_selected_region
-            df_lsoa_regions = df_lsoa_regions.loc[mask_region]
-            # Which LSOA are in this region?
-            lsoa_names = df_lsoa_regions['lsoa'].values
+
         # Combine this with the previous mask:
         lsoa_names = list(set(lsoa_names) & set(lsoa_names_benefit))
 
@@ -245,6 +217,10 @@ def setup_for_mrs_dist_bars(
             means = weighted_stats.mean
             # Standard deviations (one value per mRS):
             stds = weighted_stats.std
+
+            # Round these values:
+            means = np.round(means, 3)
+            stds = np.round(stds, 3)
             # Cumulative probability from the mean bins:
             cumulatives = np.cumsum(means)
 
@@ -259,6 +235,7 @@ def setup_for_mrs_dist_bars(
 
     # Display names for the data:
     display_name_dict = {
+        'usual_care': 'Usual care',
         'drip_ship': 'Usual care',
         'redirect': 'Redirection',
         'msu': 'MSU'
@@ -372,24 +349,4 @@ def plot_mrs_bars(mrs_lists_dict, title_text=''):
         margin_t=150,
         )
 
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+    return fig

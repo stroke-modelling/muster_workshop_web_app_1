@@ -1162,9 +1162,4 @@ def plotly_many_heatmaps(
         'toImageButtonOptions': {'height': None, 'width': None},
         }
 
-    # Write to streamlit:
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config=plotly_config
-        )
+    return fig
