@@ -433,6 +433,187 @@ def plotly_unit_maps(
     st.plotly_chart(fig, use_container_width=True, config=plotly_config)
 
 
+def plotly_unit_map(
+        traces_units: dict = None,
+        unit_subplot_dict: dict = {},
+        gdf_catchment_lhs: geopandas.GeoDataFrame = None,
+        outline_names_col: str = '',
+        outline_name: str = '',
+        subplot_titles: list = [],
+        ):
+    """
+    Create England outline with unit locations.
+
+    Inputs
+    ------
+    traces_units      - dict. Plotly traces of scatter markers for
+                        stroke units.
+    unit_subplot_dict - dict. Which unit traces should be shown on
+                        which subplots (by number).
+    """
+    # Don't replace this with stroke-maps!
+    # This uses the same simplified LSOA shapes as plotted.
+    path_to_file = os.path.join('data', 'outline_england.geojson')
+    gdf_ew = geopandas.read_file(path_to_file)
+
+    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
+    gdf_ew['x'] = x_list
+    gdf_ew['y'] = y_list
+
+    # ----- Plotting -----
+    fig = make_subplots(
+        rows=1, cols=1,
+        horizontal_spacing=0.0,
+        subplot_titles=subplot_titles
+        )
+
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    for i in gdf_ew.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_ew.loc[i, 'x'],
+            y=gdf_ew.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(1.0, 1.0, 1.0, 0.2)',
+            line_color='grey',
+            showlegend=False,
+            hoverinfo='skip',
+            ), col='all', row='all')
+
+    gdf_roads = load_roads_gdf()
+
+    for i in gdf_roads.index:
+        fig.add_trace(go.Scatter(
+            x=gdf_roads.loc[i, 'x'],
+            y=gdf_roads.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='grey',
+            line_width=0.5,
+            showlegend=False,
+            hoverinfo='skip',
+            ), col='all', row='all')
+
+    def draw_outline(fig, gdf_catchment, col='all'):
+        # I can't for the life of me get hovertemplate working here
+        # for mysterious reasons, so just stick to "text" for hover info.
+        for i in gdf_catchment.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_catchment.loc[i, 'x'],
+                y=gdf_catchment.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor=gdf_catchment.loc[i, 'colour'],
+                line_color='grey',
+                name=gdf_catchment.loc[i, 'outline_type'],
+                text=gdf_catchment.loc[i, outline_names_col],
+                hoverinfo="text",
+                hoverlabel=dict(bgcolor='red'),
+                ), row='all', col=col
+                )
+
+    if gdf_catchment_lhs is None:
+        pass
+    else:
+        draw_outline(fig, gdf_catchment_lhs, col=1)
+
+    fig.update_traces(
+        hoverlabel=dict(
+            bgcolor='grey',
+            font_color='white'),
+        selector={'name': outline_name}
+    )
+
+    # --- Stroke unit scatter markers ---
+    if len(unit_subplot_dict) > 0:
+        if gdf_catchment_lhs is None:
+            pass
+        else:
+            # # Add a blank trace to put a gap in the legend.
+            # Stupid? Yes. Works? Also yes.
+            # Make sure the name isn't the same as any other blank name
+            # already set, e.g. in combo_colour_dict.
+            fig.add_trace(go.Scatter(
+                x=[None],
+                y=[None],
+                marker={'color': 'rgba(0,0,0,0)'},
+                name=' ' * 10
+            ))
+
+        # Create the scatter traces for the stroke units in advance
+        # and then add traces to the subplots.
+        for service, grid_lists in unit_subplot_dict.items():
+            for grid_list in grid_lists:
+                row = grid_list[0]
+                col = grid_list[1]
+                fig.add_trace(traces_units[service], row=row, col=col)
+
+
+    # Remove repeat legend names:
+    # (e.g. multiple sets of IVT unit, MT unit)
+    # from https://stackoverflow.com/a/62162555
+    names = set()
+    fig.for_each_trace(
+        lambda trace:
+            trace.update(showlegend=False)
+            if (trace.name in names) else names.add(trace.name))
+    # This makes sure that if multiple maps use the exact same
+    # colours and labels, the labels only appear once in the legend.
+
+    fig.update_layout(
+        legend=dict(
+            title_text='',
+            bordercolor='grey',
+            borderwidth=2
+        )
+    )
+
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+
+    # Remove axis ticks:
+    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
+    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
+
+    # Figure setup.
+    fig.update_layout(
+        # width=1200,
+        height=600,
+        margin_t=25
+        )
+
+    # Disable clicking legend to remove trace:
+    fig.update_layout(legend_itemclick=False)
+    fig.update_layout(legend_itemdoubleclick=False)
+
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+
+    # Write to streamlit:
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+
+
 def plotly_many_maps(
         gdf_lhs: geopandas.GeoDataFrame,
         gdf_rhs: geopandas.GeoDataFrame,

@@ -465,6 +465,55 @@ def build_time_dicts_muster(pathway_dict):
     return time_dicts
 
 
+def build_time_dicts_optimist(pathway_dict):
+    # Pre-hospital "usual care":
+    prehosp_keys = [
+        'process_time_call_ambulance',
+        'process_time_ambulance_response',
+        'process_ambulance_on_scene_diagnostic_duration',
+        'process_ambulance_on_scene_duration',
+        ]
+    time_dict_prehosp_usual_care = {'onset': 0}
+    for key in prehosp_keys:
+        if 'diagnostic' not in key:
+            time_dict_prehosp_usual_care[key] = pathway_dict[key]
+    time_dict_prehosp_prehospdiag = {'onset': 0}
+    for key in prehosp_keys:
+        time_dict_prehosp_prehospdiag[key] = pathway_dict[key]
+
+    # IVT-only unit:
+    time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
+    time_dict_ivt_only_unit['arrival_to_needle'] = (
+        pathway_dict['process_time_arrival_to_needle'])
+    time_dict_ivt_only_unit['needle_to_door_out'] = (
+        pathway_dict['transfer_time_delay'] -
+        pathway_dict['process_time_arrival_to_needle']
+    )
+
+    # MT transfer unit:
+    time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
+    time_dict_mt_transfer_unit['arrival_to_puncture'] = (
+        pathway_dict['process_time_transfer_arrival_to_puncture'])
+
+    # IVT and MT unit:
+    time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
+    time_dict_ivt_mt_unit['arrival_to_needle'] = (
+        pathway_dict['process_time_arrival_to_needle'])
+    time_dict_ivt_mt_unit['needle_to_puncture'] = (
+        pathway_dict['process_time_arrival_to_puncture'] -
+        pathway_dict['process_time_arrival_to_needle']
+    )
+
+    time_dicts = {
+        'prehosp_usual_care': time_dict_prehosp_usual_care,
+        'prehosp_prehospdiag': time_dict_prehosp_prehospdiag,
+        'ivt_only_unit': time_dict_ivt_only_unit,
+        'mt_transfer_unit': time_dict_mt_transfer_unit,
+        'ivt_mt_unit': time_dict_ivt_mt_unit,
+    }
+    return time_dicts
+
+
 def get_timeline_display_dict():
 
     # Emoji unicode reference:
@@ -473,6 +522,7 @@ def get_timeline_display_dict():
     # 🚑 \U0001f691
     # 💉 \U0001f489
     # ☎ \U0000260E
+    # 📈 \U0001F4C8
     timeline_display_dict = {
         'onset': {
             'emoji': '',
@@ -489,6 +539,10 @@ def get_timeline_display_dict():
         'process_ambulance_on_scene_duration': {
             'emoji': '\U0001f691',
             'text': 'Ambulance<br>leaves',
+        },
+        'process_ambulance_on_scene_diagnostic_duration': {
+            'emoji': '\U0001F4C8',
+            'text': 'Pre-hospital<br>diagnostic',
         },
         'arrival_ivt_only': {
             'emoji': '\U0001f3e5',

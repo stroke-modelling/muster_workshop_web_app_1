@@ -11,7 +11,6 @@ done in functions stored in files named container_(something).py
 import streamlit as st
 import pandas as pd
 import numpy as np
-from pympler import tracker
 
 # Custom functions:
 import utilities.calculations as calc
@@ -20,14 +19,15 @@ import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
 from utilities.maps_raster import make_raster_from_vectors, \
     set_up_raster_transform
-import classes.model_module as model
+# import classes.model_module as model
 # Containers:
 import utilities.inputs as inputs
 import utilities.colour_setup as colour_setup
 import utilities.plot_timeline as timeline
 
 # debug
-import sys
+# import sys
+# from pympler import tracker
 
 
 # @st.cache_data
@@ -156,6 +156,17 @@ st.set_page_config(
     layout='wide'
     )
 
+try:
+    page_last_run = st.session_state['page_last_run']
+    if page_last_run != 'MUSTER':
+        # Clear the OPTIMIST results.
+        keys_to_del = list(st.session_state.keys())
+        for key in keys_to_del:
+            del st.session_state[key]
+except KeyError:
+    # No page has been run yet.
+    pass
+st.session_state['page_last_run'] = 'MUSTER'
 
 # #####################################
 # ########## CONTAINER SETUP ##########
@@ -732,12 +743,6 @@ new_results_run = False
 with container_rerun:
     if st.button('Calculate results', type='primary'):
 
-        print('\n\n\nStart of calculate results')
-        # tr0 = tracker.SummaryTracker()
-        # tr0.print_diff()
-
-        print('\n\n\nMain calculations')
-        # tr0 = tracker.SummaryTracker()
         st.session_state['input_dict'] = input_dict
         st.session_state['df_unit_services_on_last_run'] = df_unit_services
         st.session_state['df_unit_services_full_on_last_run'] = (
@@ -746,8 +751,6 @@ with container_rerun:
         df_times = calculate_treatment_times_each_lsoa(
             df_unit_services, treatment_times_without_travel)
 
-        # st.stop()
-
         (
             df_outcomes_ivt,
             df_outcomes_mt,
@@ -755,7 +758,6 @@ with container_rerun:
             st.session_state['df_mrs_mt'],
         ) = main_calculations(df_times)
 
-        # st.stop()
 
         (
             st.session_state['df_lsoa'],
@@ -773,12 +775,6 @@ with container_rerun:
             )
 
         new_results_run = True
-
-        # tr0.print_diff()
-
-        print('\n\n\nEnd of calculate results')
-        # tr0 = tracker.SummaryTracker()
-        # tr0.print_diff()
 
     else:
         if inputs_changed:
@@ -848,15 +844,6 @@ with container_results_tables:
                 'transfer_required': st.column_config.CheckboxColumn()
                 }
             )
-
-
-# print('\n\n\nStart of mRS dists')
-# tr0 = tracker.SummaryTracker()
-# tr0.print_diff()
-
-
-# print('\n\n\nmRS dists')
-# tr0 = tracker.SummaryTracker()
 
 
 # #########################################
@@ -962,6 +949,11 @@ df_mrs_msu = pd.merge(
     on='lsoa', how='left'
     ).set_index('lsoa')
 
+dict_of_dfs = {
+    'usual_care': df_mrs_usual_care,
+    'msu': df_mrs_msu,
+}
+
 
 @st.fragment
 def display_mrs_dists():
@@ -979,6 +971,9 @@ def display_mrs_dists():
             'for the "MSU" scenario ',
             'is better than for the "usual care" scenario.'
             ]))
+    # Set up where the data should come from -
+    # which region type was selected, and which region name.
+    region_selected, col_region = mrs.pick_out_region_name(bar_option)
 
     # if inputs_changed:
     #     if 'fig_mrs' in st.session_state.keys():
@@ -986,26 +981,32 @@ def display_mrs_dists():
     #     else:
     #         st.stop()
     # else:
-    mrs_lists_dict, region_selected, col_pretty = (
-        mrs.setup_for_mrs_dist_bars(
-            bar_option,
-            stroke_type,
-            treatment_type,
-            stroke_type_str,
-            treatment_type_str,
-            col_to_mask_mrs,
-            # Setup for mRS dists:
-            df_mrs_usual_care,
-            df_mrs_msu,
-            # The actual mRS dists:
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-            input_dict,
-            scenarios=scenario_mrs
-            ))
+
+    # Prettier formatting for the plot title:
+    col_pretty = ''.join([
+        f'{stroke_type_str}, ',
+        f'{treatment_type_str}'
+        ])
+
+    mrs_lists_dict = mrs.calculate_average_mrs(
+        stroke_type,
+        treatment_type,
+        col_region,
+        region_selected,
+        col_to_mask_mrs,
+        # Setup for mRS dists:
+        dict_of_dfs,
+        # The actual mRS dists:
+        st.session_state['df_mrs_ivt'],
+        st.session_state['df_mrs_mt'],
+        input_dict
+        )
+
+    mrs_format_dicts = (
+        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
 
     st.session_state['fig_mrs'] = mrs.plot_mrs_bars(
-        mrs_lists_dict, title_text=f'{region_selected}<br>{col_pretty}')
+        mrs_format_dicts, title_text=f'{region_selected}<br>{col_pretty}')
 
 
     with container_bars:
@@ -1039,14 +1040,6 @@ def display_mrs_dists():
 with container_mrs_dists:
     display_mrs_dists()
 
-
-# tr0.print_diff()
-
-# st.stop()
-
-
-# print('\n\n\nMaps')
-# tr0 = tracker.SummaryTracker()
 
 # ####################################
 # ########## SETUP FOR MAPS ##########
@@ -1161,8 +1154,6 @@ burned_pop = make_raster_from_vectors(
     transform_dict['width'],
     transform_dict['transform']
 )
-
-# tr0.print_diff()
 
 # Record actual highest and lowest values:
 actual_vmin = min(vals_for_colours)

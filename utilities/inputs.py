@@ -342,7 +342,7 @@ def select_parameters_msu(input_dict={}):
 
 #     return input_dict
 
-def select_parameters_pathway_optimist():
+def select_parameters_pathway_optimist(input_dict):
     """
     This version creates a long list of number inputs.
 
@@ -425,9 +425,9 @@ def select_parameters_pathway_optimist():
         'Transfer required': inputs_transfer,
         }
 
-    input_dict = {}
+    # input_dict = {}
     for heading, i_dict in dicts.items():
-        st.markdown(f'## {heading}')
+        st.markdown(f'__{heading}__')
         for key, s_dict in i_dict.items():
             input_dict[key] = st.number_input(
                 s_dict['name'],
@@ -502,7 +502,7 @@ def select_parameters_population_optimist():
 
     input_dict = {}
     for heading, i_dict in dicts.items():
-        st.markdown(f'## {heading}')
+        st.markdown(f'__{heading}__')
         for key, s_dict in i_dict.items():
             input_dict[key] = st.number_input(
                 s_dict['name'],
@@ -537,7 +537,7 @@ def select_parameters_population_optimist():
 
 
 def select_stroke_unit_services(use_msu=True):
-    df_unit_services, df_unit_services_full, cols_use = (
+    df_unit_services, df_unit_services_full = (
         import_stroke_unit_services(use_msu))
 
     # Display and store any changes from the user:
@@ -545,10 +545,15 @@ def select_stroke_unit_services(use_msu=True):
         df_unit_services,
         disabled=['postcode', 'ssnap_name', 'isdn'],
         # height=180  # limit height to show fewer rows
+        # Make columns display as checkboxes instead of 0/1 ints:
+        column_config={
+            'Use_IVT': st.column_config.CheckboxColumn(),
+            'Use_MT': st.column_config.CheckboxColumn(),
+        },
         )
 
     df_unit_services, df_unit_services_full = update_stroke_unit_services(
-        df_unit_services, df_unit_services_full, cols_use)
+        df_unit_services, df_unit_services_full)
     return df_unit_services, df_unit_services_full
 
 

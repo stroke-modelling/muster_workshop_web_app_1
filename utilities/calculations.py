@@ -178,6 +178,45 @@ def calculate_times_to_treatment_without_travel_msu(input_dict):
     return d
 
 
+def calculate_times_to_treatment_without_travel_prehospdiag(input_dict):
+    # Usual care:
+    # Time to IVT:
+    time_to_ivt = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        input_dict['process_time_arrival_to_needle']
+        )
+    # Separate MT timings required depending on whether transfer
+    # needed.
+    # Timings for units needing transfers:
+    mt_transfer = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        input_dict['transfer_time_delay'] +
+        input_dict['process_time_transfer_arrival_to_puncture']
+        )
+    # Timings for units that do not need transfers:
+    mt_no_transfer = (
+        input_dict['process_time_call_ambulance'] +
+        input_dict['process_time_ambulance_response'] +
+        input_dict['process_ambulance_on_scene_duration'] +
+        input_dict['process_ambulance_on_scene_diagnostic_duration'] +
+        input_dict['process_time_arrival_to_puncture']
+        )
+
+    # Gather these into a dictionary:
+    d = {
+        'prehospdiag_time_to_ivt': time_to_ivt,
+        'prehospdiag_mt_transfer': mt_transfer,
+        'prehospdiag_mt_no_transfer': mt_no_transfer,
+    }
+    return d
+
+
 def calculate_treatment_times_each_lsoa(df_travel_times, treatment_time_dict):
     df_travel_times['usual_care_ivt'] = (
         treatment_time_dict['usual_care_time_to_ivt'] +
@@ -219,6 +258,71 @@ def calculate_treatment_times_each_lsoa(df_travel_times, treatment_time_dict):
         'msu_ivt',
         'msu_mt_with_ivt',
         'msu_mt_no_ivt'
+    ]
+    df_travel_times[cols_treatment_time] = np.round(
+        df_travel_times[cols_treatment_time], 0)
+    return df_travel_times
+
+
+def calculate_treatment_times_each_lsoa_prehospdiag(
+        df_travel_times, treatment_time_dict
+        ):
+    # Usual care:
+    df_travel_times['usual_care_ivt'] = (
+        treatment_time_dict['usual_care_time_to_ivt'] +
+        df_travel_times['nearest_ivt_time']
+    )
+    # First set MT times assuming no transfer...
+    df_travel_times['usual_care_mt'] = (
+        treatment_time_dict['usual_care_mt_no_transfer'] +
+        df_travel_times['nearest_ivt_time']
+    )
+    # ... then update the values that need a transfer:
+    mask_usual_care_transfer = (df_travel_times['transfer_required'] == True)
+    df_travel_times.loc[mask_usual_care_transfer, 'usual_care_mt'] = (
+        treatment_time_dict['usual_care_mt_transfer'] +
+        df_travel_times.loc[mask_usual_care_transfer, 'nearest_ivt_time'] +
+        df_travel_times.loc[mask_usual_care_transfer, 'transfer_time']
+    )
+
+    # Redirection rejected:
+    df_travel_times['redirection_rejected_ivt'] = (
+        treatment_time_dict['prehospdiag_time_to_ivt'] +
+        df_travel_times['nearest_ivt_time']
+    )
+    # First set MT times assuming no transfer...
+    df_travel_times['redirection_rejected_mt'] = (
+        treatment_time_dict['prehospdiag_mt_no_transfer'] +
+        df_travel_times['nearest_ivt_time']
+    )
+    # ... then update the values that need a transfer:
+    mask_usual_care_transfer = (df_travel_times['transfer_required'] == True)
+    df_travel_times.loc[mask_usual_care_transfer, 'redirection_rejected_mt'] = (
+        treatment_time_dict['prehospdiag_mt_transfer'] +
+        df_travel_times.loc[mask_usual_care_transfer, 'nearest_ivt_time'] +
+        df_travel_times.loc[mask_usual_care_transfer, 'transfer_time']
+    )
+
+    # Redirection approved:
+    # Nobody needs a transfer for MT.
+    df_travel_times['redirection_approved_ivt'] = (
+        treatment_time_dict['prehospdiag_time_to_ivt'] +
+        df_travel_times['nearest_mt_time']
+    )
+    # First set MT times assuming no transfer...
+    df_travel_times['redirection_approved_mt'] = (
+        treatment_time_dict['prehospdiag_mt_no_transfer'] +
+        df_travel_times['nearest_mt_time']
+    )
+
+    # Round all of these times to the nearest minute:
+    cols_treatment_time = [
+        'usual_care_ivt',
+        'usual_care_mt',
+        'redirection_rejected_ivt',
+        'redirection_rejected_mt',
+        'redirection_approved_ivt',
+        'redirection_approved_mt',
     ]
     df_travel_times[cols_treatment_time] = np.round(
         df_travel_times[cols_treatment_time], 0)
@@ -818,6 +922,272 @@ def build_full_lsoa_outcomes_from_unique_time_results(
         df_lsoa.loc[mask_msu_ivt_better, 'msu_probdeath_lvo_ivt'].values)
     
     return df_lsoa
+
+
+def build_full_lsoa_outcomes_from_unique_time_results_optimist(
+            df_travel_times,
+            df_outcomes_ivt,
+            df_outcomes_mt,
+            df_mrs_ivt,
+            df_mrs_mt,
+    ):
+    # Apply these results to the treatment times in each scenario.
+    df_lsoa = df_travel_times.copy().reset_index()
+
+
+    # Usual care:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_ivt,
+        left_on='usual_care_ivt', right_on='time_to_ivt', how='left'
+        )
+    keys_for_df_ivt = [k for k in df_outcomes_ivt.columns if 'time' not in k]
+    keys_usual_care_from_df_ivt = [f'usual_care_{k}' for k in keys_for_df_ivt]
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_ivt, keys_usual_care_from_df_ivt)))
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_mt,
+        left_on='usual_care_mt', right_on='time_to_mt', how='left'
+        )
+    keys_for_df_mt = [k for k in df_outcomes_mt.columns if 'time' not in k]
+    keys_usual_care_from_df_mt = [f'usual_care_{k}' for k in keys_for_df_mt]
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_mt, keys_usual_care_from_df_mt)))
+    # IVT & MT:
+    cols_lvo_ivt_mt = [
+        'lvo_ivt_mt_mrs_shift',
+        'lvo_ivt_mt_utility_shift',
+        'lvo_ivt_mt_mrs_0-2',
+    ]
+    cols_lvo_ivt = [
+        'lvo_ivt_mrs_shift',
+        'lvo_ivt_utility_shift',
+        'lvo_ivt_mrs_0-2',
+    ]
+    cols_lvo_mt = [
+        'lvo_mt_mrs_shift',
+        'lvo_mt_utility_shift',
+        'lvo_mt_mrs_0-2'
+    ]
+    cols_usual_care_lvo_ivt_mt = [f'usual_care_{k}' for k in cols_lvo_ivt_mt]
+    cols_usual_care_lvo_ivt = [f'usual_care_{k}' for k in cols_lvo_ivt]
+    cols_usual_care_lvo_mt = [f'usual_care_{k}' for k in cols_lvo_mt]
+    # Initially copy over the MT data:
+    df_lsoa[cols_usual_care_lvo_ivt_mt] = df_lsoa[cols_usual_care_lvo_mt].copy()
+    # Find whether IVT is better than MT:
+    mask_usual_care_ivt_better = (
+        df_lsoa['usual_care_lvo_mt_mrs_0-2'] <
+        df_lsoa['usual_care_lvo_ivt_mrs_0-2']
+    )
+    # Store this mask for later use of picking out mRS dists:
+    df_lsoa['usual_care_lvo_ivt_better_than_mt'] = mask_usual_care_ivt_better
+    # Update outcomes for those patients:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_usual_care_ivt_better, cols_usual_care_lvo_ivt_mt] = (
+        df_lsoa.loc[mask_usual_care_ivt_better, cols_usual_care_lvo_ivt].values)
+
+    # Copy over probability of death:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_ivt[
+            ['time_to_ivt', 'nlvo_ivt_mrs_dists_noncum_6', 'lvo_ivt_mrs_dists_noncum_6']],
+        left_on='usual_care_ivt', right_on='time_to_ivt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'nlvo_ivt_mrs_dists_noncum_6': 'usual_care_probdeath_nlvo_ivt',
+        'lvo_ivt_mrs_dists_noncum_6': 'usual_care_probdeath_lvo_ivt',
+        })
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
+        left_on='usual_care_mt', right_on='time_to_mt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'lvo_mt_mrs_dists_noncum_6': 'usual_care_probdeath_lvo_mt'})
+    # IVT & MT:
+    # Initially copy over the MT data:
+    df_lsoa['usual_care_probdeath_lvo_ivt_mt'] = (
+        df_lsoa['usual_care_probdeath_lvo_mt'].copy())
+    # Update values where IVT is better than MT:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_usual_care_ivt_better, 'usual_care_probdeath_lvo_ivt_mt'] = (
+        df_lsoa.loc[mask_usual_care_ivt_better, 'usual_care_probdeath_lvo_ivt'].values)
+
+
+    # Redirection rejected:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_ivt,
+        left_on='redirection_rejected_ivt', right_on='time_to_ivt', how='left'
+        )
+    keys_for_df_ivt = [k for k in df_outcomes_ivt.columns if 'time' not in k]
+    keys_redirection_rejected_from_df_ivt = [f'redirection_rejected_{k}' for k in keys_for_df_ivt]
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_ivt, keys_redirection_rejected_from_df_ivt)))
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_mt,
+        left_on='redirection_rejected_mt', right_on='time_to_mt', how='left'
+        )
+    keys_for_df_mt = [k for k in df_outcomes_mt.columns if 'time' not in k]
+    keys_redirection_rejected_from_df_mt = [f'redirection_rejected_{k}' for k in keys_for_df_mt]
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_mt, keys_redirection_rejected_from_df_mt)))
+    # IVT & MT:
+    cols_lvo_ivt_mt = [
+        'lvo_ivt_mt_mrs_shift',
+        'lvo_ivt_mt_utility_shift',
+        'lvo_ivt_mt_mrs_0-2',
+    ]
+    cols_lvo_ivt = [
+        'lvo_ivt_mrs_shift',
+        'lvo_ivt_utility_shift',
+        'lvo_ivt_mrs_0-2',
+    ]
+    cols_lvo_mt = [
+        'lvo_mt_mrs_shift',
+        'lvo_mt_utility_shift',
+        'lvo_mt_mrs_0-2'
+    ]
+    cols_redirection_rejected_lvo_ivt_mt = [f'redirection_rejected_{k}' for k in cols_lvo_ivt_mt]
+    cols_redirection_rejected_lvo_ivt = [f'redirection_rejected_{k}' for k in cols_lvo_ivt]
+    cols_redirection_rejected_lvo_mt = [f'redirection_rejected_{k}' for k in cols_lvo_mt]
+    # Initially copy over the MT data:
+    df_lsoa[cols_redirection_rejected_lvo_ivt_mt] = df_lsoa[cols_redirection_rejected_lvo_mt].copy()
+    # Find whether IVT is better than MT:
+    mask_redirection_rejected_ivt_better = (
+        df_lsoa['redirection_rejected_lvo_mt_mrs_0-2'] <
+        df_lsoa['redirection_rejected_lvo_ivt_mrs_0-2']
+    )
+    # Store this mask for later use of picking out mRS dists:
+    df_lsoa['redirection_rejected_lvo_ivt_better_than_mt'] = mask_redirection_rejected_ivt_better
+    # Update outcomes for those patients:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_redirection_rejected_ivt_better, cols_redirection_rejected_lvo_ivt_mt] = (
+        df_lsoa.loc[mask_redirection_rejected_ivt_better, cols_redirection_rejected_lvo_ivt].values)
+
+    # Copy over probability of death:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_ivt[
+            ['time_to_ivt', 'nlvo_ivt_mrs_dists_noncum_6', 'lvo_ivt_mrs_dists_noncum_6']],
+        left_on='redirection_rejected_ivt', right_on='time_to_ivt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'nlvo_ivt_mrs_dists_noncum_6': 'redirection_rejected_probdeath_nlvo_ivt',
+        'lvo_ivt_mrs_dists_noncum_6': 'redirection_rejected_probdeath_lvo_ivt',
+        })
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
+        left_on='redirection_rejected_mt', right_on='time_to_mt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'lvo_mt_mrs_dists_noncum_6': 'redirection_rejected_probdeath_lvo_mt'})
+    # IVT & MT:
+    # Initially copy over the MT data:
+    df_lsoa['redirection_rejected_probdeath_lvo_ivt_mt'] = (
+        df_lsoa['redirection_rejected_probdeath_lvo_mt'].copy())
+    # Update values where IVT is better than MT:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_redirection_rejected_ivt_better, 'redirection_rejected_probdeath_lvo_ivt_mt'] = (
+        df_lsoa.loc[mask_redirection_rejected_ivt_better, 'redirection_rejected_probdeath_lvo_ivt'].values)
+
+
+    # Redirection approved:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_ivt,
+        left_on='redirection_approved_ivt', right_on='time_to_ivt', how='left'
+        )
+    keys_for_df_ivt = [k for k in df_outcomes_ivt.columns if 'time' not in k]
+    keys_redirection_approved_from_df_ivt = [f'redirection_approved_{k}' for k in keys_for_df_ivt]
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_ivt, keys_redirection_approved_from_df_ivt)))
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_outcomes_mt,
+        left_on='redirection_approved_mt', right_on='time_to_mt', how='left'
+        )
+    keys_for_df_mt = [k for k in df_outcomes_mt.columns if 'time' not in k]
+    keys_redirection_approved_from_df_mt = [f'redirection_approved_{k}' for k in keys_for_df_mt]
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns=dict(
+        zip(keys_for_df_mt, keys_redirection_approved_from_df_mt)))
+    # IVT & MT:
+    cols_lvo_ivt_mt = [
+        'lvo_ivt_mt_mrs_shift',
+        'lvo_ivt_mt_utility_shift',
+        'lvo_ivt_mt_mrs_0-2',
+    ]
+    cols_lvo_ivt = [
+        'lvo_ivt_mrs_shift',
+        'lvo_ivt_utility_shift',
+        'lvo_ivt_mrs_0-2',
+    ]
+    cols_lvo_mt = [
+        'lvo_mt_mrs_shift',
+        'lvo_mt_utility_shift',
+        'lvo_mt_mrs_0-2'
+    ]
+    cols_redirection_approved_lvo_ivt_mt = [f'redirection_approved_{k}' for k in cols_lvo_ivt_mt]
+    cols_redirection_approved_lvo_ivt = [f'redirection_approved_{k}' for k in cols_lvo_ivt]
+    cols_redirection_approved_lvo_mt = [f'redirection_approved_{k}' for k in cols_lvo_mt]
+    # Initially copy over the MT data:
+    df_lsoa[cols_redirection_approved_lvo_ivt_mt] = df_lsoa[cols_redirection_approved_lvo_mt].copy()
+    # Find whether IVT is better than MT:
+    mask_redirection_approved_ivt_better = (
+        df_lsoa['redirection_approved_lvo_mt_mrs_0-2'] <
+        df_lsoa['redirection_approved_lvo_ivt_mrs_0-2']
+    )
+    # Store this mask for later use of picking out mRS dists:
+    df_lsoa['redirection_approved_lvo_ivt_better_than_mt'] = mask_redirection_approved_ivt_better
+    # Update outcomes for those patients:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_redirection_approved_ivt_better, cols_redirection_approved_lvo_ivt_mt] = (
+        df_lsoa.loc[mask_redirection_approved_ivt_better, cols_redirection_approved_lvo_ivt].values)
+
+    # Copy over probability of death:
+    # IVT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_ivt[
+            ['time_to_ivt', 'nlvo_ivt_mrs_dists_noncum_6', 'lvo_ivt_mrs_dists_noncum_6']],
+        left_on='redirection_approved_ivt', right_on='time_to_ivt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_ivt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'nlvo_ivt_mrs_dists_noncum_6': 'redirection_approved_probdeath_nlvo_ivt',
+        'lvo_ivt_mrs_dists_noncum_6': 'redirection_approved_probdeath_lvo_ivt',
+        })
+    # MT:
+    df_lsoa = pd.merge(
+        df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
+        left_on='redirection_approved_mt', right_on='time_to_mt', how='left'
+        )
+    df_lsoa = df_lsoa.drop('time_to_mt', axis='columns')
+    df_lsoa = df_lsoa.rename(columns={
+        'lvo_mt_mrs_dists_noncum_6': 'redirection_approved_probdeath_lvo_mt'})
+    # IVT & MT:
+    # Initially copy over the MT data:
+    df_lsoa['redirection_approved_probdeath_lvo_ivt_mt'] = (
+        df_lsoa['redirection_approved_probdeath_lvo_mt'].copy())
+    # Update values where IVT is better than MT:
+    # (keep the .values because the column names don't match)
+    df_lsoa.loc[mask_redirection_approved_ivt_better, 'redirection_approved_probdeath_lvo_ivt_mt'] = (
+        df_lsoa.loc[mask_redirection_approved_ivt_better, 'redirection_approved_probdeath_lvo_ivt'].values)
+
+    return df_lsoa
+
 
 # ###########################
 # ##### AVERAGE RESULTS #####
