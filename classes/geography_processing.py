@@ -71,7 +71,7 @@ class Geoprocessing(object):
 
         save_processed_data
             Save combined data
-                
+
         """
         # Overwrite default values (can take named arguments or a dictionary)
         for dictionary in args:
@@ -81,11 +81,12 @@ class Geoprocessing(object):
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
+        self.load_data()
+
     def run(self):
         """
         Run all processing methods.
         """
-        self.load_data()
         self.find_nearest_ivt_unit()
         self.find_nearest_mt_unit()
         self.find_nearest_msu_unit()
@@ -209,6 +210,9 @@ class Geoprocessing(object):
                 self.lsoa_travel_time.index.isin(lsoa_eng)].copy()
             # self.geodata = self.geodata.loc[mask].copy(deep=True)
 
+            # Remove the "England" column:
+            self.admissions = self.admissions.drop('England', axis='columns')
+
             # # Index shenanigans.
             # # I don't know why, but it quietly breaks some of the LSOA
             # # when the index is mostly range index integers but has
@@ -229,8 +233,6 @@ class Geoprocessing(object):
             self.inter_hospital_time = self.inter_hospital_time[
                 [c for c in self.inter_hospital_time.columns if c in units_eng]
                 ].copy()
-
-
 
 
     def update_unit_services(self):
@@ -260,3 +262,6 @@ class Geoprocessing(object):
 
         self.combined_data.to_csv(
             './processed_data/processed_data.csv', index_label='LSOA')
+
+    def get_combined_data(self):
+        return self.combined_data

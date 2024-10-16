@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 
 # Custom functions:
 import utilities.calculations as calc
-import utilities.container_inputs as inputs
+import utilities.inputs as inputs
 from utilities.utils import load_reference_mrs_dists
 import utilities.plot_mrs_dists as mrs
 import utilities.maps as maps
