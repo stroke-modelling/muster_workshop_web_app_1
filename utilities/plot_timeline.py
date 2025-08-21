@@ -815,9 +815,9 @@ def make_treatment_time_df_optimist(treatment_times_without_travel):
 
     # Place these into a dataframe:
     r1 = [usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str,
-          prehospdiag_app_time_to_ivt_str],
+          prehospdiag_app_time_to_ivt_str]
     r2 = [usual_care_mt_no_transfer_str, prehospdiag_rej_mt_no_transfer_str,
-          prehospdiag_app_mt_no_transfer_str],
+          prehospdiag_app_mt_no_transfer_str]
     r3 = [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str,
           prehospdiag_app_mt_transfer_str]
     cols = ['Standard pathway', 'Redirection rejected', 'Redirection approved']
