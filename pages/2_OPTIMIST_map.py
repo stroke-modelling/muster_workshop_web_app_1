@@ -10,14 +10,13 @@ done in functions stored in files named container_(something).py
 # ----- Imports -----
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 # Custom functions:
 import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
-from utilities.maps_raster import make_raster_from_vectors, \
-    set_up_raster_transform
 import utilities.colour_setup as colour_setup
 import utilities.inputs as inputs
 import utilities.plot_timeline as timeline
@@ -513,25 +512,20 @@ with container_input_region_type:
         )
 
 # ----- Colourmap selection -----
-cmap_names = [
-    'iceburn_r', 'seaweed', 'fusion', 'waterlily'
-    ]
-cmap_names += [c[:-2] if c.endswith('_r') else f'{c}_r'
-               for c in cmap_names]
+cmap_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
+# Add the reverse option after each entry. Remove any double reverse
+# reverse _r_r. Result is flat list.
+cmap_names = sum([[c, (c + '_r').replace('_r_r', '')]
+                  for c in cmap_names], [])
 with container_select_cmap:
     st.markdown('### Colour schemes')
     cmap_name = inputs.select_colour_maps(cmap_names)
-    cmap_diff_name = cmap_name
-    cmap_pop_name = cmap_name
+cmap_diff_name = cmap_name
+cmap_pop_name = cmap_name
 # If we're showing mRS scores then flip the colour maps:
 if outcome_type == 'mrs_shift':
-    cmap_name += '_r'
-    cmap_diff_name += '_r'
-    # Remove any double reverse reverse.
-    if cmap_name.endswith('_r_r'):
-        cmap_name = cmap_name[:-4]
-    if cmap_diff_name.endswith('_r_r'):
-        cmap_diff_name = cmap_diff_name[:-4]
+    cmap_name = (cmap_name + '_r').replace('_r_r', '')
+    cmap_diff_name = (cmap_diff_name + '_r').replace('_r_r', '')
 
 
 # ----- Demographic data -----
@@ -544,67 +538,23 @@ except KeyError:
 column_pop = 'population_density'
 # ... and how the name should be displayed in the app:
 column_pop_pretty = 'Population density (people per square kilometre)'
-# Set limits for the colour scale:
-dict_colours_pop = {
-    'vmin': 0.0,
-    'vmax': 100.0,
-    'step_size': 100.0,  # unused
-}
 
 
 # ----- Colour limits -----
-# Load colour limits info (vmin, vmax, step_size):
+# Load initial colour limits info (vmin, vmax):
 dict_colours, dict_colours_diff = (
     colour_setup.load_colour_limits(outcome_type))
+dict_colours_pop = {'vmin': 0.0, 'vmax': 100.0}
 # User inputs for vmin and vmax with loaded values as defaults:
 with container_select_vlim:
     st.markdown('### Colour limits')
-    vmin = st.number_input(
-        f'{outcome_type_str}: minimum value',
-        value=dict_colours['vmin'],
-        help=f'Default value: {dict_colours["vmin"]}',
-    )
-    vmax = st.number_input(
-        f'{outcome_type_str}: maximum value',
-        value=dict_colours['vmax'],
-        help=f'Default value: {dict_colours["vmax"]}',
-    )
-    vmin_diff = st.number_input(
-        f'{outcome_type_str} benefit of redirection: minimum value',
-        value=dict_colours_diff['vmin'],
-        help=f'Default value: {dict_colours_diff["vmin"]}',
-    )
-    vmax_diff = st.number_input(
-        f'{outcome_type_str} benefit of redirection: maximum value',
-        value=dict_colours_diff['vmax'],
-        help=f'Default value: {dict_colours_diff["vmax"]}',
-    )
-    vmin_pop = st.number_input(
-        f'{column_pop_pretty}: minimum value',
-        value=dict_colours_pop['vmin'],
-        help=f'Default value: {dict_colours_pop["vmin"]}',
-    )
-    vmax_pop = st.number_input(
-        f'{column_pop_pretty}: maximum value',
-        value=dict_colours_pop['vmax'],
-        help=f'Default value: {dict_colours_pop["vmax"]}',
-    )
-    # Sanity checks:
-    if (
-        (vmax <= vmin) |
-        (vmax_diff <= vmin_diff) |
-        (vmax_pop <= vmin_pop)
-            ):
-        st.error(
-            'Maximum value must be less than the minimum value.', icon='❗')
-        st.stop()
-# Overwrite default values:
-dict_colours['vmin'] = vmin
-dict_colours['vmax'] = vmax
-dict_colours_diff['vmin'] = vmin_diff
-dict_colours_diff['vmax'] = vmax_diff
-dict_colours_pop['vmin'] = vmin_pop
-dict_colours_pop['vmax'] = vmax_pop
+    dict_colours['vmin'], dict_colours['vmax'] = (
+        inputs.select_map_colour_limits(dict_colours, outcome_type_str))
+    dict_colours_diff['vmin'], dict_colours_diff['vmax'] = (
+        inputs.select_map_colour_limits(
+            dict_colours_diff, f'{outcome_type_str} benefit of redirection'))
+    dict_colours_pop['vmin'], dict_colours_pop['vmax'] = (
+        inputs.select_map_colour_limits(dict_colours_pop, column_pop_pretty))
 
 
 # ######################################
@@ -612,119 +562,34 @@ dict_colours_pop['vmax'] = vmax_pop
 # ######################################
 
 # ----- Timeline -----
-time_dicts = timeline.build_time_dicts_optimist(input_dict)
+# Load emoji and labels:
 timeline_display_dict = timeline.get_timeline_display_dict()
+# Create timelines:
+time_dicts = timeline.build_time_dicts_optimist(input_dict)
+time_offsets, tmax = timeline.build_time_dicts_for_plot_optimist(
+    time_dicts, gap_between_chunks=45)
 
-# Setup for timeline plot.
-# Leave this gap in minutes between separate chunks of pathway:
-gap_between_chunks = 45
-# Start each chunk at these offsets:
-time_offsets = {
-    'prehosp_usual_care': 0,
-    'prehosp_prehospdiag': 0,
-    'ivt_only_unit': (
-        gap_between_chunks + 
-        max([
-            sum(time_dicts['prehosp_usual_care'].values()),
-            sum(time_dicts['prehosp_prehospdiag'].values()),
-        ])
-        ),
-    'mt_transfer_unit': (
-        gap_between_chunks * 2.0 +
-        max([
-            sum(time_dicts['prehosp_usual_care'].values()),
-            sum(time_dicts['prehosp_prehospdiag'].values()),
-        ]) +
-        sum(time_dicts['ivt_only_unit'].values())
-    ),
-    'ivt_mt_unit': (
-        gap_between_chunks + 
-        max([
-            sum(time_dicts['prehosp_usual_care'].values()),
-            sum(time_dicts['prehosp_prehospdiag'].values()),
-        ])
-    ),
-}
-# Find shared max time for setting same size across multiple plots
-# so that 1 minute always spans the same number of pixels.
-tmax = max(
-    [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
-) + gap_between_chunks
-
-# Standard pathway data:
-time_keys_standard = [
-    'prehosp_usual_care',
-    'prehosp_prehospdiag',
-    'ivt_only_unit',
-    'mt_transfer_unit',
-    'ivt_mt_unit',
-]
-time_dicts_standard = dict([(k, time_dicts[k]) for k in time_keys_standard])
-time_offsets_standard = dict([
-    (k, time_offsets[k]) for k in time_keys_standard])
+# Make subsets of the dictionaries to be displayed:
+time_keys_standard = ['prehosp_usual_care', 'prehosp_prehospdiag',
+                      'ivt_only_unit', 'mt_transfer_unit', 'ivt_mt_unit']
+time_dicts_standard, time_offsets_standard = (
+    timeline.subset_time_dicts(time_dicts, time_offsets, time_keys_standard))
 
 # Draw the timelines:
 with container_timeline_standard:
     timeline.plot_timeline(
         time_dicts_standard,
         timeline_display_dict,
-        y_vals=[0, 2, 1.5, 1.5, 0.5],
+        y_vals=[0, 2, 1.5, 1.5, 0.5],  # timeline fragment centres
         time_offsets=time_offsets_standard,
         tmax=tmax,
         tmin=-10.0
         )
 
-# ----- Treatment times -----
-# Add strings to show travel times:
-usual_care_time_to_ivt_str = ' '.join([
-    f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
-    '+ 🚑 travel to nearest unit'
-    ])
-usual_care_mt_no_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
-    '+ 🚑 travel to nearest unit'
-    ])
-usual_care_mt_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
-    '+ 🚑 travel to nearest unit',
-    '+ 🚑 travel between units'
-    ])
 
-prehospdiag_rej_time_to_ivt_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-    '+ 🚑 travel to nearest unit'
-    ])
-prehospdiag_rej_mt_no_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-    '+ 🚑 travel to nearest unit'
-    ])
-prehospdiag_rej_mt_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_mt_transfer"]}',
-    '+ 🚑 travel to nearest unit',
-    '+ 🚑 travel between units'
-    ])
-
-prehospdiag_app_time_to_ivt_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-    '+ 🚑 travel to MT unit'
-    ])
-prehospdiag_app_mt_no_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-    '+ 🚑 travel to MT unit'
-    ])
-prehospdiag_app_mt_transfer_str = ' '.join([
-    f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-    '+ 🚑 travel to MT unit',
-    ])
-
-# Place these into a dataframe:
-df_treatment_times = pd.DataFrame(
-    [[usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str, prehospdiag_app_time_to_ivt_str],
-     [usual_care_mt_no_transfer_str, prehospdiag_rej_mt_no_transfer_str, prehospdiag_app_mt_no_transfer_str],
-     [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str, prehospdiag_app_mt_transfer_str]],
-    columns=['Standard pathway', 'Redirection rejected', 'Redirection approved'],
-    index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
-)
+# ----- Treatment times summary -----
+df_treatment_times = (
+    timeline.make_treatment_time_df_optimist(treatment_times_without_travel))
 # Display the times:
 times_explanation_usual_str = ('''
 + The "fastest" time to MT is when the first stroke unit provides MT.
@@ -736,7 +601,7 @@ with container_inputs_summary:
     st.markdown(times_explanation_usual_str)
 
 
-# ----- Maps -----
+# ----- Unit maps -----
 # Stroke unit scatter markers:
 traces_units = plot_maps.create_stroke_team_markers(
     df_unit_services_full)
@@ -746,8 +611,8 @@ traces_units = plot_maps.create_stroke_team_markers(
 # The order in which they are drawn (and so which markers appear
 # on top) is the order of this dictionary.
 unit_subplot_dict = {
-    'ivt': [[1, 1]],        # first map only
-    'mt': [[1, 1]]  # both maps
+    'ivt': [[1, 1]],  # first map only
+    'mt': [[1, 1]]    # both maps
 }
 # Regions to draw
 # Name of the column in the geojson that labels the shapes:
@@ -758,13 +623,7 @@ with container_unit_services_top:
         ]))
     outline_name_for_unit_map = st.radio(
         'Region type to draw on maps',
-        [
-            'None',
-            'ISDN',
-            'ICB',
-            'Nearest service',  # hasn't been calculated yet
-            'Ambulance service'
-            ],
+        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service'],
         key='outlines_for_unit_map'
         )
 
@@ -804,9 +663,7 @@ for gdf in gdfs_to_convert:
     if gdf is None:
         pass
     else:
-        x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
-        gdf['x'] = x_list
-        gdf['y'] = y_list
+        gdf['x'], gdf['y'] = maps.convert_shapely_polys_into_xy(gdf)
 
 with container_services_map:
     plot_maps.plotly_unit_map(
@@ -828,28 +685,10 @@ with container_map:
     plot_maps.plotly_blank_maps(['', '', ''], n_blank=3)
 
 try:
-    inputs_changed = (
-        (st.session_state['input_dict'] != input_dict) |
-        (
-            st.session_state['df_unit_services_on_last_run']['Use_IVT'] !=
-            df_unit_services['Use_IVT']
-        ).any() |
-        (
-            st.session_state['df_unit_services_on_last_run']['Use_MT'] !=
-            df_unit_services['Use_MT']
-        ).any()
-    )
-except KeyError:
-    # First run of the app.
-    inputs_changed = False
-
-try:
     df_lsoa_regions = st.session_state['df_lsoa_regions']
 except KeyError:
     df_lsoa_regions = inputs.load_lsoa_region_lookups()
     st.session_state['df_lsoa_regions'] = df_lsoa_regions
-
-new_results_run = False
 
 with container_rerun:
     if st.button('Calculate results', type='primary'):
@@ -886,8 +725,22 @@ with container_rerun:
             )
 
         new_results_run = True
-
     else:
+        new_results_run = False
+        # Check whether the inputs have changed from last run:
+        try:
+            # Define s to shorten the following lines:
+            s = st.session_state['df_unit_services_on_last_run']
+            # Conditions that mean inputs have changed:
+            c1 = (st.session_state['input_dict'] != input_dict)
+            c2 = (s['Use_IVT'] != df_unit_services['Use_IVT']).any()
+            c3 = (s['Use_MT'] != df_unit_services['Use_MT']).any()
+            # Check for any of these changing:
+            inputs_changed = (c1 | c2 | c3)
+        except KeyError:
+            # First run of the app.
+            inputs_changed = False
+        # If the inputs have changed, print a warning:
         if inputs_changed:
             with container_rerun:
                 st.warning(''.join([
@@ -1151,29 +1004,6 @@ subplot_titles = [
     column_pop_pretty
 ]
 
-
-# ----- Set up geodataframe -----
-try:
-    gdf = st.session_state['gdf']
-except KeyError:
-    gdf = maps.load_lsoa_gdf()
-    st.session_state['gdf_cols'] = gdf.columns
-
-if new_results_run:
-    # Remove results from last run:
-    gdf = gdf[st.session_state['gdf_cols']]
-    # Merge in outcomes data:
-    gdf = pd.merge(
-        gdf, st.session_state['df_lsoa'],
-        left_on='LSOA11NM', right_on='lsoa', how='left'
-        )
-    # Merge demographic data into gdf:
-    gdf = pd.merge(
-        gdf, df_demog[['LSOA', column_pop]],
-        left_on='LSOA11NM', right_on='LSOA', how='left'
-        )
-st.session_state['gdf'] = gdf
-
 # ----- Find data for colours -----
 
 # df_lsoa column names are in the format:
@@ -1214,62 +1044,59 @@ else:
         ])
 
 
-# Pick out the columns of data for the colours:
+# ----- Set up map data -----
 try:
-    vals_for_colours = gdf[column_colours]
-    vals_for_colours_diff = gdf[column_colours_diff]
+    df_raster = st.session_state['df_raster']
+    transform_dict = st.session_state['transform_dict']
+except KeyError:
+    # Load LSOA geometry:
+    df_raster, transform_dict = maps.load_lsoa_raster_lookup()
+    # Store:
+    st.session_state['df_raster'] = df_raster
+    st.session_state['df_raster_cols'] = df_raster.columns
+    st.session_state['transform_dict'] = transform_dict
+
+if new_results_run:
+    # Remove results from last run:
+    df_raster = df_raster[st.session_state['df_raster_cols']]
+    # Merge in outcomes data:
+    df_raster = pd.merge(df_raster, st.session_state['df_lsoa'],
+                         left_on='LSOA11NM', right_on='lsoa', how='left')
+    # Merge demographic data:
+    df_raster = pd.merge(df_raster, df_demog[['LSOA', column_pop]],
+                         left_on='LSOA11NM', right_on='LSOA', how='left')
+st.session_state['df_raster'] = df_raster
+
+# Make raster arrays out of the chosen data:
+burned_lhs = maps.convert_df_to_2darray(df_raster, column_colours,
+                                        transform_dict)
+burned_rhs = maps.convert_df_to_2darray(df_raster, column_colours_diff,
+                                        transform_dict)
+burned_pop = maps.convert_df_to_2darray(df_raster, column_pop,
+                                        transform_dict)
+
+
+# ----- Set up colours -----
+# Pick out the data for the colours:
+try:
+    vals_for_colours = df_raster[column_colours]
+    vals_for_colours_diff = df_raster[column_colours_diff]
 except KeyError:
     # Those columns don't exist in the data.
     # This should only happen for nLVO treated with MT only.
-    vals_for_colours = [0] * len(gdf)
-    vals_for_colours_diff = [0] * len(gdf)
+    vals_for_colours = [0] * len(df_raster)
+    vals_for_colours_diff = [0] * len(df_raster)
     # Note: this works for now because expect always no change
     # for added utility and added mrs<=2 with no treatment.
-
 # Pick out values:
-vals_for_colours_pop = gdf[column_pop]
+vals_for_colours_pop = df_raster[column_pop]
+vals_lists = [vals_for_colours, vals_for_colours_diff, vals_for_colours_pop]
 
-# ----- Convert vectors to raster -----
-# Set up parameters for conversion to raster:
-transform_dict = set_up_raster_transform(gdf, pixel_size=2000)
-# Burn geometries for left-hand map...
-burned_lhs = make_raster_from_vectors(
-    gdf['geometry'],
-    vals_for_colours,
-    transform_dict['height'],
-    transform_dict['width'],
-    transform_dict['transform']
-)
-# ... and right-hand map:
-burned_rhs = make_raster_from_vectors(
-    gdf['geometry'],
-    vals_for_colours_diff,
-    transform_dict['height'],
-    transform_dict['width'],
-    transform_dict['transform']
-)
-# ... and population map:
-burned_pop = make_raster_from_vectors(
-    gdf['geometry'],
-    vals_for_colours_pop,
-    transform_dict['height'],
-    transform_dict['width'],
-    transform_dict['transform']
-)
-
-# Record actual highest and lowest values:
-actual_vmin = min(vals_for_colours)
-actual_vmax = max(vals_for_colours)
-actual_vmin_diff = min(vals_for_colours_diff)
-actual_vmax_diff = max(vals_for_colours_diff)
-actual_vmin_pop = min(vals_for_colours_pop)
-actual_vmax_pop = max(vals_for_colours_pop)
-# Put these into a DataFrame:
+# Colour limits.
+# Record actual highest and lowest values in a DataFrame:
 df_actual_vlim = pd.DataFrame(
-    [[actual_vmin, actual_vmin_diff, actual_vmin_pop],
-    [actual_vmax, actual_vmax_diff, actual_vmax_pop]],
-    columns=subplot_titles,
-    index=['Minimum', 'Maximum']
+    [[min(v) for v in vals_lists], [max(v) for v in vals_lists]],
+    columns=subplot_titles, index=['Minimum', 'Maximum']
 )
 with container_actual_vlim:
     st.markdown('Ranges of the plotted data:')
@@ -1279,7 +1106,6 @@ with container_actual_vlim:
         'using the options in the sidebar.'
         ]))
 
-# ----- Set up colours -----
 # Load colour map colours:
 dict_colours['cmap'] = colour_setup.make_colour_list(
     cmap_name,
@@ -1326,9 +1152,7 @@ for gdf in gdfs_to_convert:
     if gdf is None:
         pass
     else:
-        x_list, y_list = maps.convert_shapely_polys_into_xy(gdf)
-        gdf['x'] = x_list
-        gdf['y'] = y_list
+        gdf['x'], gdf['y'] = maps.convert_shapely_polys_into_xy(gdf)
 
 # ----- Stroke units -----
 # Stroke unit scatter markers:
@@ -1361,6 +1185,7 @@ st.session_state['fig_maps'] = plot_maps.plotly_many_heatmaps(
     dict_colours_diff=dict_colours_diff,
     dict_colours_pop=dict_colours_pop,
     transform_dict=transform_dict,
+    cmaps=cmap_names,
     )
 
 with container_map:

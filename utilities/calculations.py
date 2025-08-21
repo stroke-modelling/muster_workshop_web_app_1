@@ -1826,7 +1826,12 @@ def combine_results_by_diff(
     return df_lsoa.copy()
 
 
-def load_or_calculate_region_outlines(outline_name, df_lsoa, use_msu=False):
+def load_or_calculate_region_outlines(
+        outline_name,
+        df_lsoa,
+        col_lhs='nearest_ivt_unit_name',
+        col_rhs='nearest_mt_unit_name',
+        ):
     """
     Don't replace these outlines with stroke-maps!
     These versions match the simplified LSOA shapes.
@@ -1851,21 +1856,20 @@ def load_or_calculate_region_outlines(outline_name, df_lsoa, use_msu=False):
 
         # Make catchment area polygons:
         gdf_catchment_lhs = dissolve_polygons_by_value(
-            df_lsoa.copy().reset_index()[['lsoa', 'nearest_ivt_unit_name']],
-            col='nearest_ivt_unit_name',
+            df_lsoa.copy().reset_index()[['lsoa', col_lhs]],
+            col=col_lhs,
             load_msoa=True
             )
         gdf_catchment_lhs = gdf_catchment_lhs.rename(
-            columns={'nearest_ivt_unit_name': 'Nearest service'})
+            columns={col_lhs: 'Nearest service'})
 
-        col = 'nearest_msu_unit_name' if use_msu else 'nearest_mt_unit_name'
         gdf_catchment_rhs = dissolve_polygons_by_value(
-            df_lsoa.copy().reset_index()[['lsoa', col]],
-            col=col,
+            df_lsoa.copy().reset_index()[['lsoa', col_rhs]],
+            col=col_rhs,
             load_msoa=True
             )
         gdf_catchment_rhs = gdf_catchment_rhs.rename(
-            columns={col: 'Nearest service'})
+            columns={col_rhs: 'Nearest service'})
 
     if load_gdf_catchment:
         gdf_catchment_lhs = geopandas.read_file(outline_file)
