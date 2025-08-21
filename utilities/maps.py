@@ -43,8 +43,10 @@ def load_lsoa_raster_lookup():
     path_to_raster = os.path.join('data', 'rasterise_geojson_lsoa11cd_eng.csv')
     path_to_raster_info = os.path.join('data', 'rasterise_geojson_fid_eng_transform_dict.csv')
     # Load LSOA name to code lookup:
-    path_to_lsoa_lookup = os.path.join('data', 'lsoa_fid_lookup.csv')
+    path_to_lsoa_lookup = os.path.join('data', 'lsoa_to_msoa.csv')
     df_lsoa_lookup = pd.read_csv(path_to_lsoa_lookup)
+    df_lsoa_lookup = df_lsoa_lookup[['lsoa11cd', 'lsoa11nm']].rename(
+        columns={'lsoa11cd': 'LSOA11CD', 'lsoa11nm': 'LSOA11NM'})
 
     #
     df_raster = pd.read_csv(path_to_raster)
