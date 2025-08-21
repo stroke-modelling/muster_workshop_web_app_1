@@ -7,6 +7,7 @@ Initially copied over from the stroke outcome app.
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
+import pandas as pd
 
 # from outcome_utilities.fixed_params import emoji_text_dict, plotly_colours
 
@@ -726,3 +727,187 @@ def plot_timeline(
         use_container_width=True,
         config=plotly_config
         )
+
+
+def make_treatment_time_df_msu(treatment_times_without_travel):
+    # Add strings to show travel times:
+    usual_care_time_to_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    usual_care_mt_no_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    usual_care_mt_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
+        '+ 🚑 travel to nearest unit',
+        '+ 🚑 travel between units'
+        ])
+    msu_time_to_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["msu_time_to_ivt"]}',
+        '+ 🚑 travel from MSU base'
+        ])
+    msu_time_to_mt_str = ' '.join([
+        f'{treatment_times_without_travel["msu_time_to_mt"]}',
+        '+ 🚑 travel from MSU base',
+        '+ 🚑 travel to MT unit'
+        ])
+    msu_time_to_mt_no_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["msu_time_to_mt_no_ivt"]}',
+        '+ 🚑 travel from MSU base',
+        '+ 🚑 travel to MT unit'
+        ])
+
+    # Place these into a dataframe:
+    df_treatment_times = pd.DataFrame(
+        [[usual_care_time_to_ivt_str, msu_time_to_ivt_str],
+         [usual_care_mt_no_transfer_str, msu_time_to_mt_no_ivt_str],
+         [usual_care_mt_transfer_str, msu_time_to_mt_str]],
+        columns=['Standard pathway', 'Mobile Stroke Unit'],
+        index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
+    )
+    return df_treatment_times
+
+
+def make_treatment_time_df_optimist(treatment_times_without_travel):
+    # Add strings to show travel times:
+    usual_care_time_to_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    usual_care_mt_no_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    usual_care_mt_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
+        '+ 🚑 travel to nearest unit',
+        '+ 🚑 travel between units'
+        ])
+
+    prehospdiag_rej_time_to_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    prehospdiag_rej_mt_no_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
+        '+ 🚑 travel to nearest unit'
+        ])
+    prehospdiag_rej_mt_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_mt_transfer"]}',
+        '+ 🚑 travel to nearest unit',
+        '+ 🚑 travel between units'
+        ])
+
+    prehospdiag_app_time_to_ivt_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
+        '+ 🚑 travel to MT unit'
+        ])
+    prehospdiag_app_mt_no_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
+        '+ 🚑 travel to MT unit'
+        ])
+    prehospdiag_app_mt_transfer_str = ' '.join([
+        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
+        '+ 🚑 travel to MT unit',
+        ])
+
+    # Place these into a dataframe:
+    r1 = [usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str,
+          prehospdiag_app_time_to_ivt_str],
+    r2 = [usual_care_mt_no_transfer_str, prehospdiag_rej_mt_no_transfer_str,
+          prehospdiag_app_mt_no_transfer_str],
+    r3 = [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str,
+          prehospdiag_app_mt_transfer_str]
+    cols = ['Standard pathway', 'Redirection rejected', 'Redirection approved']
+    ind = ['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
+    df_treatment_times = pd.DataFrame([r1, r2, r3], columns=cols, index=ind)
+    return df_treatment_times
+
+
+def build_time_dicts_for_plot_msu(time_dicts, gap_between_chunks=45):
+    # Setup for timeline plot.
+    # Leave this gap in minutes between separate chunks of pathway:
+    # Start each chunk at these offsets:
+    time_offsets = {
+        'prehosp_usual_care': 0,
+        'ivt_only_unit': (
+            gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
+            ),
+        'mt_transfer_unit': (
+            gap_between_chunks * 2.0 +
+            sum(time_dicts['prehosp_usual_care'].values()) +
+            sum(time_dicts['ivt_only_unit'].values())
+        ),
+        'ivt_mt_unit': (
+            gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
+        ),
+        'msu_dispatch': 0,
+        'prehosp_msu_ivt': (
+            gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
+        ),
+        'prehosp_msu_no_ivt': (
+            gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
+        ),
+        'mt_transfer_from_msu': (
+            gap_between_chunks * 2.0 +
+            sum(time_dicts['msu_dispatch'].values()) +
+            max([
+                sum(time_dicts['prehosp_msu_ivt'].values()),
+                sum(time_dicts['prehosp_msu_no_ivt'].values())
+                ])
+        ),
+    }
+    # Find shared max time for setting same size across multiple plots
+    # so that 1 minute always spans the same number of pixels.
+    tmax = max(
+        [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
+    ) + gap_between_chunks
+    return time_offsets, tmax
+
+
+def build_time_dicts_for_plot_optimist(time_dicts, gap_between_chunks=45):
+    # Setup for timeline plot.
+    # Leave this gap in minutes between separate chunks of pathway:
+    gap_between_chunks = 45
+    # Start each chunk at these offsets:
+    time_offsets = {
+        'prehosp_usual_care': 0,
+        'prehosp_prehospdiag': 0,
+        'ivt_only_unit': (
+            gap_between_chunks + 
+            max([
+                sum(time_dicts['prehosp_usual_care'].values()),
+                sum(time_dicts['prehosp_prehospdiag'].values()),
+            ])
+            ),
+        'mt_transfer_unit': (
+            gap_between_chunks * 2.0 +
+            max([
+                sum(time_dicts['prehosp_usual_care'].values()),
+                sum(time_dicts['prehosp_prehospdiag'].values()),
+            ]) +
+            sum(time_dicts['ivt_only_unit'].values())
+        ),
+        'ivt_mt_unit': (
+            gap_between_chunks + 
+            max([
+                sum(time_dicts['prehosp_usual_care'].values()),
+                sum(time_dicts['prehosp_prehospdiag'].values()),
+            ])
+        ),
+    }
+    # Find shared max time for setting same size across multiple plots
+    # so that 1 minute always spans the same number of pixels.
+    tmax = max(
+        [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
+    ) + gap_between_chunks
+    return time_offsets, tmax
+
+
+def subset_time_dicts(time_dicts, time_offsets, time_keys):
+    # Separate the standard and MSU pathway data.
+    time_dicts_here = dict([(k, time_dicts[k]) for k in time_keys])
+    time_offsets_here = dict([(k, time_offsets[k]) for k in time_keys])
+    return time_dicts_here, time_offsets_here

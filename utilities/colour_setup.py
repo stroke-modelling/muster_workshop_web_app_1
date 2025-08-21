@@ -14,7 +14,8 @@ def load_colour_limits(outcome):
 
     Dictionary contents: vmin, vmax, step_size.
     """
-    df = pd.read_csv(os.path.join('utilities', 'colour_limits.csv'), index_col=0)
+    df = pd.read_csv(os.path.join('utilities', 'colour_limits.csv'),
+                     index_col=0)
 
     # Column names for this outcome measure:
     col = outcome

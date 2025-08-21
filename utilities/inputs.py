@@ -968,3 +968,22 @@ def load_lsoa_region_lookups():
         left_on='lsoa', right_on='LSOA11NM', how='left'
         ).drop('LSOA11NM', axis='columns')
     return df_lsoa_regions
+
+
+def select_map_colour_limits(dict_colours, label):
+    vmin = st.number_input(
+        f'{label}: minimum value',
+        value=dict_colours['vmin'],
+        help=f'Default value: {dict_colours["vmin"]}',
+    )
+    vmax = st.number_input(
+        f'{label}: maximum value',
+        value=dict_colours['vmax'],
+        help=f'Default value: {dict_colours["vmax"]}',
+    )
+    # Sanity checks:
+    if (vmax <= vmin):
+        st.error(
+            'Maximum value must be less than the minimum value.', icon='❗')
+        st.stop()
+    return vmin, vmax

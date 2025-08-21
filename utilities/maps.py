@@ -39,6 +39,34 @@ def load_lsoa_gdf():
 
 
 @st.cache_data
+def load_lsoa_raster_lookup():
+    path_to_raster = os.path.join('data', 'rasterise_geojson_lsoa11cd_eng.csv')
+    path_to_raster_info = os.path.join('data', 'rasterise_geojson_fid_eng_transform_dict.csv')
+    # Load LSOA name to code lookup:
+    path_to_lsoa_lookup = os.path.join('data', 'lsoa_fid_lookup.csv')
+    df_lsoa_lookup = pd.read_csv(path_to_lsoa_lookup)
+
+    #
+    df_raster = pd.read_csv(path_to_raster)
+    df_raster = df_raster.rename(columns={'LSOA11CD': 'LSOA11CD_props'})
+    transform_dict = pd.read_csv(path_to_raster_info, header=None).set_index(0)[1].to_dict()
+    # Merge LSOA codes into time data:
+    df_raster = pd.merge(df_raster, df_lsoa_lookup[['LSOA11NM', 'LSOA11CD']], left_on='LSOA11CD_majority', right_on='LSOA11CD', how='left')
+
+    # Manually remove Isles of Scilly:
+    df_raster = df_raster.loc[~(df_raster['LSOA11CD_majority'] == 'E01019077')]
+    # Calculate how much of each pixel contains land (as opposed to sea
+    # or other countries):
+    area_each_pixel = transform_dict['pixel_size']**2.0
+    df_raster['total_area_covered'] = df_raster['area_total'] / area_each_pixel
+    # Pick out pixels that mostly contain no land:
+    mask_sea = (df_raster['total_area_covered'] <= (1.0 / 3.0))
+    # Remove the data here so that they're not shown.
+    df_raster = df_raster.loc[~mask_sea]
+    return df_raster, transform_dict
+
+
+@st.cache_data
 def create_colour_gdf(
         df: pd.DataFrame,
         colour_dict: dict
@@ -369,3 +397,14 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
             y_list.append([])
     return x_list, y_list
 
+
+def convert_df_to_2darray(df_raster, data_col, transform_dict):
+    # Make a 1D array with all pixels, not just valid ones:
+    raster_arr_maj = np.full(
+        int(transform_dict['height'] * transform_dict['width']), np.NaN)
+    # Update the values of valid pixels:
+    raster_arr_maj[df_raster['i'].values] = df_raster[data_col].values
+    # Reshape into rectangle:
+    raster_arr_maj = raster_arr_maj.reshape(
+        (int(transform_dict['width']), int(transform_dict['height']))).transpose()
+    return raster_arr_maj
