@@ -76,8 +76,10 @@ def main_calculations(df_times):
     # Run the outcome model for only the unique treatment times
     # instead of one row per LSOA.
     # Run results for IVT and for MT separately.
-    outcomes_by_stroke_type_ivt_only, outcomes_by_stroke_type_mt_only = (
-        calc.run_outcome_model_for_unique_times(times_to_ivt, times_to_mt))
+    outcomes_by_stroke_type_ivt_only = (
+        calc.run_outcome_model_for_unique_times_ivt(times_to_ivt))
+    outcomes_by_stroke_type_mt_only = (
+        calc.run_outcome_model_for_unique_times_mt(times_to_mt))
 
     # Convert these results dictionaries into dataframes:
     df_outcomes_ivt, df_outcomes_mt = (
@@ -113,12 +115,14 @@ def gather_outcomes_by_region(
             df_mrs_mt,
             df_lsoa_regions
             ):
+    r = {'msu_mt_no_ivt': 'msu_mt', 'msu_mt_with_ivt': 'msu_ivt_mt'}
     df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_times,
+            df_times.rename(columns=r),
             df_outcomes_ivt,
             df_outcomes_mt,
             df_mrs_ivt,
             df_mrs_mt,
+            ['usual_care', 'msu']
     )
 
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
@@ -773,8 +777,8 @@ df_mrs_usual_care = df_mrs_usual_care.rename(columns={
 cols_to_copy_msu = [
     'Admissions',
     'msu_ivt',
-    'msu_mt_with_ivt',
-    'msu_mt_no_ivt',
+    'msu_ivt_mt',  # 'msu_mt_with_ivt',
+    'msu_mt',  # 'msu_mt_no_ivt',
     'msu_lvo_ivt_better_than_mt',
     'nearest_ivt_unit_name'
     ]
@@ -782,10 +786,11 @@ if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
     cols_to_copy_msu.append(col_to_mask_mrs)
 df_mrs_msu = st.session_state['df_lsoa'][cols_to_copy_msu].copy()
 if 'ivt' in treatment_type:
-    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt_with_ivt']
+    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_ivt_mt']  # 'msu_mt_with_ivt']
 else:
-    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt_no_ivt']
-df_mrs_msu = df_mrs_msu.drop(['msu_mt_with_ivt', 'msu_mt_no_ivt'], axis='columns')
+    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt']  # 'msu_mt_no_ivt']
+# df_mrs_msu = df_mrs_msu.drop(['msu_mt_with_ivt', 'msu_mt_no_ivt'], axis='columns')
+df_mrs_msu = df_mrs_msu.drop(['msu_mt', 'msu_ivt_mt'], axis='columns')
 df_mrs_msu = df_mrs_msu.rename(columns={
     'msu_ivt': 'time_to_ivt',
     'msu_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
