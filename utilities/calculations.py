@@ -840,9 +840,17 @@ def build_full_lsoa_outcomes_from_unique_time_results(
         df_lsoa = df_lsoa.rename(columns={
             'lvo_mt_mrs_dists_noncum_6': f'{s}_probdeath_lvo_mt'})
         # IVT & MT:
-        # Initially copy over the MT data:
-        df_lsoa[f'{s}_probdeath_lvo_ivt_mt'] = (
-            df_lsoa[f'{s}_probdeath_lvo_mt'].copy())
+        if s == 'msu':
+            df_lsoa = pd.merge(
+                df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
+                left_on='msu_ivt_mt', right_on='time_to_mt', how='left'
+                ).drop('time_to_mt', axis='columns')
+            df_lsoa = df_lsoa.rename(columns={
+                'lvo_mt_mrs_dists_noncum_6': f'{s}_probdeath_lvo_ivt_mt'})
+        else:
+            # Initially copy over the MT data:
+            df_lsoa[f'{s}_probdeath_lvo_ivt_mt'] = (
+                df_lsoa[f'{s}_probdeath_lvo_mt'].copy())
         # Update values where IVT is better than MT:
         # (keep the .values because the column names don't match)
         df_lsoa.loc[mask_s_ivt_better, f'{s}_probdeath_lvo_ivt_mt'] = (
@@ -1505,9 +1513,7 @@ def combine_results_by_diff(
                 data_exists = False
 
             if data_exists:
-                cols_here = [f'{occ}_{tre}_{out}_{i}'
-                                for i in range(7)]
-                cols_combo += cols_here
+                cols_combo += [f'{occ}_{tre}_{out}_{i}' for i in range(7)]
                 cols_scen1 += cols_mrs_scen1
                 cols_scen2 += cols_mrs_scen2
         else:
@@ -1574,6 +1580,122 @@ def combine_results_by_diff(
                        left_index=True, right_index=True)
 
     return df_lsoa.copy()
+
+
+def replace_str_in_list(l, str_old, str_new):
+    ind_col = l.index(str_old)
+    l.remove(str_old)
+    l.insert(ind_col, str_new)
+    return l
+
+
+def build_columns_combine_occlusions(
+        treatment_list=['ivt', 'mt', 'ivt_mt'],
+        outcome_list=['mrs_0-2', 'mrs_shift', 'utility_shift'],
+        scenario_list=[],  # ['drip_ship', 'mothership', 'redirect'],
+        dummy_col='zero',
+        ):
+    # Generate all combos of these lists for nLVO:
+    cols_nlvo = [f'nlvo_{t}_{o}' for t in treatment_list
+                 for o in outcome_list]
+    if len(scenario_list) > 0:
+        cols_nlvo = [f'{s}_{col}' for col in cols_nlvo for s in scenario_list]
+    # Make versions for LVO and combo columns:
+    cols_lvo = [c.replace('nlvo', 'lvo') for c in cols_nlvo]
+    cols_combo = [c.replace('nlvo', 'combo') for c in cols_nlvo]
+
+    # Update invalid columns.
+    # For nLVO with MT, point to data with no change from no treatment:
+    cols_nlvo_mt = [c for c in cols_nlvo if (('mt' in c) & ('ivt' not in c))]
+    for col in cols_nlvo_mt:
+        if 'shift' in col:
+            # Point to dummy zero data instead, no change:
+            cols_nlvo = replace_str_in_list(cols_nlvo, col, dummy_col)
+        else:
+            # Point to no-treatment data instead:
+            o = np.array(treatment_list)[[(t in col) for t in treatment_list]]
+            col_nlvo = f'nlvo_no_treatment_{o}'  # Ignore scenario
+            cols_nlvo = replace_str_in_list(cols_nlvo, col, col_nlvo)
+    # For nLVO with IVT&MT, point to IVT-only data:
+    cols_nlvo_ivt_mt = [c for c in cols_nlvo if ('ivt_mt' in c)]
+    for col in cols_nlvo_ivt_mt:
+        col_nlvo = col.replace('ivt_mt', 'ivt')
+        ind_col = cols_nlvo.index(col)
+        cols_nlvo.remove(col)
+        cols_nlvo.insert(ind_col, col_nlvo)
+    return cols_nlvo, cols_lvo, cols_combo
+
+
+def build_columns_combine_occlusions_mrs(
+        treatment_list=['ivt', 'mt', 'ivt_mt'],
+        outcome_list=['mrs_dists_noncum'],
+        scenario_list=[],
+        dummy_col='nlvo_no_treatment_noncum',
+        ):
+    # Generate all combos of these lists for nLVO:
+    cols_nlvo = [
+        f'nlvo_{t}_{o}_{m}'
+        for t in treatment_list
+        for o in outcome_list
+        for m in range(7)  # mRS score
+        ]
+    if len(scenario_list) > 0:
+        cols_nlvo = [f'{s}_{col}' for col in cols_nlvo for s in scenario_list]
+
+    # Make versions for LVO and combo columns:
+    cols_lvo = [c.replace('nlvo', 'lvo') for c in cols_nlvo]
+    cols_combo = [c.replace('nlvo', 'combo') for c in cols_nlvo]
+
+    # Update invalid columns.
+    # For nLVO with MT, point to data with no change from no treatment:
+    cols_nlvo_mt = [c for c in cols_nlvo if (('mt' in c) & ('ivt' not in c))]
+    for col in cols_nlvo_mt:
+        # Point to no-treatment data instead:
+        m = col.split('_')[-1]  # mRS score
+        cols_nlvo = replace_str_in_list(cols_nlvo, col, f'{dummy_col}_{m}')
+    # For nLVO with IVT&MT, point to IVT-only data:
+    cols_nlvo_ivt_mt = [c for c in cols_nlvo if ('ivt_mt' in c)]
+    for col in cols_nlvo_ivt_mt:
+        col_nlvo = col.replace('ivt_mt', 'ivt')
+        cols_nlvo = replace_str_in_list(cols_nlvo, col, col_nlvo)
+    return cols_nlvo, cols_lvo, cols_combo
+
+
+def combine_results(
+        df_lsoa,
+        cols_1,
+        cols_2,
+        cols_combo,
+        props_list,
+        round_dp=3
+        ):
+    """
+    Make two new dataframes, one with all the column 1 data
+    and one with all the column 2 data, and with the same column
+    names. Then subtract one dataframe from the other
+    and merge the results back into the main one.
+    This is more efficient than calculating and creating
+    each new column individually.
+    """
+    # Pick out the data from the original dataframe and rename columns
+    # so they match in both dataframes:
+    df1 = df_lsoa[cols_1].copy().rename(
+        columns=dict(zip(cols_1, cols_combo)))
+    df2 = df_lsoa[cols_2].copy().rename(
+        columns=dict(zip(cols_2, cols_combo)))
+
+    # Simple addition: x% of column 1 plus y% of column 2.
+    # Create new dataframe from combining the two separate ones:
+    combo_data = df1 * props_list[0] + df2 * props_list[1]
+
+    # Round the values:
+    combo_data[combo_data.columns] = np.round(
+        combo_data[combo_data.columns], round_dp)
+
+    # Merge this new data into the starting dataframe:
+    df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
+
+    return df_lsoa
 
 
 def load_or_calculate_region_outlines(
