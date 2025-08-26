@@ -1595,6 +1595,9 @@ def build_columns_combine_occlusions(
         scenario_list=[],  # ['drip_ship', 'mothership', 'redirect'],
         dummy_col='zero',
         ):
+    """
+    All occlusion types in separate lists.
+    """
     # Generate all combos of these lists for nLVO:
     cols_nlvo = [f'nlvo_{t}_{o}' for t in treatment_list
                  for o in outcome_list]
@@ -1613,16 +1616,14 @@ def build_columns_combine_occlusions(
             cols_nlvo = replace_str_in_list(cols_nlvo, col, dummy_col)
         else:
             # Point to no-treatment data instead:
-            o = np.array(treatment_list)[[(t in col) for t in treatment_list]]
+            o = np.array(outcome_list)[[(o in col) for o in outcome_list]][0]
             col_nlvo = f'nlvo_no_treatment_{o}'  # Ignore scenario
             cols_nlvo = replace_str_in_list(cols_nlvo, col, col_nlvo)
     # For nLVO with IVT&MT, point to IVT-only data:
     cols_nlvo_ivt_mt = [c for c in cols_nlvo if ('ivt_mt' in c)]
     for col in cols_nlvo_ivt_mt:
         col_nlvo = col.replace('ivt_mt', 'ivt')
-        ind_col = cols_nlvo.index(col)
-        cols_nlvo.remove(col)
-        cols_nlvo.insert(ind_col, col_nlvo)
+        cols_nlvo = replace_str_in_list(cols_nlvo, col, col_nlvo)
     return cols_nlvo, cols_lvo, cols_combo
 
 
@@ -1661,6 +1662,64 @@ def build_columns_combine_occlusions_mrs(
     return cols_nlvo, cols_lvo, cols_combo
 
 
+def build_columns_combine_redir(
+        treatment_list=['ivt', 'mt', 'ivt_mt'],
+        outcome_list=['mrs_0-2', 'mrs_shift', 'utility_shift'],
+        occlusion_list=['nlvo', 'lvo'],
+        scenario_list=['redirection_rejected', 'redirection_approved'],
+        combo_name='redirection_considered',
+        dummy_col='zero',
+        ):
+    """
+    All occlusion types in one list.
+    """
+    # Generate all combos of these lists for redir reject:
+    cols_rr = [f'{scenario_list[0]}_{v}_{t}_{o}' for v in occlusion_list
+               for t in treatment_list for o in outcome_list]
+
+    # # Update invalid columns.
+    # # For nLVO with MT, point to data with no change from no treatment:
+    # cols_nlvo_mt = [c for c in cols_rr if (('nlvo' in c) & ('mt' in c) & ('ivt' not in c))]
+    # for col in cols_nlvo_mt:
+    #     if 'shift' in col:
+    #         # Point to dummy zero data instead, no change:
+    #         cols_rr = replace_str_in_list(cols_rr, col, dummy_col)
+    #     else:
+    #         # Point to no-treatment data instead:
+    #         o = np.array(treatment_list)[[(t in col) for t in treatment_list]]
+    #         col_nlvo = f'nlvo_no_treatment_{o}'  # Ignore scenario
+    #         cols_rr = replace_str_in_list(cols_rr, col, col_nlvo)
+    # # For nLVO with IVT&MT, point to IVT-only data:
+    # cols_nlvo_ivt_mt = [c for c in cols_rr if (('nlvo' in c) & ('ivt_mt' in c))]
+    # for col in cols_nlvo_ivt_mt:
+    #     col_nlvo = col.replace('ivt_mt', 'ivt')
+    #     ind_col = cols_rr.index(col)
+    #     cols_rr.remove(col)
+    #     cols_rr.insert(ind_col, col_nlvo)
+
+    # Make versions for redir approve:
+    cols_ra = [c.replace(scenario_list[0], scenario_list[1])
+               for c in cols_rr]
+    # Make versions for redir considered:
+    cols_combo = [c.replace(scenario_list[0], combo_name)
+                  for c in cols_rr]
+
+    return cols_rr, cols_ra, cols_combo
+
+
+def keep_existing_cols(df, cols_1, cols_2, cols_combo):
+
+    # Remove sets of columns where any data is missing:
+    exists_1 = [(c in df) for c in cols_1]
+    exists_2 = [(c in df) for c in cols_2]
+    exists_both = np.array(exists_1) & np.array(exists_2)
+
+    cols_1 = list(np.array(cols_1)[exists_both])
+    cols_2 = list(np.array(cols_2)[exists_both])
+    cols_combo = list(np.array(cols_combo)[exists_both])
+    return cols_1, cols_2, cols_combo
+
+
 def combine_results(
         df_lsoa,
         cols_1,
@@ -1678,11 +1737,16 @@ def combine_results(
     each new column individually.
     """
     # Pick out the data from the original dataframe and rename columns
-    # so they match in both dataframes:
-    df1 = df_lsoa[cols_1].copy().rename(
-        columns=dict(zip(cols_1, cols_combo)))
-    df2 = df_lsoa[cols_2].copy().rename(
-        columns=dict(zip(cols_2, cols_combo)))
+    # so they match in both dataframes.
+    # Don't rename using a dict because sometimes multiple columns
+    # are defined using the same dummy column, and the rename
+    # will give all of those the same final name.
+    # Pick out the data from the original dataframe:
+    df1 = df_lsoa[cols_1].copy()
+    df2 = df_lsoa[cols_2].copy()
+    # Rename columns so they match:
+    df1.columns = cols_combo
+    df2.columns = cols_combo
 
     # Simple addition: x% of column 1 plus y% of column 2.
     # Create new dataframe from combining the two separate ones:
@@ -1696,6 +1760,20 @@ def combine_results(
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
 
     return df_lsoa
+
+
+def calculate_cumulative_mrs(combo_data, cols_combo):
+    # Make cumulative probabilities:
+    prefixes = sorted(list(set(
+        ['_'.join(c.split('_')[:-1]) for c in cols_combo])))
+    for col in prefixes:
+        cols_here = [f'{col}_{i}' for i in range(7)]
+        col_cumsum = col.split('_noncum')[0]
+        cols_cumsum_here = [f'{col_cumsum}_{i}' for i in range(7)]
+        # Cumulative probability:
+        cumulatives = np.cumsum(combo_data[cols_here], axis=1)
+        combo_data[cols_cumsum_here] = cumulatives
+    return combo_data
 
 
 def load_or_calculate_region_outlines(

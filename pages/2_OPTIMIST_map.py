@@ -64,16 +64,10 @@ def main_calculations(df_times):
     # Find the complete set of times to IVT and times to MT.
     # Don't need the combinations of IVT and MT times yet.
     # Find set of treatment times:
-    cols_ivt = [
-        'usual_care_ivt',
-        'redirection_approved_ivt',
-        'redirection_rejected_ivt'
-        ]
-    cols_mt = [
-        'usual_care_mt',
-        'redirection_approved_mt',
-        'redirection_rejected_mt'
-        ]
+    scenarios = ['usual_care', 'redirection_approved', 'redirection_rejected']
+    cols_ivt = [f'{s}_ivt' for s in scenarios]
+    cols_mt = [f'{s}_mt' for s in scenarios]
+
     times_to_ivt = sorted(list(set(df_times[cols_ivt].values.flatten())))
     times_to_mt = sorted(list(set(df_times[cols_mt].values.flatten())))
 
@@ -121,56 +115,127 @@ def gather_outcomes_by_region(
             df_lsoa_regions,
             input_dict
             ):
+    scenarios = ['usual_care', 'redirection_rejected', 'redirection_approved']
     df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            ['usual_care', 'redirection_rejected', 'redirection_approved'],
+            df_times, df_outcomes_ivt, df_outcomes_mt,
+            df_mrs_ivt, df_mrs_mt, scenarios,
     )
 
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
+    # Make a new dummy zero column available:
+    col_zero = 'zero'
+    df_lsoa[col_zero] = 0.0
 
     # Extra calculations for redirection:
     # Combine redirection rejected and approved results in
     # proportions given by specificity and sensitivity.
     # This creates columns labelled "redirection_considered".
-    redirect_dict = {
-        'sensitivity': input_dict['sensitivity'],
-        'specificity': input_dict['specificity'],
-    }
-    df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
-
-    # Make combined nLVO + LVO data in the proportions given:
-    # Combine for "usual care":
-    prop_dict = {
-        'nlvo': input_dict['prop_nlvo'],
-        'lvo': input_dict['prop_lvo']
-    }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['usual_care'])
-    # Combine for redirection considered:
-    # prop_dict = {
-    #     'nlvo': input_dict['prop_redirection_considered_nlvo'],
-    #     'lvo': input_dict['prop_redirection_considered_lvo']
-    # }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['redirection_considered'])
-    # Don't calculate the separate redirection approved/rejected bits.
-
-    # Calculate diff - redirect minus usual care:
-    df_lsoa = calc.combine_results_by_diff(
-        df_lsoa,
-        scenario_types=['redirection_considered', 'usual_care']
+    # nLVO:
+    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
+        scenario_list=['redirection_rejected', 'redirection_approved'],
+        combo_name='redirection_considered',
+        treatment_list=['ivt'],
+        occlusion_list=['nlvo'],
+        dummy_col=col_zero
         )
+    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
+        df_lsoa, cols_rr, cols_ra, cols_rc)
+    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
+    # LVO:
+    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
+        scenario_list=['redirection_rejected', 'redirection_approved'],
+        combo_name='redirection_considered',
+        occlusion_list=['lvo'],
+        dummy_col=col_zero
+        )
+    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
+        df_lsoa, cols_rr, cols_ra, cols_rc)
+    prop_lvo_redirected = input_dict['sensitivity']
+    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
+
+
+    # # Make combined nLVO + LVO data in the proportions given.
+    # # Don't calculate the separate redirection approved/rejected bits.
+    # Usual care:
+    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
+        calc.build_columns_combine_occlusions(
+            scenario_list=['usual_care'], dummy_col=col_zero))
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_lsoa = calc.combine_results(
+        df_lsoa,
+        *calc.keep_existing_cols(
+            df_lsoa, cols_nlvo_usual, cols_lvo_usual, cols_combo_usual
+            ),
+        props_list
+        )
+    # Redirection:
+    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
+        calc.build_columns_combine_occlusions(
+            scenario_list=['redirection_considered'], dummy_col=col_zero))
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_lsoa = calc.combine_results(
+        df_lsoa,
+        *calc.keep_existing_cols(
+            df_lsoa, cols_nlvo_redir, cols_lvo_redir, cols_combo_redir
+            ),
+        props_list
+        )
+
+    df_lsoa = df_lsoa.drop(col_zero, axis='columns')
+
+    # Calculate diff: redirect minus usual care:
+    diff_str = 'diff_redirection_considered_minus_usual_care'
+    cols_usual = sum([sorted(list(set(c))) for c in
+                      [cols_nlvo_usual, cols_lvo_usual, cols_combo_usual]], [])
+    cols_redir = sum([sorted(list(set(c))) for c in
+                      [cols_nlvo_redir, cols_lvo_redir, cols_combo_redir]], [])
+    cols_usual = [c for c in cols_usual if
+                  ((c != col_zero) & (c in df_lsoa.columns))]
+    cols_redir = [c for c in cols_redir if
+                  ((c != col_zero) & (c in df_lsoa.columns))]
+    cols_diff = [c.replace('usual_care', diff_str) for c in cols_usual]
+    props_list = [1.0, -1.0]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_redir, cols_usual, cols_diff, props_list)
+
 
     df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
         df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
         df_unit_services,
         df_lsoa_regions
         )
+
+
+
+    # # For mRS, make new dummy columns with no-treatment dist:
+    # # For no-treatment mRS distributions:
+    # from utilities.utils import load_reference_mrs_dists
+    # dist_dict = load_reference_mrs_dists()
+    # dist = dist_dict['nlvo_no_treatment_noncum']
+    # # Add this data to the starting dataframe:
+    # cols_no_treatment_mrs = [f'nlvo_no_treatment_noncum_{m}'
+    #                          for m in range(7)]
+    # df_lsoa_to_update[cols_no_treatment_mrs] = dist
+
+    # cols_nlvo, cols_lvo, cols_combo = calc.build_columns_combine_occlusions_mrs(
+    #     scenario_list=[],  # ['drip_ship', 'mothership', 'redirect'],
+    #     dummy_col='nlvo_no_treatment_noncum',
+    #     )
+    # df_lsoa = calc.combine_results(
+    #     df_lsoa_to_update,
+    #     cols_nlvo,
+    #     cols_lvo,
+    #     cols_combo,
+    #     props_list,
+    #     )
+    # df_lsoa = calc.calculate_cumulative_mrs(df_lsoa, cols_combo)
+
 
     return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
