@@ -759,8 +759,6 @@ def build_full_lsoa_outcomes_from_unique_time_results(
             df_travel_times,
             df_outcomes_ivt,
             df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
             scenarios=[],
         ):
     outcome_measures = ['mrs_shift', 'utility_shift', 'mrs_0-2']
@@ -821,6 +819,22 @@ def build_full_lsoa_outcomes_from_unique_time_results(
         df_lsoa.loc[mask_s_ivt_better, cols_s_lvo_ivt_mt] = (
             df_lsoa.loc[mask_s_ivt_better, cols_s_lvo_ivt].values)
 
+    return df_lsoa
+
+
+def gather_pdeath_from_unique_time_results(
+            df_lsoa,
+            df_mrs_ivt,
+            df_mrs_mt,
+            scenarios=[],
+        ):
+    """
+    df_lsoa already contains masks for where IVT better than MT
+    for each scenario.
+    """
+    # Apply these results to the treatment times in each scenario.
+
+    for s in scenarios:
         # Copy over probability of death:
         # IVT:
         df_lsoa = pd.merge(
@@ -841,6 +855,8 @@ def build_full_lsoa_outcomes_from_unique_time_results(
             'lvo_mt_mrs_dists_noncum_6': f'{s}_probdeath_lvo_mt'})
         # IVT & MT:
         if s == 'msu':
+            # Special case for MSU data. Use the times for IVT then MT.
+            # The time to MT depends on whether IVT was given.
             df_lsoa = pd.merge(
                 df_lsoa, df_mrs_mt[['time_to_mt', 'lvo_mt_mrs_dists_noncum_6']],
                 left_on='msu_ivt_mt', right_on='time_to_mt', how='left'
@@ -853,9 +869,9 @@ def build_full_lsoa_outcomes_from_unique_time_results(
                 df_lsoa[f'{s}_probdeath_lvo_mt'].copy())
         # Update values where IVT is better than MT:
         # (keep the .values because the column names don't match)
-        df_lsoa.loc[mask_s_ivt_better, f'{s}_probdeath_lvo_ivt_mt'] = (
-            df_lsoa.loc[mask_s_ivt_better, f'{s}_probdeath_lvo_ivt'].values)
-
+        mask = df_lsoa[f'{s}_lvo_ivt_better_than_mt']
+        df_lsoa.loc[mask, f'{s}_probdeath_lvo_ivt_mt'] = (
+            df_lsoa.loc[mask, f'{s}_probdeath_lvo_ivt'].values)
     return df_lsoa
 
 
@@ -1157,114 +1173,11 @@ def group_mrs_dists_by_column(df_lsoa, col_region='', col_vals=[]):
 # ###########################
 # ##### AVERAGE RESULTS #####
 # ###########################
-# def combine_results_by_occlusion_type(
-#         df_lsoa,
-#         prop_dict,
-#         combine_mrs_dists=False,
-#         scenario_list=['drip_ship', 'mothership', 'redirect']
-#         ):
-#     """
-#     Make two new dataframes, one with all the column 1 data
-#     and one with all the column 2 data, and with the same column
-#     names. Then subtract one dataframe from the other
-#     and merge the results back into the main one.
-#     This is more efficient than calculating and creating
-#     each new column individually.
-#     """
-#     # Use a copy of the input dataframe so we can temporarily
-#     # add columns for no-treatment:
-#     df_lsoa_to_update = df_lsoa.copy()
-
-#     # Simple addition: x% of column 1 plus y% of column 2.
-#     # Column names for these new DataFrames:
-#     cols_combo = []
-#     cols_nlvo = []
-#     cols_lvo = []
-
-#     # Don't combine treatment types for now (no nLVO with MT data).
-#     treatment_list = ['ivt', 'mt', 'ivt_mt']
-
-#     if combine_mrs_dists:
-#         # For no-treatment mRS distributions:
-#         dist_dict = load_reference_mrs_dists()
-#         o = 'mrs_dists_noncum'  # not cumulative
-#         st_combos = [(s, t) for t in treatment_list for s in scenario_list]
-#         for (s, t) in st_combos:
-#             if t == 'mt':
-#                 # Set up the new column names as normal:
-#                 cols_mrs_nlvo = [f'{s}_nlvo_{t}_{o}_{i}' for i in range(7)]
-#                 # Add copy of no-treatment data to the starting dataframe:
-#                 df_lsoa_to_update[cols_mrs_nlvo] = (
-#                     dist_dict['nlvo_no_treatment_noncum'])
-#             else:
-#                 cols_mrs_nlvo = [f'{s}_nlvo_ivt_{o}_{i}' for i in range(7)]
-
-#             # If these lengths match then the required data exists:
-#             d = (len(cols_mrs_nlvo) ==
-#                  len(set(df_lsoa_to_update.columns) & set(cols_mrs_nlvo)))
-#             if d:
-#                 cols_combo += [f'{s}_combo_{t}_{o}_{i}' for i in range(7)]
-#                 cols_nlvo += cols_mrs_nlvo
-#                 cols_lvo += [f'{s}_lvo_{t}_{o}_{i}' for i in range(7)]
-#             else:
-#                 pass
-#     else:
-#         outcome_list = ['mrs_0-2', 'mrs_shift', 'utility_shift']
-#         sto_combos = [(s, t, o) for o in outcome_list
-#                       for t in treatment_list for s in scenario_list]
-#         for (s, t, o) in sto_combos:
-#             # Pick out nLVO data depending on whether MT only.
-#             if t == 'mt':
-#                 if 'shift' in o:
-#                     # Set changes to zero:
-#                     col_nlvo = f'{s}_nlvo_{t}_{o}'
-#                     df_lsoa_to_update[col_nlvo] = 0.0
-#                 else:
-#                     # Use data for no treatment:
-#                     col_nlvo = f'nlvo_no_treatment_{o}'
-#             else:
-#                 # Use IVT-only data for IVT or IVT&MT.
-#                 col_nlvo = f'{s}_nlvo_ivt_{o}'
-
-#             if col_nlvo in df_lsoa_to_update.columns:
-#                 cols_combo.append(f'{s}_combo_{t}_{o}')
-#                 cols_nlvo.append(col_nlvo)
-#                 cols_lvo.append(f'{s}_lvo_{t}_{o}')
-
-#     # Pick out the data from the original dataframe and rename columns
-#     # so they match in both dataframes:
-#     df1 = df_lsoa_to_update[cols_nlvo].copy().rename(
-#         columns=dict(zip(cols_nlvo, cols_combo)))
-#     df2 = df_lsoa_to_update[cols_lvo].copy().rename(
-#         columns=dict(zip(cols_lvo, cols_combo)))
-
-#     # Create new dataframe from combining the two separate ones:
-#     combo_data = (df1 * prop_dict['nlvo'] + df2 * prop_dict['lvo'])
-
-#     if combine_mrs_dists:
-#         # Make cumulative probabilities:
-#         prefixes = sorted(list(set(
-#             ['_'.join(c.split('_')[:-1]) for c in cols_combo])))
-#         for col in prefixes:
-#             cols_here = [f'{col}_{i}' for i in range(7)]
-#             col_cumsum = col.split('_noncum')[0]
-#             cols_cumsum_here = [f'{col_cumsum}_{i}' for i in range(7)]
-#             # Cumulative probability:
-#             cumulatives = np.cumsum(combo_data[cols_here], axis=1)
-#             combo_data[cols_cumsum_here] = cumulatives
-
-#     # Round the values:
-#     combo_data[combo_data.columns] = (
-#         np.round(combo_data[combo_data.columns], 3))
-#     # Merge this new data into the starting dataframe:
-#     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
-
-#     return df_lsoa.copy()
 def combine_results_by_occlusion_type(
         df_lsoa,
         prop_dict,
         combine_mrs_dists=False,
-        scenario_list=[]
+        scenario_list=['drip_ship', 'mothership', 'redirect']
         ):
     """
     Make two new dataframes, one with all the column 1 data
@@ -1284,86 +1197,65 @@ def combine_results_by_occlusion_type(
     cols_nlvo = []
     cols_lvo = []
 
-    # Don't combine treatment types for now
-    # (no nLVO with MT data).
-    if len(scenario_list) > 0:
-        pass
-    else:
-        scenario_list = ['drip_ship', 'mothership', 'redirect']
+    # Don't combine treatment types for now (no nLVO with MT data).
     treatment_list = ['ivt', 'mt', 'ivt_mt']
+
     if combine_mrs_dists:
-        outcome_list = ['mrs_dists_noncum']  # not cumulative
+        # For no-treatment mRS distributions:
+        dist_dict = load_reference_mrs_dists()
+        o = 'mrs_dists_noncum'  # not cumulative
+        st_combos = [(s, t) for t in treatment_list for s in scenario_list]
+        for (s, t) in st_combos:
+            if t == 'mt':
+                # Set up the new column names as normal:
+                cols_mrs_nlvo = [f'{s}_nlvo_{t}_{o}_{i}' for i in range(7)]
+                # Add copy of no-treatment data to the starting dataframe:
+                df_lsoa_to_update[cols_mrs_nlvo] = (
+                    dist_dict['nlvo_no_treatment_noncum'])
+            else:
+                cols_mrs_nlvo = [f'{s}_nlvo_ivt_{o}_{i}' for i in range(7)]
+
+            # If these lengths match then the required data exists:
+            d = (len(cols_mrs_nlvo) ==
+                 len(set(df_lsoa_to_update.columns) & set(cols_mrs_nlvo)))
+            if d:
+                cols_combo += [f'{s}_combo_{t}_{o}_{i}' for i in range(7)]
+                cols_nlvo += cols_mrs_nlvo
+                cols_lvo += [f'{s}_lvo_{t}_{o}_{i}' for i in range(7)]
+            else:
+                pass
     else:
         outcome_list = ['mrs_0-2', 'mrs_shift', 'utility_shift']
-
-    # For no-treatment mRS distributions:
-    dist_dict = load_reference_mrs_dists()
-
-    for s in scenario_list:
-        for t in treatment_list:
-            for o in outcome_list:
-                if combine_mrs_dists:
-                    cols_mrs_lvo = [f'{s}_lvo_{t}_{o}_{i}' for i in range(7)]
-
-                    if t == 'mt':
-                        cols_mrs_nlvo = [
-                            f'{s}_nlvo_{t}_{o}_{i}' for i in range(7)]
-                        if 'noncum' in o:
-                            dist = dist_dict['nlvo_no_treatment_noncum']
-                        else:
-                            dist = dist_dict['nlvo_no_treatment']
-                        # Add this data to the starting dataframe:
-                        df_lsoa_to_update[cols_mrs_nlvo] = dist
-                    else:
-                        cols_mrs_nlvo = [
-                            f'{s}_nlvo_ivt_{o}_{i}' for i in range(7)]
-                    try:
-                        data_nlvo = df_lsoa_to_update[cols_mrs_nlvo]
-                        data_exists = True
-                    except KeyError:
-                        data_exists = False
-
-                    if data_exists:
-                        cols_here = [f'{s}_combo_{t}_{o}_{i}' for i in range(7)]
-                        cols_combo += cols_here
-                        cols_nlvo += cols_mrs_nlvo
-                        cols_lvo += cols_mrs_lvo
-
+        sto_combos = [(s, t, o) for o in outcome_list
+                      for t in treatment_list for s in scenario_list]
+        for (s, t, o) in sto_combos:
+            # Pick out nLVO data depending on whether MT only.
+            if t == 'mt':
+                if 'shift' in o:
+                    # Set changes to zero:
+                    col_nlvo = f'{s}_nlvo_{t}_{o}'
+                    df_lsoa_to_update[col_nlvo] = 0.0
                 else:
-                    if t == 'mt':
-                        if o in ['mrs_shift', 'utility_shift']:
-                            col_nlvo = f'{s}_nlvo_ivt_{o}'
-                            df_lsoa_to_update[col_nlvo] = 0.0
-                        else:
-                            col_nlvo = f'nlvo_no_treatment_{o}'
-                    else:
-                        col_nlvo = f'{s}_nlvo_ivt_{o}'
+                    # Use data for no treatment:
+                    col_nlvo = f'nlvo_no_treatment_{o}'
+            else:
+                # Use IVT-only data for IVT or IVT&MT.
+                col_nlvo = f'{s}_nlvo_ivt_{o}'
 
-                    # col_nlvo = f'nlvo_{s}_{t}_{o}'
-                    col_lvo = f'{s}_lvo_{t}_{o}'
-                    try:
-                        data_nlvo = df_lsoa_to_update[col_nlvo]
-                        data_exists = True
-                    except KeyError:
-                        data_exists = False
+            if col_nlvo in df_lsoa_to_update.columns:
+                cols_combo.append(f'{s}_combo_{t}_{o}')
+                cols_nlvo.append(col_nlvo)
+                cols_lvo.append(f'{s}_lvo_{t}_{o}')
 
-                    if data_exists:
-                        cols_combo.append(f'{s}_combo_{t}_{o}')
-                        cols_nlvo.append(col_nlvo)
-                        cols_lvo.append(col_lvo)
-
-    # Pick out the data from the original dataframe:
-    df1 = df_lsoa_to_update[cols_nlvo].copy()
-    df2 = df_lsoa_to_update[cols_lvo].copy()
-    # Rename columns so they match:
-    df1.columns = cols_combo
-    df2.columns = cols_combo
+    # Pick out the data from the original dataframe and rename columns
+    # so they match in both dataframes:
+    df1 = df_lsoa_to_update[cols_nlvo].copy().rename(
+        columns=dict(zip(cols_nlvo, cols_combo)))
+    df2 = df_lsoa_to_update[cols_lvo].copy().rename(
+        columns=dict(zip(cols_lvo, cols_combo)))
 
     # Create new dataframe from combining the two separate ones:
-    combo_data = (
-        df1 * prop_dict['nlvo'] +
-        df2 * prop_dict['lvo']
-    )
+    combo_data = (df1 * prop_dict['nlvo'] + df2 * prop_dict['lvo'])
 
     if combine_mrs_dists:
         # Make cumulative probabilities:
@@ -1378,17 +1270,141 @@ def combine_results_by_occlusion_type(
             combo_data[cols_cumsum_here] = cumulatives
 
     # Round the values:
-    dp = 3
-    combo_data[combo_data.columns] = np.round(
-        combo_data[combo_data.columns], dp)
-    # # Update column names to mark them as combined:
-    # combo_data.columns = [
-    #     '_'.join(col.split('_')[0], 'combo', col.split('_')[1:])
-    #     f'combo_{col}' for col in combo_data.columns]
+    combo_data[combo_data.columns] = (
+        np.round(combo_data[combo_data.columns], 3))
     # Merge this new data into the starting dataframe:
     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
 
     return df_lsoa.copy()
+# def combine_results_by_occlusion_type(
+#         df_lsoa,
+#         prop_dict,
+#         combine_mrs_dists=False,
+#         scenario_list=[]
+#         ):
+#     """
+#     Make two new dataframes, one with all the column 1 data
+#     and one with all the column 2 data, and with the same column
+#     names. Then subtract one dataframe from the other
+#     and merge the results back into the main one.
+#     This is more efficient than calculating and creating
+#     each new column individually.
+#     """
+#     # Use a copy of the input dataframe so we can temporarily
+#     # add columns for no-treatment:
+#     df_lsoa_to_update = df_lsoa.copy()
+
+#     # Simple addition: x% of column 1 plus y% of column 2.
+#     # Column names for these new DataFrames:
+#     cols_combo = []
+#     cols_nlvo = []
+#     cols_lvo = []
+
+#     # Don't combine treatment types for now
+#     # (no nLVO with MT data).
+#     if len(scenario_list) > 0:
+#         pass
+#     else:
+#         scenario_list = ['drip_ship', 'mothership', 'redirect']
+#     treatment_list = ['ivt', 'mt', 'ivt_mt']
+#     if combine_mrs_dists:
+#         outcome_list = ['mrs_dists_noncum']  # not cumulative
+#     else:
+#         outcome_list = ['mrs_0-2', 'mrs_shift', 'utility_shift']
+
+#     # For no-treatment mRS distributions:
+#     dist_dict = load_reference_mrs_dists()
+
+#     for s in scenario_list:
+#         for t in treatment_list:
+#             for o in outcome_list:
+#                 if combine_mrs_dists:
+#                     cols_mrs_lvo = [f'{s}_lvo_{t}_{o}_{i}' for i in range(7)]
+
+#                     if t == 'mt':
+#                         cols_mrs_nlvo = [
+#                             f'{s}_nlvo_{t}_{o}_{i}' for i in range(7)]
+#                         if 'noncum' in o:
+#                             dist = dist_dict['nlvo_no_treatment_noncum']
+#                         else:
+#                             dist = dist_dict['nlvo_no_treatment']
+#                         # Add this data to the starting dataframe:
+#                         df_lsoa_to_update[cols_mrs_nlvo] = dist
+#                     else:
+#                         cols_mrs_nlvo = [
+#                             f'{s}_nlvo_ivt_{o}_{i}' for i in range(7)]
+#                     try:
+#                         data_nlvo = df_lsoa_to_update[cols_mrs_nlvo]
+#                         data_exists = True
+#                     except KeyError:
+#                         data_exists = False
+
+#                     if data_exists:
+#                         cols_here = [f'{s}_combo_{t}_{o}_{i}' for i in range(7)]
+#                         cols_combo += cols_here
+#                         cols_nlvo += cols_mrs_nlvo
+#                         cols_lvo += cols_mrs_lvo
+
+#                 else:
+#                     if t == 'mt':
+#                         if o in ['mrs_shift', 'utility_shift']:
+#                             col_nlvo = f'{s}_nlvo_ivt_{o}'
+#                             df_lsoa_to_update[col_nlvo] = 0.0
+#                         else:
+#                             col_nlvo = f'nlvo_no_treatment_{o}'
+#                     else:
+#                         col_nlvo = f'{s}_nlvo_ivt_{o}'
+
+#                     # col_nlvo = f'nlvo_{s}_{t}_{o}'
+#                     col_lvo = f'{s}_lvo_{t}_{o}'
+#                     try:
+#                         data_nlvo = df_lsoa_to_update[col_nlvo]
+#                         data_exists = True
+#                     except KeyError:
+#                         data_exists = False
+
+#                     if data_exists:
+#                         cols_combo.append(f'{s}_combo_{t}_{o}')
+#                         cols_nlvo.append(col_nlvo)
+#                         cols_lvo.append(col_lvo)
+
+#     # Pick out the data from the original dataframe:
+#     df1 = df_lsoa_to_update[cols_nlvo].copy()
+#     df2 = df_lsoa_to_update[cols_lvo].copy()
+#     # Rename columns so they match:
+#     df1.columns = cols_combo
+#     df2.columns = cols_combo
+
+#     # Create new dataframe from combining the two separate ones:
+#     combo_data = (
+#         df1 * prop_dict['nlvo'] +
+#         df2 * prop_dict['lvo']
+#     )
+
+#     if combine_mrs_dists:
+#         # Make cumulative probabilities:
+#         prefixes = sorted(list(set(
+#             ['_'.join(c.split('_')[:-1]) for c in cols_combo])))
+#         for col in prefixes:
+#             cols_here = [f'{col}_{i}' for i in range(7)]
+#             col_cumsum = col.split('_noncum')[0]
+#             cols_cumsum_here = [f'{col_cumsum}_{i}' for i in range(7)]
+#             # Cumulative probability:
+#             cumulatives = np.cumsum(combo_data[cols_here], axis=1)
+#             combo_data[cols_cumsum_here] = cumulatives
+
+#     # Round the values:
+#     dp = 3
+#     combo_data[combo_data.columns] = np.round(
+#         combo_data[combo_data.columns], dp)
+#     # # Update column names to mark them as combined:
+#     # combo_data.columns = [
+#     #     '_'.join(col.split('_')[0], 'combo', col.split('_')[1:])
+#     #     f'combo_{col}' for col in combo_data.columns]
+#     # Merge this new data into the starting dataframe:
+#     df_lsoa = pd.merge(df_lsoa, combo_data, left_index=True, right_index=True)
+
+#     return df_lsoa.copy()
 
 
 def combine_results_by_redirection(

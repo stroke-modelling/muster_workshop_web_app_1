@@ -106,20 +106,10 @@ def main_calculations(df_times):
 
 
 # @st.cache_data
-def gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            df_lsoa_regions,
-            input_dict
-            ):
-    scenarios = ['usual_care', 'redirection_rejected', 'redirection_approved']
-    df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_times, df_outcomes_ivt, df_outcomes_mt,
-            df_mrs_ivt, df_mrs_mt, scenarios,
-    )
+def calculate_outcomes_for_combo_groups(
+        df_lsoa,
+        input_dict
+        ):
 
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
@@ -159,57 +149,58 @@ def gather_outcomes_by_region(
     df_lsoa = calc.combine_results(
         df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
 
-
     # # Make combined nLVO + LVO data in the proportions given.
     # # Don't calculate the separate redirection approved/rejected bits.
     # Usual care:
     cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
         calc.build_columns_combine_occlusions(
             scenario_list=['usual_care'], dummy_col=col_zero))
+    # Keep a copy of these for later:
+    cols_usual = [cols_nlvo_usual, cols_lvo_usual, cols_combo_usual]
+    # Only keep existing columns:
+    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
+        calc.keep_existing_cols(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
+                                cols_combo_usual))
+    # Make the new data:
     props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
-    df_lsoa = calc.combine_results(
-        df_lsoa,
-        *calc.keep_existing_cols(
-            df_lsoa, cols_nlvo_usual, cols_lvo_usual, cols_combo_usual
-            ),
-        props_list
-        )
+    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
+                                   cols_combo_usual, props_list)
+
     # Redirection:
     cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
         calc.build_columns_combine_occlusions(
             scenario_list=['redirection_considered'], dummy_col=col_zero))
+    # Keep a copy of these for later:
+    cols_redir = [cols_nlvo_redir, cols_lvo_redir, cols_combo_redir]
+    # Only keep existing columns:
+    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
+        calc.keep_existing_cols(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
+                                cols_combo_redir))
+    # Make the new data:
     props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
-    df_lsoa = calc.combine_results(
-        df_lsoa,
-        *calc.keep_existing_cols(
-            df_lsoa, cols_nlvo_redir, cols_lvo_redir, cols_combo_redir
-            ),
-        props_list
-        )
-
+    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
+                                   cols_combo_redir, props_list)
+    # Remove the dummy column now it's no longer needed:
     df_lsoa = df_lsoa.drop(col_zero, axis='columns')
 
     # Calculate diff: redirect minus usual care:
-    diff_str = 'diff_redirection_considered_minus_usual_care'
-    cols_usual = sum([sorted(list(set(c))) for c in
-                      [cols_nlvo_usual, cols_lvo_usual, cols_combo_usual]], [])
-    cols_redir = sum([sorted(list(set(c))) for c in
-                      [cols_nlvo_redir, cols_lvo_redir, cols_combo_redir]], [])
+    # Combine the three lists into one long list and remove repeats:
+    cols_usual = sum([sorted(list(set(c))) for c in cols_usual], [])
+    cols_redir = sum([sorted(list(set(c))) for c in cols_redir], [])
+    # Only keep useful columns that exist in the data:
     cols_usual = [c for c in cols_usual if
                   ((c != col_zero) & (c in df_lsoa.columns))]
     cols_redir = [c for c in cols_redir if
                   ((c != col_zero) & (c in df_lsoa.columns))]
+    # Make matching columns for the difference names:
+    diff_str = 'diff_redirection_considered_minus_usual_care'
     cols_diff = [c.replace('usual_care', diff_str) for c in cols_usual]
+    # Make new data:
     props_list = [1.0, -1.0]
     df_lsoa = calc.combine_results(
         df_lsoa, cols_redir, cols_usual, cols_diff, props_list)
 
 
-    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
-        df_unit_services,
-        df_lsoa_regions
-        )
 
 
 
@@ -237,7 +228,7 @@ def gather_outcomes_by_region(
     # df_lsoa = calc.calculate_cumulative_mrs(df_lsoa, cols_combo)
 
 
-    return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
+    return df_lsoa
 
 
 # @st.cache_data
@@ -776,20 +767,51 @@ with container_rerun:
             st.session_state['df_mrs_mt'],
         ) = main_calculations(df_times)
 
-        (
+        scenarios = [
+            'usual_care', 'redirection_rejected', 'redirection_approved']
+        st.session_state['df_lsoa'] = (
+            calc.build_full_lsoa_outcomes_from_unique_time_results(
+                df_times, df_outcomes_ivt, df_outcomes_mt, scenarios)
+        )
+
+        # Calculate outcomes:
+        st.session_state['df_lsoa'] = calculate_outcomes_for_combo_groups(
             st.session_state['df_lsoa'],
+            input_dict
+            )
+
+        # Calculate probabilities of death.
+        # Pick out the masks where IVT is better than MT:
+        cols_ivt_better = [f'{s}_lvo_ivt_better_than_mt' for s in scenarios]
+        # Place these masks in the travel time data:
+        df_pdeath = pd.merge(
+            df_times.copy().reset_index().rename(columns={'LSOA': 'lsoa'}).set_index('lsoa'),
+            st.session_state['df_lsoa'][cols_ivt_better],
+            left_index=True, right_index=True, how='left'
+            )
+        # Now gather P(death):
+        df_pdeath = calc.gather_pdeath_from_unique_time_results(
+            df_pdeath, st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'], scenarios,
+        )
+
+        # Combine outcome and P(death) data:
+        cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
+        st.session_state['df_lsoa'] = pd.merge(
+            st.session_state['df_lsoa'], df_pdeath[cols_pdeath],
+            left_index=True, right_index=True, how='left'
+        )
+
+        # Gather outcomes and P(death) into regions:
+        (
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-            df_lsoa_regions,
-            input_dict
+        ) = calc.group_results_by_region(
+            st.session_state['df_lsoa'].reset_index().rename(columns={'LSOA': 'lsoa'}),
+            df_unit_services,
+            df_lsoa_regions
             )
 
         new_results_run = True
