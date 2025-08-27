@@ -107,24 +107,10 @@ def main_calculations(df_times):
 
 
 # @st.cache_data
-def gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            df_lsoa_regions
-            ):
-    r = {'msu_mt_no_ivt': 'msu_mt', 'msu_mt_with_ivt': 'msu_ivt_mt'}
-    df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_times.rename(columns=r),
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            ['usual_care', 'msu']
-    )
-
+def calculate_outcomes_for_combo_groups(
+        df_lsoa,
+        input_dict
+        ):
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
 
@@ -134,13 +120,7 @@ def gather_outcomes_by_region(
         scenario_types=['msu', 'usual_care']
         )
 
-    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
-        df_unit_services,
-        df_lsoa_regions
-        )
-
-    return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
+    return df_lsoa
 
 
 
@@ -600,21 +580,53 @@ with container_rerun:
         ) = main_calculations(df_times)
 
 
-        (
+
+        scenarios = ['usual_care', 'msu']
+        r = {'msu_mt_no_ivt': 'msu_mt', 'msu_mt_with_ivt': 'msu_ivt_mt'}
+        st.session_state['df_lsoa'] = (
+            calc.build_full_lsoa_outcomes_from_unique_time_results(
+                df_times.rename(columns=r), df_outcomes_ivt, df_outcomes_mt, scenarios)
+        )
+
+        # Calculate outcomes:
+        st.session_state['df_lsoa'] = calculate_outcomes_for_combo_groups(
             st.session_state['df_lsoa'],
+            input_dict
+            )
+
+        # Calculate probabilities of death.
+        # Pick out the masks where IVT is better than MT:
+        cols_ivt_better = [f'{s}_lvo_ivt_better_than_mt' for s in scenarios]
+        # Place these masks in the travel time data:
+        df_pdeath = pd.merge(
+            df_times.copy().rename(columns=r).reset_index().rename(columns={'LSOA': 'lsoa'}).set_index('lsoa'),
+            st.session_state['df_lsoa'][cols_ivt_better],
+            left_index=True, right_index=True, how='left'
+            )
+        # Now gather P(death):
+        df_pdeath = calc.gather_pdeath_from_unique_time_results(
+            df_pdeath, st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'], scenarios,
+        )
+
+        # Combine outcome and P(death) data:
+        cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
+        st.session_state['df_lsoa'] = pd.merge(
+            st.session_state['df_lsoa'], df_pdeath[cols_pdeath],
+            left_index=True, right_index=True, how='left'
+        )
+
+        # Gather outcomes and P(death) into regions:
+        (
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
+        ) = calc.group_results_by_region(
+            st.session_state['df_lsoa'].reset_index().rename(columns={'LSOA': 'lsoa'}),
+            df_unit_services,
             df_lsoa_regions
             )
-
         new_results_run = True
     else:
         new_results_run = False
