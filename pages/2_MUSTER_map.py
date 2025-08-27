@@ -17,6 +17,7 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
+from utilities.utils import load_reference_mrs_dists
 # import classes.model_module as model
 # Containers:
 import utilities.inputs as inputs
@@ -122,6 +123,53 @@ def calculate_outcomes_for_combo_groups(
 
     return df_lsoa
 
+
+def calculate_pdeath_for_combo_groups(
+        df_pdeath, scenarios, input_dict,
+        treatment_types=['ivt', 'mt', 'ivt_mt']
+        ):
+    """
+    input_dict must contain keys 'prop_nlvo' and 'prop_lvo'.
+
+    f'{s}_probdeath_nlvo_ivt',
+    f'{s}_probdeath_lvo_ivt',
+    f'{s}_probdeath_lvo_mt',
+    f'{s}_probdeath_lvo_ivt_mt',
+    """
+    # Combine nLVO and LVO groups.
+    # Set up data for no treatment:
+    dist_dict = load_reference_mrs_dists()
+    df_pdeath['probdeath_nlvo_no_treatment'] = (
+        dist_dict['nlvo_no_treatment_noncum'][-1])
+    # Gather the column names here:
+    cols_nlvo = []
+    cols_lvo = []
+    cols_combo = []
+    for s in scenarios:
+        for t in treatment_types:
+            # Set up existing column names.
+            col_nlvo = f'{s}_probdeath_nlvo_{t}'
+            col_lvo = col_nlvo.replace('nlvo', 'lvo')
+            # New column name:
+            col_combo = col_nlvo.replace('nlvo', 'combo')
+            # Change nLVO column for special cases where the treatment
+            # option is invalid:
+            if t == 'mt':
+                # Use no-treatment data.
+                col_nlvo = 'probdeath_nlvo_no_treatment'
+            elif t == 'ivt_mt':
+                # Use IVT-only data.
+                col_nlvo = col_nlvo.replace('ivt_mt', 'ivt')
+            else:
+                pass
+            cols_nlvo.append(col_nlvo)
+            cols_lvo.append(col_lvo)
+            cols_combo.append(col_combo)
+    # Combine the data:
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_nlvo, cols_lvo, cols_combo, props_list)
+    return df_pdeath
 
 
 # ###########################
@@ -605,9 +653,15 @@ with container_rerun:
             )
         # Now gather P(death):
         df_pdeath = calc.gather_pdeath_from_unique_time_results(
-            df_pdeath, st.session_state['df_mrs_ivt'],
+            df_pdeath.reset_index(), st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'], scenarios,
         )
+        df_pdeath = df_pdeath.set_index('lsoa')
+        # note: cannot currently run the below as we haven't defined
+        # the proportions of nLVO and LVO in the input_dict.
+        # # Calculate P(death) for combined groups, mix of nLVO and LVO.
+        # df_pdeath = calculate_pdeath_for_combo_groups(
+        #     df_pdeath, scenarios, input_dict)
 
         # Combine outcome and P(death) data:
         cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]

@@ -20,6 +20,7 @@ import utilities.plot_mrs_dists as mrs
 import utilities.colour_setup as colour_setup
 import utilities.inputs as inputs
 import utilities.plot_timeline as timeline
+from utilities.utils import load_reference_mrs_dists
 
 
 # @st.cache_data
@@ -150,6 +151,7 @@ def calculate_outcomes_for_combo_groups(
         df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
 
     # # Make combined nLVO + LVO data in the proportions given.
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
     # # Don't calculate the separate redirection approved/rejected bits.
     # Usual care:
     cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
@@ -162,7 +164,6 @@ def calculate_outcomes_for_combo_groups(
         calc.keep_existing_cols(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
                                 cols_combo_usual))
     # Make the new data:
-    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
     df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
                                    cols_combo_usual, props_list)
 
@@ -177,7 +178,6 @@ def calculate_outcomes_for_combo_groups(
         calc.keep_existing_cols(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
                                 cols_combo_redir))
     # Make the new data:
-    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
     df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
                                    cols_combo_redir, props_list)
     # Remove the dummy column now it's no longer needed:
@@ -227,8 +227,75 @@ def calculate_outcomes_for_combo_groups(
     #     )
     # df_lsoa = calc.calculate_cumulative_mrs(df_lsoa, cols_combo)
 
-
     return df_lsoa
+
+
+def calculate_pdeath_for_combo_groups(
+        df_pdeath, scenarios, input_dict,
+        treatment_types=['ivt', 'mt', 'ivt_mt']
+        ):
+    """
+    f'{s}_probdeath_nlvo_ivt',
+    f'{s}_probdeath_lvo_ivt',
+    f'{s}_probdeath_lvo_mt',
+    f'{s}_probdeath_lvo_ivt_mt',
+    """
+
+    # Make "redirection considered" group.
+    # For nLVO with IVT:
+    cols_rr = ['redirection_rejected_probdeath_nlvo_ivt']
+    cols_ra = ['redirection_approved_probdeath_nlvo_ivt']
+    cols_rc = ['redirection_considered_probdeath_nlvo_ivt']
+    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
+    # For LVO groups:
+    cols_rr = [f'redirection_rejected_probdeath_lvo_{t}'
+               for t in treatment_types]
+    cols_ra = [f'redirection_approved_probdeath_lvo_{t}'
+               for t in treatment_types]
+    cols_rc = [f'redirection_considered_probdeath_lvo_{t}'
+               for t in treatment_types]
+    prop_lvo_redirected = input_dict['sensitivity']
+    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
+
+    # Combine nLVO and LVO groups.
+    # Set up data for no treatment:
+    dist_dict = load_reference_mrs_dists()
+    df_pdeath['probdeath_nlvo_no_treatment'] = (
+        dist_dict['nlvo_no_treatment_noncum'][-1])
+    # Gather the column names here:
+    cols_nlvo = []
+    cols_lvo = []
+    cols_combo = []
+    for s in scenarios:
+        for t in treatment_types:
+            # Set up existing column names.
+            col_nlvo = f'{s}_probdeath_nlvo_{t}'
+            col_lvo = col_nlvo.replace('nlvo', 'lvo')
+            # New column name:
+            col_combo = col_nlvo.replace('nlvo', 'combo')
+            # Change nLVO column for special cases where the treatment
+            # option is invalid:
+            if t == 'mt':
+                # Use no-treatment data.
+                col_nlvo = 'probdeath_nlvo_no_treatment'
+            elif t == 'ivt_mt':
+                # Use IVT-only data.
+                col_nlvo = col_nlvo.replace('ivt_mt', 'ivt')
+            else:
+                pass
+            cols_nlvo.append(col_nlvo)
+            cols_lvo.append(col_lvo)
+            cols_combo.append(col_combo)
+    # Combine the data:
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_nlvo, cols_lvo, cols_combo, props_list)
+    return df_pdeath
 
 
 # @st.cache_data
@@ -791,9 +858,14 @@ with container_rerun:
             )
         # Now gather P(death):
         df_pdeath = calc.gather_pdeath_from_unique_time_results(
-            df_pdeath, st.session_state['df_mrs_ivt'],
+            df_pdeath.reset_index(), st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'], scenarios,
         )
+        df_pdeath = df_pdeath.set_index('lsoa')
+        # Calculate P(death) for combined groups,
+        # mix of nLVO and LVO and "redirection considered" groups.
+        df_pdeath = calculate_pdeath_for_combo_groups(
+            df_pdeath, scenarios, input_dict)
 
         # Combine outcome and P(death) data:
         cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
