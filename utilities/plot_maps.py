@@ -567,7 +567,11 @@ def plotly_unit_map(
         legend=dict(
             title_text='',
             bordercolor='grey',
-            borderwidth=2
+            borderwidth=2,
+            yanchor='top',
+            y=1.0,
+            xanchor='right',
+            x=1,
         )
     )
 
@@ -582,7 +586,7 @@ def plotly_unit_map(
     fig.update_layout(
         # width=1200,
         height=600,
-        margin_t=25
+        margin_t=25,
         )
 
     # Disable clicking legend to remove trace:
