@@ -206,8 +206,7 @@ def find_total_mrs_for_unique_times(
                         # "time to mt" before this function.
                         df = pd.merge(
                             df, df_mrs_mt[['time_to_mt'] + dist_mt_cols],
-                            left_on=col_mt, right_on='time_to_mt', how='left',
-                            # suffixes=(suffixes[c], None),
+                            left_on=col_mt, right_on='time_to_mt', how='left'
                         )
                         if col_mt != 'time_to_mt':
                             df = df.drop('time_to_mt', axis='columns')
