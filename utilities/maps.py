@@ -405,7 +405,11 @@ def convert_df_to_2darray(df_raster, data_col, transform_dict):
     raster_arr_maj = np.full(
         int(transform_dict['height'] * transform_dict['width']), np.NaN)
     # Update the values of valid pixels:
-    raster_arr_maj[df_raster['i'].values] = df_raster[data_col].values
+    if data_col is None:
+        # This should happen when nLVO + MT is selected.
+        pass
+    else:
+        raster_arr_maj[df_raster['i'].values] = df_raster[data_col].values
     # Reshape into rectangle:
     raster_arr_maj = raster_arr_maj.reshape(
         (int(transform_dict['width']), int(transform_dict['height']))).transpose()

@@ -7,6 +7,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
+from pandas.api.types import is_numeric_dtype
 
 import stroke_maps.load_data
 
@@ -87,10 +88,14 @@ def find_total_mrs_for_unique_times(
         dict_of_dfs,
         lsoa_names,
         treat_type,
-        occ_type,
+        occ_types,
         df_mrs_ivt,
         df_mrs_mt,
         ):
+
+    df_mrs_ivt = df_mrs_ivt.copy()
+    df_mrs_mt = df_mrs_mt.copy()
+
     mrs_lists_dict = {}
     # Limit the dataframes to only these LSOA:
     for key, df in dict_of_dfs.items():
@@ -98,83 +103,108 @@ def find_total_mrs_for_unique_times(
         df = df.loc[df.index.isin(lsoa_names)].copy()
         # Jettison the LSOA names:
         df = df.reset_index().drop('lsoa', axis='columns')
+        # Drop string columns:
+        df = df[df.columns[[is_numeric_dtype(df[c]) for c in df.columns]]]
         # Store the result:
         mrs_lists_dict[key] = df
 
-    if treat_type == 'ivt':
-        # Only look at the IVT columns.
-        # Which mRS dist columns do we want?
-        dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
-                     for i in range(7)]
-        # Merge in these mRS dists:
-        for key, df in mrs_lists_dict.items():
-            # How many admissions are there for each treatment time?
-            df = df[['Admissions', 'time_to_ivt']].groupby('time_to_ivt').sum()
-            # Merge in the mRS dists:
-            df = pd.merge(
-                df.reset_index(),
-                df_mrs_ivt[['time_to_ivt'] + dist_cols],
-                on='time_to_ivt', how='left'
-            )
-            # Store the result:
-            mrs_lists_dict[key] = df
+    dict_dfs_to_store = {}
+    all_dist_cols = []
 
-    elif treat_type == 'mt':
-        # Only look at the MT columns.
-        # Which mRS dist columns do we want?
-        dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
-                     for i in range(7)]
-        # Merge in these mRS dists:
-        for key, df in mrs_lists_dict.items():
-            # How many admissions are there for each treatment time?
-            df = df[['Admissions', 'time_to_mt']].groupby('time_to_mt').sum()
-            # Merge in the mRS dists:
-            df = pd.merge(
-                df.reset_index(),
-                df_mrs_mt[['time_to_mt'] + dist_cols],
-                on='time_to_mt', how='left'
-            )
-            # Store the result:
-            mrs_lists_dict[key] = df
-    else:
-        # Pull in a mix of IVT and MT data.
-        cols_group = ['time_to_mt', 'time_to_ivt', 'lvo_ivt_better_than_mt']
-        # Set up column names:
-        dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
-                     for i in range(7)]
-        dist_mt_cols = [f'{occ_type}_mt_mrs_dists_noncum_{i}'
-                        for i in range(7)]
-        dist_ivt_cols = [f'{occ_type}_ivt_mrs_dists_noncum_{i}'
+    for occ_type in occ_types:
+        if treat_type in ['ivt', 'mt']:
+            # Only look at the IVT columns.
+            df_mrs = df_mrs_ivt if treat_type == 'ivt' else df_mrs_mt
+            # Which mRS dist columns do we want?
+            dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
                          for i in range(7)]
+            if ((treat_type == 'mt') & (occ_type == 'nlvo')):
+                # Use no-treatment data.
+                dist_dict = load_reference_mrs_dists()
+                dist_ref_noncum = dist_dict['nlvo_no_treatment_noncum']
+                df_mrs[dist_cols] = dist_ref_noncum
+            col_time = f'time_to_{treat_type}'
+            # Merge in these mRS dists:
+            for key, df in mrs_lists_dict.items():
+                # How many admissions are there for each treatment time?
+                df = df[['Admissions', col_time]].groupby(col_time).sum()
+                # Merge in the mRS dists:
+                df = pd.merge(
+                    df.reset_index(),
+                    df_mrs[[col_time] + dist_cols],
+                    on=col_time, how='left'
+                )
+                df = df.set_index(col_time)
+                try:
+                    # CAN'T CONCAT - need to make sure the times match properly. AAAAARGJ
+                    dict_dfs_to_store[key] = pd.merge(dict_dfs_to_store[key], df[dist_cols], left_index=True, right_index=True)
+                except KeyError:
+                    dict_dfs_to_store[key] = df
+            # Store the result:
+            all_dist_cols += dist_cols
+        else:
+            # Pull in a mix of IVT and MT data.
+            cols_group = ['time_to_mt', 'time_to_ivt', 'lvo_ivt_better_than_mt']
+            # Set up column names:
+            dist_cols = [f'{occ_type}_{treat_type}_mrs_dists_noncum_{i}'
+                        for i in range(7)]
+            dist_mt_cols = [f'{occ_type}_mt_mrs_dists_noncum_{i}'
+                            for i in range(7)]
+            dist_ivt_cols = [f'{occ_type}_ivt_mrs_dists_noncum_{i}'
+                            for i in range(7)]
 
-        # Merge in these mRS dists:
-        for key, df in mrs_lists_dict.items():
-            # How many patients have each combination of time to treatment
-            # and treatment souce (IVT or MT dist)?
-            df = df.groupby(cols_group).sum().reset_index()
+            # Merge in these mRS dists:
+            for key, df in mrs_lists_dict.items():
+                # How many patients have each combination of time to treatment
+                # and treatment souce (IVT or MT dist)?
+                df = df.groupby(cols_group).sum().reset_index()
 
-            mask_ivt_better = df['lvo_ivt_better_than_mt'] == True
-            # Initially copy over all MT results:
-            df = pd.merge(
-                df, df_mrs_mt[['time_to_mt'] + dist_mt_cols],
-                on='time_to_mt', how='left'
-            )
-            # Rename "mt" to "ivt_mt":
-            df = df.rename(columns=dict(zip(dist_mt_cols, dist_cols)))
-            # Now copy over all IVT results:
-            df = pd.merge(
-                df, df_mrs_ivt[['time_to_ivt'] + dist_ivt_cols],
-                on='time_to_ivt', how='left'
-            )
-            # Update the "ivt_mt" column where IVT is better:
-            df.loc[mask_ivt_better, dist_cols] = df.loc[
-                mask_ivt_better, dist_ivt_cols].values
-            # Now remove the separate IVT columns:
-            df = df.drop(dist_ivt_cols, axis='columns')
+                if occ_type == 'lvo':
+                    mask_ivt_better = df['lvo_ivt_better_than_mt'] == True
+                    # Initially copy over all MT results:
+                    # Note, MUSTER special case for different time to MT
+                    # depending on whether IVT given should already have been
+                    # applied and saved as "time to mt" before this function.
+                    df = pd.merge(
+                        df, df_mrs_mt[['time_to_mt'] + dist_mt_cols],
+                        on='time_to_mt', how='left'
+                    )
+                    # Rename "mt" to "ivt_mt":
+                    df = df.rename(columns=dict(zip(dist_mt_cols, dist_cols)))
+                    # Now copy over all IVT results:
+                    df = pd.merge(
+                        df, df_mrs_ivt[['time_to_ivt'] + dist_ivt_cols],
+                        on='time_to_ivt', how='left'
+                    )
+                    # Update the "ivt_mt" column where IVT is better:
+                    df.loc[mask_ivt_better, dist_cols] = (
+                        df.loc[mask_ivt_better, dist_ivt_cols].values)
+                    # Now remove the separate IVT columns:
+                    df = df.drop(dist_ivt_cols, axis='columns')
+                else:
+                    # nLVO. Just use the IVT data.
+                    # Copy over all IVT results:
+                    df = pd.merge(
+                        df, df_mrs_ivt[['time_to_ivt'] + dist_ivt_cols],
+                        on='time_to_ivt', how='left'
+                    )
+                    # Rename "ivt" to "ivt_mt":
+                    df = df.rename(columns=dict(zip(dist_ivt_cols, dist_cols)))
+
+                df = df.set_index(cols_group)
+                try:
+                    dict_dfs_to_store[key] = pd.merge(dict_dfs_to_store[key], df[dist_cols], left_index=True, right_index=True)
+                except KeyError:
+                    dict_dfs_to_store[key] = df
 
             # Store the result:
-            mrs_lists_dict[key] = df
-    return mrs_lists_dict, dist_cols
+            all_dist_cols += dist_cols
+
+    # # Store the result:
+    # mrs_lists_dict[key] = df
+    for key, df in dict_dfs_to_store.items():
+        dict_dfs_to_store[key] = df.reset_index()
+    return dict_dfs_to_store, all_dist_cols
 
 
 def calculate_average_mrs_dists(df, cols_here):
@@ -200,77 +230,6 @@ def calculate_average_mrs_dists(df, cols_here):
     return means, cumulatives, stds
 
 
-@st.cache_data
-def calculate_average_mrs(
-        occ_type,
-        treat_type,
-        col_region,
-        str_selected_region,
-        col_to_mask_mrs,
-        dict_of_dfs,
-        df_mrs_ivt,
-        df_mrs_mt,
-        input_dict,
-        ):
-    # Store results in here:
-    dict_averaged = dict([(k, {}) for k in ['no_treatment'] + list(dict_of_dfs.keys())])
-
-    # Find reference mRS distributions (no treatment):
-    try:
-        prop_nlvo = input_dict['prop_nlvo']
-        prop_lvo = input_dict['prop_lvo']
-    except KeyError:
-        prop_nlvo = None
-        prop_lvo = None
-    dist_ref_cum, dist_ref_noncum = load_no_treatment_mrs_dists(
-        occ_type, prop_nlvo, prop_lvo)
-    # Store no-treatment data:
-    dict_averaged['no_treatment'] = {
-        'noncum': dist_ref_noncum,
-        'cum': dist_ref_cum,
-        'std':  None
-    }
-
-    # Decide whether to use no-treatment dists or to
-    # fish dists out of the big mRS lists.
-    use_ref_data = False
-    if (occ_type == 'nlvo') & (treat_type == 'mt'):
-        use_ref_data = True
-        # mRS dists don't exist. Use reference data.
-        for key in list(dict_averaged.keys()):
-            dict_averaged[key]['noncum'] = dist_ref_noncum
-            dict_averaged[key]['cum'] = dist_ref_cum
-            dict_averaged[key]['std'] = None
-    elif (occ_type == 'nlvo') & ('mt' in treat_type):
-        # Use IVT data instead of IVT & MT.
-        treat_type = 'ivt'
-
-    if use_ref_data is False:
-        lsoa_names = find_lsoa_names_to_keep(
-            dict_of_dfs['usual_care'],
-            col_to_mask_mrs,
-            col_region,
-            str_selected_region
-            )
-        dict_of_dfs, dist_cols = find_total_mrs_for_unique_times(
-            dict_of_dfs,
-            lsoa_names,
-            treat_type,
-            occ_type,
-            df_mrs_ivt,
-            df_mrs_mt,
-            )
-        for key, df in dict_of_dfs.items():
-            dist_noncum, dist_cum, dist_std = (
-                calculate_average_mrs_dists(df, dist_cols))
-            # Store in results dict:
-            dict_averaged[key]['noncum'] = dist_noncum
-            dict_averaged[key]['cum'] = dist_cum
-            dict_averaged[key]['std'] = dist_std
-
-    return dict_averaged
-
-
 def setup_for_mrs_dist_bars(dict_averaged):
     # Display names for the data:
     display_name_dict = {
@@ -291,8 +250,8 @@ def setup_for_mrs_dist_bars(dict_averaged):
     # #cc79a7  pink
     # #f0e442  yellow
     # #56b4e9  light blue
-    colours = ['grey', '#0072b2', '#56b4e9', '#009e73', '#f0e442']
-    linestyles = [None, 'dash', 'dot', 'dashdot']
+    colours = ['grey', '#0072b2', '#56b4e9', '#009e73', '#cc79a7']
+    linestyles = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot']
     i = 0
 
     format_dicts = {}

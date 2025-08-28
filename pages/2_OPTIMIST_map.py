@@ -1004,73 +1004,33 @@ for key, region_list in region_options_dict.items():
 # to plot doesn't re-run the maps too.
 
 # Pick out useful bits from the full outcome results:
-cols_to_copy = [
-    'Admissions',
-    'usual_care_ivt',
-    'usual_care_mt',
-    'usual_care_lvo_ivt_better_than_mt',
-    'nearest_ivt_unit_name'
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy.append(col_to_mask_mrs)
-df_mrs_usual_care = st.session_state['df_lsoa'][cols_to_copy].copy()
-df_mrs_usual_care = df_mrs_usual_care.rename(columns={
-    'usual_care_ivt': 'time_to_ivt',
-    'usual_care_mt': 'time_to_mt',
-    'usual_care_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
+scenarios = ['usual_care', 'redirection_rejected', 'redirection_approved']
+all_mrs_scenarios = scenarios + ['redirection_considered']
+dict_of_dfs = {}
+for s in scenarios:
+    cols_to_copy = [
+        'Admissions',
+        f'{s}_ivt',
+        f'{s}_mt',
+        f'{s}_lvo_ivt_better_than_mt',
+        'nearest_ivt_unit_name'
+        ]
+    if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
+        cols_to_copy.append(col_to_mask_mrs)
 
-cols_to_copy_redirect_reject = [
-    'Admissions',
-    'redirection_rejected_ivt',
-    'redirection_rejected_mt',
-    'redirection_rejected_lvo_ivt_better_than_mt',
-    'nearest_ivt_unit_name'
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy_redirect_reject.append(col_to_mask_mrs)
-df_mrs_redirect_reject = st.session_state['df_lsoa'][cols_to_copy_redirect_reject].copy()
-df_mrs_redirect_reject = df_mrs_redirect_reject.rename(columns={
-    'redirection_rejected_ivt': 'time_to_ivt',
-    'redirection_rejected_mt': 'time_to_mt',
-    'redirection_rejected_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
-
-cols_to_copy_redirect_approve = [
-    'Admissions',
-    'redirection_approved_ivt',
-    'redirection_approved_mt',
-    'redirection_approved_lvo_ivt_better_than_mt',
-    'nearest_ivt_unit_name'
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy_redirect_approve.append(col_to_mask_mrs)
-df_mrs_redirect_approve = st.session_state['df_lsoa'][cols_to_copy_redirect_approve].copy()
-df_mrs_redirect_approve = df_mrs_redirect_approve.rename(columns={
-    'redirection_approved_ivt': 'time_to_ivt',
-    'redirection_approved_mt': 'time_to_mt',
-    'redirection_approved_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
-
-# Merge in region info:
-df_mrs_usual_care = pd.merge(
-    df_mrs_usual_care.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-df_mrs_redirect_reject = pd.merge(
-    df_mrs_redirect_reject.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-df_mrs_redirect_approve = pd.merge(
-    df_mrs_redirect_approve.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-
-dict_of_dfs = {
-    'usual_care': df_mrs_usual_care,
-    'redirection_rejected': df_mrs_redirect_reject,
-    'redirection_approved': df_mrs_redirect_approve
-    }
+    df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
+    df_mrs_s = df_mrs_s.rename(columns={
+        f'{s}_ivt': 'time_to_ivt',
+        f'{s}_mt': 'time_to_mt',
+        f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
+    })
+    # Merge in region info:
+    df_mrs_s = pd.merge(
+        df_mrs_s.reset_index(), df_lsoa_regions,
+        on='lsoa', how='left'
+        ).set_index('lsoa')
+    # Store result:
+    dict_of_dfs[s] = df_mrs_s.copy()
 
 
 @st.fragment
@@ -1095,32 +1055,113 @@ def display_mrs_dists():
     #         st.stop()
     # else:
 
+    # Find reference mRS distributions (no treatment).
+    # If occ_type is nLVO or LVO, this returns the normal dists.
+    # Otherwise it returns a scaled sum of the nLVO and LVO dists.
+    dist_ref_cum, dist_ref_noncum = mrs.load_no_treatment_mrs_dists(
+        stroke_type, input_dict['prop_nlvo'], input_dict['prop_nlvo'])
+    # Store no-treatment data:
+    dict_no_treatment = {
+        'noncum': dist_ref_noncum,
+        'cum': dist_ref_cum,
+        'std': None
+    }
+
+    # Store results in here:
+    keys = ['no_treatment'] + all_mrs_scenarios
+
+    # Decide whether to use no-treatment dists or to
+    # fish dists out of the big mRS lists.
+    use_ref_data = (True if
+                    ((stroke_type == 'nlvo') & (treatment_type == 'mt'))
+                    else False)
+    # Use nLVO IVT data instead of nLVO IVT & MT.
+    # (Getting UnboundLocalError if attempting this while changing
+    # value of treatment_type)
+    # if ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
+    #     treat_type = 'ivt'
+    # else:
+    treat_type = treatment_type
+    # Calculate mRS for both nLVO and LVO so that we can find the mRS
+    # for "redirection considered" and for combo nLVO+LVO group.
+    stroke_types = ['nlvo', 'lvo']
+
+    mrs_dfs_dict = {}
+    if use_ref_data:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key in keys:
+            mrs_lists_dict[key] = dict_no_treatment
+    else:
+        for key in all_mrs_scenarios:
+            mrs_dfs_dict[key] = {}
+        lsoa_names = mrs.find_lsoa_names_to_keep(
+            dict_of_dfs['usual_care'],
+            col_to_mask_mrs,
+            col_region,
+            region_selected
+            )
+        mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
+            dict_of_dfs,
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            )
+
+        # Calculate "redirection considered":
+        nlvo_cols = [c for c in dist_cols if 'nlvo' in c]
+        lvo_cols = [c for c in dist_cols if (('lvo' in c) & ('nlvo' not in c))]
+        if stroke_type == 'nlvo':
+            dist_cols = nlvo_cols
+        elif stroke_type == 'lvo':
+            dist_cols = lvo_cols
+        else:
+            pass
+        # nLVO:
+        prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+        props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+        df_rc_nlvo = mrs_dfs_dict['redirection_approved'].copy()
+        df_rc_nlvo = df_rc_nlvo.drop(lvo_cols, axis='columns')
+        df_rc_nlvo[nlvo_cols] = (
+            mrs_dfs_dict['redirection_rejected'][nlvo_cols] * props_list[0] +
+            mrs_dfs_dict['redirection_approved'][nlvo_cols] * props_list[1]
+        )
+        # LVO:
+        prop_lvo_redirected = input_dict['sensitivity']
+        props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+        df_rc_lvo = mrs_dfs_dict['redirection_approved'].copy()
+        df_rc_lvo[lvo_cols] = (
+            mrs_dfs_dict['redirection_rejected'][lvo_cols] * props_list[0] +
+            mrs_dfs_dict['redirection_approved'][lvo_cols] * props_list[1]
+        )
+        # Combine:
+        mrs_dfs_dict['redirection_considered'] = pd.concat(
+            (df_rc_nlvo, df_rc_lvo[lvo_cols]), axis='columns')
+
+        # Average these mRS dists:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key, df in mrs_dfs_dict.items():
+            dist_noncum, dist_cum, dist_std = (
+                mrs.calculate_average_mrs_dists(df, dist_cols))
+            # Store in results dict:
+            mrs_lists_dict[key] = {}
+            mrs_lists_dict[key]['noncum'] = dist_noncum
+            mrs_lists_dict[key]['cum'] = dist_cum
+            mrs_lists_dict[key]['std'] = dist_std
+
+    mrs_format_dicts = (
+        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
+
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
         f'{stroke_type_str}, ',
         f'{treatment_type_str}'
         ])
-
-    mrs_lists_dict = mrs.calculate_average_mrs(
-        stroke_type,
-        treatment_type,
-        col_region,
-        region_selected,
-        col_to_mask_mrs,
-        # Setup for mRS dists:
-        dict_of_dfs,
-        # The actual mRS dists:
-        st.session_state['df_mrs_ivt'],
-        st.session_state['df_mrs_mt'],
-        input_dict
-        )
-
-    mrs_format_dicts = (
-        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
-
     st.session_state['fig_mrs'] = mrs.plot_mrs_bars(
         mrs_format_dicts, title_text=f'{region_selected}<br>{col_pretty}')
-
 
     with container_bars:
         # Options for the mode bar.

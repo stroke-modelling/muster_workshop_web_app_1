@@ -912,19 +912,94 @@ def display_mrs_dists():
         f'{treatment_type_str}'
         ])
 
-    mrs_lists_dict = mrs.calculate_average_mrs(
-        stroke_type,
-        treatment_type,
-        col_region,
-        region_selected,
-        col_to_mask_mrs,
-        # Setup for mRS dists:
-        dict_of_dfs,
-        # The actual mRS dists:
-        st.session_state['df_mrs_ivt'],
-        st.session_state['df_mrs_mt'],
-        input_dict
-        )
+    # mrs_lists_dict = mrs.calculate_average_mrs(
+    #     stroke_type,
+    #     treatment_type,
+    #     col_region,
+    #     region_selected,
+    #     col_to_mask_mrs,
+    #     # Setup for mRS dists:
+    #     dict_of_dfs,
+    #     # The actual mRS dists:
+    #     st.session_state['df_mrs_ivt'],
+    #     st.session_state['df_mrs_mt'],
+    #     input_dict
+    #     )
+
+    # Find reference mRS distributions (no treatment).
+    # If occ_type is nLVO or LVO, this returns the normal dists.
+    # Otherwise it returns a scaled sum of the nLVO and LVO dists.
+    dist_ref_cum, dist_ref_noncum = mrs.load_no_treatment_mrs_dists(
+        stroke_type)
+    # Store no-treatment data:
+    dict_no_treatment = {
+        'noncum': dist_ref_noncum,
+        'cum': dist_ref_cum,
+        'std': None
+    }
+
+    # Store results in here:
+    keys = ['no_treatment'] + scenario_mrs
+
+    # Decide whether to use no-treatment dists or to
+    # fish dists out of the big mRS lists.
+    use_ref_data = (True if
+                    ((stroke_type == 'nlvo') & (treatment_type == 'mt'))
+                    else False)
+    # Use nLVO IVT data instead of nLVO IVT & MT.
+    # (Getting UnboundLocalError if attempting this while changing
+    # value of treatment_type)
+    # if ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
+    #     treat_type = 'ivt'
+    # else:
+    treat_type = treatment_type
+    # Calculate mRS for both nLVO and LVO so that we can find the mRS
+    # for "redirection considered" and for combo nLVO+LVO group.
+    stroke_types = ['nlvo', 'lvo']
+
+    mrs_dfs_dict = {}
+    if use_ref_data:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key in keys:
+            mrs_lists_dict[key] = dict_no_treatment
+    else:
+        for key in scenario_mrs:
+            mrs_dfs_dict[key] = {}
+        lsoa_names = mrs.find_lsoa_names_to_keep(
+            dict_of_dfs['usual_care'],
+            col_to_mask_mrs,
+            col_region,
+            region_selected
+            )
+        mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
+            dict_of_dfs,
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            )
+
+        if stroke_type == 'nlvo':
+            dist_cols = [c for c in dist_cols if 'nlvo' in c]
+        elif stroke_type == 'lvo':
+            dist_cols = [c for c in dist_cols if
+                         (('lvo' in c) & ('nlvo' not in c))]
+        else:
+            pass
+
+        # Average these mRS dists:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key, df in mrs_dfs_dict.items():
+            dist_noncum, dist_cum, dist_std = (
+                mrs.calculate_average_mrs_dists(df, dist_cols))
+            # Store in results dict:
+            mrs_lists_dict[key] = {}
+            mrs_lists_dict[key]['noncum'] = dist_noncum
+            mrs_lists_dict[key]['cum'] = dist_cum
+            mrs_lists_dict[key]['std'] = dist_std
 
     mrs_format_dicts = (
         mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
