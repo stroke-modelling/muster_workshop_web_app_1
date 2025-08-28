@@ -981,6 +981,7 @@ def display_mrs_dists():
             st.session_state['df_mrs_mt'],
             )
 
+        # Pick out which columns should be displayed:
         if stroke_type == 'nlvo':
             dist_cols = [c for c in dist_cols if 'nlvo' in c]
         elif stroke_type == 'lvo':

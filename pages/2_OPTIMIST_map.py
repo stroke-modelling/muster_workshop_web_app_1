@@ -625,7 +625,7 @@ with container_input_treatment:
     treatment_type, treatment_type_str = inputs.select_treatment_type()
 with container_input_stroke_type:
     stroke_type, stroke_type_str = (
-        inputs.select_stroke_type(use_combo_stroke_types=False))
+        inputs.select_stroke_type(use_combo_stroke_types=True))
 
 
 # ----- Regions to draw -----
@@ -1031,6 +1031,36 @@ for s in scenarios:
         ).set_index('lsoa')
     # Store result:
     dict_of_dfs[s] = df_mrs_s.copy()
+# For redirection considered, need to account for every combo
+# of time to treatment when redir approved and when redir
+# rejected.
+cols_to_copy = [
+    'Admissions',
+    'nearest_ivt_unit_name'
+    ]
+for s in ['redirection_rejected', 'redirection_approved']:
+    cols_to_copy += [
+        f'{s}_ivt',
+        f'{s}_mt',
+        f'{s}_lvo_ivt_better_than_mt',
+    ]
+if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
+    cols_to_copy.append(col_to_mask_mrs)
+
+df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
+for s in ['redirection_rejected', 'redirection_approved']:
+    df_mrs_s = df_mrs_s.rename(columns={
+        f'{s}_ivt': f'{s}_time_to_ivt',
+        f'{s}_mt': f'{s}_time_to_mt',
+        # f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
+    })
+# Merge in region info:
+df_mrs_s = pd.merge(
+    df_mrs_s.reset_index(), df_lsoa_regions,
+    on='lsoa', how='left'
+    ).set_index('lsoa')
+# Store result:
+dict_of_dfs['redirection_considered'] = df_mrs_s.copy()
 
 
 @st.fragment
@@ -1102,43 +1132,70 @@ def display_mrs_dists():
             region_selected
             )
         mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
-            dict_of_dfs,
+            dict([(k, dict_of_dfs[k]) for k in scenarios]),
             lsoa_names,
             treat_type,
             stroke_types,
             st.session_state['df_mrs_ivt'],
             st.session_state['df_mrs_mt'],
             )
+        dfs_dict_rc, dist_cols_rc = mrs.find_total_mrs_for_unique_times(
+            dict([(k, dict_of_dfs[k]) for k in ['redirection_considered']]),
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            multi_scens=['redirection_rejected', 'redirection_approved']
+            )
+
+        df = dfs_dict_rc['redirection_considered']
+        dist_cols_to_combine = [c for c in df.columns if 'mrs' in c]
+        dist_cols_to_combine = sorted(list(set(
+            [d.replace('_redirection_rejected', '').replace('_redirection_approved', '')
+             for d in dist_cols_to_combine
+             ])))
+
+        for d in dist_cols_to_combine:
+            if 'nlvo' in d:
+                prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+                props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+            else:
+                prop_lvo_redirected = input_dict['sensitivity']
+                props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+
+            col_rr = f'{d}_redirection_rejected'
+            col_ra = f'{d}_redirection_approved'
+            df[d] = (
+                df[col_rr].values * props_list[0] +
+                df[col_ra].values * props_list[1]
+            )
+            df = df.drop([col_rr, col_ra], axis='columns')
+        dfs_dict_rc['redirection_considered'] = df
+
+        mrs_dfs_dict['redirection_considered'] = dfs_dict_rc['redirection_considered']
 
         # Calculate "redirection considered":
         nlvo_cols = [c for c in dist_cols if 'nlvo' in c]
         lvo_cols = [c for c in dist_cols if (('lvo' in c) & ('nlvo' not in c))]
+
+        if stroke_type not in ['nlvo', 'lvo']:
+            # Calculate combined nLVO + LVO data:
+            combo_cols = [c.replace('lvo', 'combo') for c in lvo_cols]
+            for key, df in mrs_dfs_dict.items():
+                df[combo_cols] = (
+                    (df[nlvo_cols] * input_dict['prop_nlvo']).values +
+                    (df[lvo_cols] * input_dict['prop_lvo']).values
+                )
+                mrs_dfs_dict[key] = df
+
+        # Pick out which columns should be displayed:
         if stroke_type == 'nlvo':
             dist_cols = nlvo_cols
         elif stroke_type == 'lvo':
             dist_cols = lvo_cols
         else:
-            pass
-        # nLVO:
-        prop_nlvo_redirected = (1.0 - input_dict['specificity'])
-        props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
-        df_rc_nlvo = mrs_dfs_dict['redirection_approved'].copy()
-        df_rc_nlvo = df_rc_nlvo.drop(lvo_cols, axis='columns')
-        df_rc_nlvo[nlvo_cols] = (
-            mrs_dfs_dict['redirection_rejected'][nlvo_cols] * props_list[0] +
-            mrs_dfs_dict['redirection_approved'][nlvo_cols] * props_list[1]
-        )
-        # LVO:
-        prop_lvo_redirected = input_dict['sensitivity']
-        props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
-        df_rc_lvo = mrs_dfs_dict['redirection_approved'].copy()
-        df_rc_lvo[lvo_cols] = (
-            mrs_dfs_dict['redirection_rejected'][lvo_cols] * props_list[0] +
-            mrs_dfs_dict['redirection_approved'][lvo_cols] * props_list[1]
-        )
-        # Combine:
-        mrs_dfs_dict['redirection_considered'] = pd.concat(
-            (df_rc_nlvo, df_rc_lvo[lvo_cols]), axis='columns')
+            dist_cols = combo_cols
 
         # Average these mRS dists:
         mrs_lists_dict = {}
