@@ -1288,7 +1288,7 @@ else:
         gdf_catchment_lhs,
         gdf_catchment_rhs,
         gdf_catchment_pop,
-    ) = calc.load_or_calculate_region_outlines(outline_name, st.session_state['df_lsoa'], use_msu=False)
+    ) = calc.load_or_calculate_region_outlines(outline_name, st.session_state['df_lsoa'])
 
 
 # ----- Process geography for plotting -----
