@@ -10,7 +10,6 @@ done in functions stored in files named container_(something).py
 # ----- Imports -----
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 # Custom functions:
 import utilities.calculations as calc
@@ -20,6 +19,7 @@ import utilities.plot_mrs_dists as mrs
 import utilities.colour_setup as colour_setup
 import utilities.inputs as inputs
 import utilities.plot_timeline as timeline
+from utilities.utils import load_reference_mrs_dists
 
 
 # @st.cache_data
@@ -64,16 +64,10 @@ def main_calculations(df_times):
     # Find the complete set of times to IVT and times to MT.
     # Don't need the combinations of IVT and MT times yet.
     # Find set of treatment times:
-    cols_ivt = [
-        'usual_care_ivt',
-        'redirection_approved_ivt',
-        'redirection_rejected_ivt'
-        ]
-    cols_mt = [
-        'usual_care_mt',
-        'redirection_approved_mt',
-        'redirection_rejected_mt'
-        ]
+    scenarios = ['usual_care', 'redirection_approved', 'redirection_rejected']
+    cols_ivt = [f'{s}_ivt' for s in scenarios]
+    cols_mt = [f'{s}_mt' for s in scenarios]
+
     times_to_ivt = sorted(list(set(df_times[cols_ivt].values.flatten())))
     times_to_mt = sorted(list(set(df_times[cols_mt].values.flatten())))
 
@@ -81,8 +75,10 @@ def main_calculations(df_times):
     # Run the outcome model for only the unique treatment times
     # instead of one row per LSOA.
     # Run results for IVT and for MT separately.
-    outcomes_by_stroke_type_ivt_only, outcomes_by_stroke_type_mt_only = (
-        calc.run_outcome_model_for_unique_times(times_to_ivt, times_to_mt))
+    outcomes_by_stroke_type_ivt_only = (
+        calc.run_outcome_model_for_unique_times_ivt(times_to_ivt))
+    outcomes_by_stroke_type_mt_only = (
+        calc.run_outcome_model_for_unique_times_mt(times_to_mt))
 
     # Convert these results dictionaries into dataframes:
     df_outcomes_ivt, df_outcomes_mt = (
@@ -110,141 +106,168 @@ def main_calculations(df_times):
 
 
 # @st.cache_data
-def gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            df_lsoa_regions,
-            input_dict
-            ):
-    df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results_optimist(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-    )
+def calculate_outcomes_for_combo_groups(
+        df_lsoa,
+        input_dict
+        ):
 
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
+    # Make a new dummy zero column available:
+    col_zero = 'zero'
+    df_lsoa[col_zero] = 0.0
 
     # Extra calculations for redirection:
     # Combine redirection rejected and approved results in
     # proportions given by specificity and sensitivity.
     # This creates columns labelled "redirection_considered".
-    redirect_dict = {
-        'sensitivity': input_dict['sensitivity'],
-        'specificity': input_dict['specificity'],
-    }
-    df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
-
-    # Make combined nLVO + LVO data in the proportions given:
-    # Combine for "usual care":
-    prop_dict = {
-        'nlvo': input_dict['prop_nlvo'],
-        'lvo': input_dict['prop_lvo']
-    }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['usual_care'])
-    # Combine for redirection considered:
-    # prop_dict = {
-    #     'nlvo': input_dict['prop_redirection_considered_nlvo'],
-    #     'lvo': input_dict['prop_redirection_considered_lvo']
-    # }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['redirection_considered'])
-    # Don't calculate the separate redirection approved/rejected bits.
-
-    # Calculate diff - redirect minus usual care:
-    df_lsoa = calc.combine_results_by_diff(
-        df_lsoa,
-        scenario_types=['redirection_considered', 'usual_care']
+    # nLVO:
+    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
+        scenario_list=['redirection_rejected', 'redirection_approved'],
+        combo_name='redirection_considered',
+        treatment_list=['ivt'],
+        occlusion_list=['nlvo'],
+        dummy_col=col_zero
         )
-
-    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
-        df_unit_services,
-        df_lsoa_regions
+    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
+        df_lsoa, cols_rr, cols_ra, cols_rc)
+    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
+    # LVO:
+    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
+        scenario_list=['redirection_rejected', 'redirection_approved'],
+        combo_name='redirection_considered',
+        occlusion_list=['lvo'],
+        dummy_col=col_zero
         )
+    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
+        df_lsoa, cols_rr, cols_ra, cols_rc)
+    prop_lvo_redirected = input_dict['sensitivity']
+    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
 
-    return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
+    # # Make combined nLVO + LVO data in the proportions given.
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    # # Don't calculate the separate redirection approved/rejected bits.
+    # Usual care:
+    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
+        calc.build_columns_combine_occlusions(
+            scenario_list=['usual_care'], dummy_col=col_zero))
+    # Keep a copy of these for later:
+    cols_usual = [cols_nlvo_usual, cols_lvo_usual, cols_combo_usual]
+    # Only keep existing columns:
+    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
+        calc.keep_existing_cols(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
+                                cols_combo_usual))
+    # Make the new data:
+    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
+                                   cols_combo_usual, props_list)
+
+    # Redirection:
+    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
+        calc.build_columns_combine_occlusions(
+            scenario_list=['redirection_considered'], dummy_col=col_zero))
+    # Keep a copy of these for later:
+    cols_redir = [cols_nlvo_redir, cols_lvo_redir, cols_combo_redir]
+    # Only keep existing columns:
+    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
+        calc.keep_existing_cols(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
+                                cols_combo_redir))
+    # Make the new data:
+    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
+                                   cols_combo_redir, props_list)
+    # Remove the dummy column now it's no longer needed:
+    df_lsoa = df_lsoa.drop(col_zero, axis='columns')
+
+    # Calculate diff: redirect minus usual care:
+    # Combine the three lists into one long list and remove repeats:
+    cols_usual = sum([sorted(list(set(c))) for c in cols_usual], [])
+    cols_redir = sum([sorted(list(set(c))) for c in cols_redir], [])
+    # Only keep useful columns that exist in the data:
+    cols_usual = [c for c in cols_usual if
+                  ((c != col_zero) & (c in df_lsoa.columns))]
+    cols_redir = [c for c in cols_redir if
+                  ((c != col_zero) & (c in df_lsoa.columns))]
+    # Make matching columns for the difference names:
+    diff_str = 'diff_redirection_considered_minus_usual_care'
+    cols_diff = [c.replace('usual_care', diff_str) for c in cols_usual]
+    # Make new data:
+    props_list = [1.0, -1.0]
+    df_lsoa = calc.combine_results(
+        df_lsoa, cols_redir, cols_usual, cols_diff, props_list)
+
+    return df_lsoa
 
 
-@st.cache_data
-def old_main_calculations(input_dict, df_unit_services):
-    # Times to treatment:
-    df_travel_times = calc.calculate_geography(df_unit_services).copy()
-    df_travel_times = df_travel_times.set_index('LSOA')
+def calculate_pdeath_for_combo_groups(
+        df_pdeath, scenarios, input_dict,
+        treatment_types=['ivt', 'mt', 'ivt_mt']
+        ):
+    """
+    f'{s}_probdeath_nlvo_ivt',
+    f'{s}_probdeath_lvo_ivt',
+    f'{s}_probdeath_lvo_mt',
+    f'{s}_probdeath_lvo_ivt_mt',
+    """
 
-    # Add travel times to the pathway timings to get treatment times.
-    df_outcome_uc = calc.make_outcome_inputs_usual_care(
-        input_dict, df_travel_times)
-    df_outcome_ra = calc.make_outcome_inputs_redirection_approved(
-        input_dict, df_travel_times)
-    df_outcome_rr = calc.make_outcome_inputs_redirection_rejected(
-        input_dict, df_travel_times)
-    dict_outcome_inputs = {
-        'usual_care': df_outcome_uc,
-        'redirection_approved': df_outcome_ra,
-        'redirection_rejected': df_outcome_rr,
-    }
+    # Make "redirection considered" group.
+    # For nLVO with IVT:
+    cols_rr = ['redirection_rejected_probdeath_nlvo_ivt']
+    cols_ra = ['redirection_approved_probdeath_nlvo_ivt']
+    cols_rc = ['redirection_considered_probdeath_nlvo_ivt']
+    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
+    # For LVO groups:
+    cols_rr = [f'redirection_rejected_probdeath_lvo_{t}'
+               for t in treatment_types]
+    cols_ra = [f'redirection_approved_probdeath_lvo_{t}'
+               for t in treatment_types]
+    cols_rc = [f'redirection_considered_probdeath_lvo_{t}'
+               for t in treatment_types]
+    prop_lvo_redirected = input_dict['sensitivity']
+    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
 
-    # Process LSOA and calculate outcomes:
-    df_lsoa, df_mrs = calc.calculate_outcomes(
-        dict_outcome_inputs, df_unit_services, df_travel_times)
-
-    # Extra calculations for redirection:
-    # Combine redirection rejected and approved results in
-    # proportions given by specificity and sensitivity.
-    # This creates columns labelled "redirection_considered".
-    redirect_dict = {
-        'sensitivity': input_dict['sensitivity'],
-        'specificity': input_dict['specificity'],
-    }
-    df_lsoa = calc.combine_results_by_redirection(df_lsoa, redirect_dict)
-    df_mrs = calc.combine_results_by_redirection(
-        df_mrs, redirect_dict, combine_mrs_dists=True)
-
-    # Make combined nLVO + LVO data in the proportions given:
-    # Combine for "usual care":
-    prop_dict = {
-        'nlvo': input_dict['prop_nlvo'],
-        'lvo': input_dict['prop_lvo']
-    }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['usual_care'])
-    df_mrs = calc.combine_results_by_occlusion_type(
-        df_mrs, prop_dict, combine_mrs_dists=True,
-        scenario_list=['usual_care'])
-    # Combine for redirection considered:
-    # prop_dict = {
-    #     'nlvo': input_dict['prop_redirection_considered_nlvo'],
-    #     'lvo': input_dict['prop_redirection_considered_lvo']
-    # }
-    df_lsoa = calc.combine_results_by_occlusion_type(
-        df_lsoa, prop_dict, scenario_list=['redirection_considered'])
-    df_mrs = calc.combine_results_by_occlusion_type(
-        df_mrs, prop_dict, combine_mrs_dists=True,
-        scenario_list=['redirection_considered'])
-    # Don't calculate the separate redirection approved/rejected bits.
-
-    # Calculate diff - redirect minus usual care:
-    df_lsoa = calc.combine_results_by_diff(
-        df_lsoa,
-        scenario_types=['redirection_considered', 'usual_care']
-        )
-    df_mrs = calc.combine_results_by_diff(
-        df_mrs,
-        scenario_types=['redirection_considered', 'usual_care'],
-        combine_mrs_dists=True
-        )
-
-    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa, df_unit_services)
-
-    return df_lsoa, df_mrs, df_icb, df_isdn, df_nearest_ivt, df_ambo
+    # Combine nLVO and LVO groups.
+    # Set up data for no treatment:
+    dist_dict = load_reference_mrs_dists()
+    df_pdeath['probdeath_nlvo_no_treatment'] = (
+        dist_dict['nlvo_no_treatment_noncum'][-1])
+    # Gather the column names here:
+    cols_nlvo = []
+    cols_lvo = []
+    cols_combo = []
+    for s in scenarios + ['redirection_considered']:
+        for t in treatment_types:
+            # Set up existing column names.
+            col_nlvo = f'{s}_probdeath_nlvo_{t}'
+            col_lvo = col_nlvo.replace('nlvo', 'lvo')
+            # New column name:
+            col_combo = col_nlvo.replace('nlvo', 'combo')
+            # Change nLVO column for special cases where the treatment
+            # option is invalid:
+            if t == 'mt':
+                # Use no-treatment data.
+                col_nlvo = 'probdeath_nlvo_no_treatment'
+            elif t == 'ivt_mt':
+                # Use IVT-only data.
+                col_nlvo = col_nlvo.replace('ivt_mt', 'ivt')
+            else:
+                pass
+            cols_nlvo.append(col_nlvo)
+            cols_lvo.append(col_lvo)
+            cols_combo.append(col_combo)
+    # Combine the data:
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_nlvo, cols_lvo, cols_combo, props_list)
+    return df_pdeath
 
 
 # ###########################
@@ -485,7 +508,7 @@ treatment_times_with_prehospdiag = (
     calc.calculate_times_to_treatment_without_travel_prehospdiag(input_dict))
 # Combine these:
 treatment_times_without_travel = (
-    treatment_times_without_travel | treatment_times_with_prehospdiag 
+    treatment_times_without_travel | treatment_times_with_prehospdiag
     )
 
 # These do not change the underlying data,
@@ -499,7 +522,7 @@ with container_input_treatment:
     treatment_type, treatment_type_str = inputs.select_treatment_type()
 with container_input_stroke_type:
     stroke_type, stroke_type_str = (
-        inputs.select_stroke_type(use_combo_stroke_types=False))
+        inputs.select_stroke_type(use_combo_stroke_types=True))
 
 
 # ----- Regions to draw -----
@@ -708,20 +731,58 @@ with container_rerun:
             st.session_state['df_mrs_mt'],
         ) = main_calculations(df_times)
 
-        (
+        scenarios = [
+            'usual_care', 'redirection_rejected', 'redirection_approved']
+        st.session_state['df_lsoa'] = (
+            calc.build_full_lsoa_outcomes_from_unique_time_results(
+                df_times, df_outcomes_ivt, df_outcomes_mt, scenarios)
+        )
+
+        # Calculate outcomes:
+        st.session_state['df_lsoa'] = calculate_outcomes_for_combo_groups(
             st.session_state['df_lsoa'],
+            input_dict
+            )
+
+        # Calculate probabilities of death.
+        # Pick out the masks where IVT is better than MT:
+        cols_ivt_better = [f'{s}_lvo_ivt_better_than_mt' for s in scenarios]
+        # Place these masks in the travel time data:
+        df_pdeath = pd.merge(
+            df_times.copy().reset_index().rename(
+                columns={'LSOA': 'lsoa'}).set_index('lsoa'),
+            st.session_state['df_lsoa'][cols_ivt_better],
+            left_index=True, right_index=True, how='left'
+            )
+        # Now gather P(death):
+        df_pdeath = calc.gather_pdeath_from_unique_time_results(
+            df_pdeath.reset_index(), st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'], scenarios,
+        )
+        df_pdeath = df_pdeath.set_index('lsoa')
+        # Calculate P(death) for combined groups,
+        # mix of nLVO and LVO and "redirection considered" groups.
+        df_pdeath = calculate_pdeath_for_combo_groups(
+            df_pdeath, scenarios, input_dict)
+
+        # Combine outcome and P(death) data:
+        cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
+        st.session_state['df_lsoa'] = pd.merge(
+            st.session_state['df_lsoa'], df_pdeath[cols_pdeath],
+            left_index=True, right_index=True, how='left'
+        )
+
+        # Gather outcomes and P(death) into regions:
+        (
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-            df_lsoa_regions,
-            input_dict
+        ) = calc.group_results_by_region(
+            st.session_state['df_lsoa'].reset_index().rename(
+                columns={'LSOA': 'lsoa'}),
+            df_unit_services,
+            df_lsoa_regions
             )
 
         new_results_run = True
@@ -764,7 +825,7 @@ else:
 with container_results_tables:
     table_choice = st.selectbox(
         'Display the following results table:',
-        options = [
+        options=[
             'Results by IVT unit catchment',
             'Results by ISDN',
             'Results by ICB',
@@ -842,73 +903,63 @@ for key, region_list in region_options_dict.items():
 # to plot doesn't re-run the maps too.
 
 # Pick out useful bits from the full outcome results:
+scenarios = ['usual_care', 'redirection_rejected', 'redirection_approved']
+all_mrs_scenarios = scenarios + ['redirection_considered']
+dict_of_dfs = {}
+for s in scenarios:
+    cols_to_copy = [
+        'Admissions',
+        f'{s}_ivt',
+        f'{s}_mt',
+        f'{s}_lvo_ivt_better_than_mt',
+        'nearest_ivt_unit_name'
+        ]
+    if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
+        cols_to_copy.append(col_to_mask_mrs)
+
+    df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
+    df_mrs_s = df_mrs_s.rename(columns={
+        f'{s}_ivt': 'time_to_ivt',
+        f'{s}_mt': 'time_to_mt',
+        f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
+    })
+    # Merge in region info:
+    df_mrs_s = pd.merge(
+        df_mrs_s.reset_index(), df_lsoa_regions,
+        on='lsoa', how='left'
+        ).set_index('lsoa')
+    # Store result:
+    dict_of_dfs[s] = df_mrs_s.copy()
+# For redirection considered, need to account for every combo
+# of time to treatment when redir approved and when redir
+# rejected.
 cols_to_copy = [
     'Admissions',
-    'usual_care_ivt',
-    'usual_care_mt',
-    'usual_care_lvo_ivt_better_than_mt',
     'nearest_ivt_unit_name'
+    ]
+for s in ['redirection_rejected', 'redirection_approved']:
+    cols_to_copy += [
+        f'{s}_ivt',
+        f'{s}_mt',
+        f'{s}_lvo_ivt_better_than_mt',
     ]
 if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
     cols_to_copy.append(col_to_mask_mrs)
-df_mrs_usual_care = st.session_state['df_lsoa'][cols_to_copy].copy()
-df_mrs_usual_care = df_mrs_usual_care.rename(columns={
-    'usual_care_ivt': 'time_to_ivt',
-    'usual_care_mt': 'time_to_mt',
-    'usual_care_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
 
-cols_to_copy_redirect_reject = [
-    'Admissions',
-    'redirection_rejected_ivt',
-    'redirection_rejected_mt',
-    'redirection_rejected_lvo_ivt_better_than_mt',
-    'nearest_ivt_unit_name'
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy_redirect_reject.append(col_to_mask_mrs)
-df_mrs_redirect_reject = st.session_state['df_lsoa'][cols_to_copy_redirect_reject].copy()
-df_mrs_redirect_reject = df_mrs_redirect_reject.rename(columns={
-    'redirection_rejected_ivt': 'time_to_ivt',
-    'redirection_rejected_mt': 'time_to_mt',
-    'redirection_rejected_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
-
-cols_to_copy_redirect_approve = [
-    'Admissions',
-    'redirection_approved_ivt',
-    'redirection_approved_mt',
-    'redirection_approved_lvo_ivt_better_than_mt',
-    'nearest_ivt_unit_name'
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy_redirect_approve.append(col_to_mask_mrs)
-df_mrs_redirect_approve = st.session_state['df_lsoa'][cols_to_copy_redirect_approve].copy()
-df_mrs_redirect_approve = df_mrs_redirect_approve.rename(columns={
-    'redirection_approved_ivt': 'time_to_ivt',
-    'redirection_approved_mt': 'time_to_mt',
-    'redirection_approved_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-})
-
+df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
+for s in ['redirection_rejected', 'redirection_approved']:
+    df_mrs_s = df_mrs_s.rename(columns={
+        f'{s}_ivt': f'{s}_time_to_ivt',
+        f'{s}_mt': f'{s}_time_to_mt',
+        # f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
+    })
 # Merge in region info:
-df_mrs_usual_care = pd.merge(
-    df_mrs_usual_care.reset_index(), df_lsoa_regions,
+df_mrs_s = pd.merge(
+    df_mrs_s.reset_index(), df_lsoa_regions,
     on='lsoa', how='left'
     ).set_index('lsoa')
-df_mrs_redirect_reject = pd.merge(
-    df_mrs_redirect_reject.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-df_mrs_redirect_approve = pd.merge(
-    df_mrs_redirect_approve.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-
-dict_of_dfs = {
-    'usual_care': df_mrs_usual_care,
-    'redirection_rejected': df_mrs_redirect_reject,
-    'redirection_approved': df_mrs_redirect_approve
-    }
+# Store result:
+dict_of_dfs['redirection_considered'] = df_mrs_s.copy()
 
 
 @st.fragment
@@ -926,39 +977,134 @@ def display_mrs_dists():
     # which region type was selected, and which region name.
     region_selected, col_region = mrs.pick_out_region_name(bar_option)
 
-    # if inputs_changed:
-    #     if 'fig_mrs' in st.session_state.keys():
-    #         pass
-    #     else:
-    #         st.stop()
-    # else:
+    # Find reference mRS distributions (no treatment).
+    # If occ_type is nLVO or LVO, this returns the normal dists.
+    # Otherwise it returns a scaled sum of the nLVO and LVO dists.
+    dist_ref_cum, dist_ref_noncum = mrs.load_no_treatment_mrs_dists(
+        stroke_type, input_dict['prop_nlvo'], input_dict['prop_nlvo'])
+    # Store no-treatment data:
+    dict_no_treatment = {
+        'noncum': dist_ref_noncum,
+        'cum': dist_ref_cum,
+        'std': None
+    }
+
+    # Store results in here:
+    keys = ['no_treatment'] + all_mrs_scenarios
+
+    # Decide whether to use no-treatment dists or to
+    # fish dists out of the big mRS lists.
+    use_ref_data = (True if
+                    ((stroke_type == 'nlvo') & (treatment_type == 'mt'))
+                    else False)
+    treat_type = treatment_type
+    # Calculate mRS for both nLVO and LVO so that we can find the mRS
+    # for "redirection considered" and for combo nLVO+LVO group.
+    stroke_types = ['nlvo', 'lvo']
+
+    mrs_dfs_dict = {}
+    if use_ref_data:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key in keys:
+            mrs_lists_dict[key] = dict_no_treatment
+    else:
+        for key in all_mrs_scenarios:
+            mrs_dfs_dict[key] = {}
+        lsoa_names = mrs.find_lsoa_names_to_keep(
+            dict_of_dfs['usual_care'],
+            col_to_mask_mrs,
+            col_region,
+            region_selected
+            )
+        mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
+            dict([(k, dict_of_dfs[k]) for k in scenarios]),
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            )
+        dfs_dict_rc, dist_cols_rc = mrs.find_total_mrs_for_unique_times(
+            dict([(k, dict_of_dfs[k]) for k in ['redirection_considered']]),
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            multi_scens=['redirection_rejected', 'redirection_approved']
+            )
+
+        df = dfs_dict_rc['redirection_considered']
+        dist_cols_to_combine = [c for c in df.columns if 'mrs' in c]
+        dist_cols_to_combine = sorted(list(set(
+            [d.replace('_redirection_rejected', '').replace('_redirection_approved', '')
+             for d in dist_cols_to_combine
+             ])))
+
+        for d in dist_cols_to_combine:
+            if 'nlvo' in d:
+                prop_nlvo_redirected = (1.0 - input_dict['specificity'])
+                props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
+            else:
+                prop_lvo_redirected = input_dict['sensitivity']
+                props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
+
+            col_rr = f'{d}_redirection_rejected'
+            col_ra = f'{d}_redirection_approved'
+            df[d] = (
+                df[col_rr].values * props_list[0] +
+                df[col_ra].values * props_list[1]
+            )
+            df = df.drop([col_rr, col_ra], axis='columns')
+
+        # Place this data with the other scenarios:
+        mrs_dfs_dict['redirection_considered'] = df
+
+        # Calculate "redirection considered":
+        nlvo_cols = [c for c in dist_cols if 'nlvo' in c]
+        lvo_cols = [c for c in dist_cols if (('lvo' in c) & ('nlvo' not in c))]
+
+        if stroke_type not in ['nlvo', 'lvo']:
+            # Calculate combined nLVO + LVO data:
+            combo_cols = [c.replace('lvo', 'combo') for c in lvo_cols]
+            for key, df in mrs_dfs_dict.items():
+                df[combo_cols] = (
+                    (df[nlvo_cols] * input_dict['prop_nlvo']).values +
+                    (df[lvo_cols] * input_dict['prop_lvo']).values
+                )
+                mrs_dfs_dict[key] = df
+
+        # Pick out which columns should be displayed:
+        if stroke_type == 'nlvo':
+            dist_cols = nlvo_cols
+        elif stroke_type == 'lvo':
+            dist_cols = lvo_cols
+        else:
+            dist_cols = combo_cols
+
+        # Average these mRS dists:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key, df in mrs_dfs_dict.items():
+            dist_noncum, dist_cum, dist_std = (
+                mrs.calculate_average_mrs_dists(df, dist_cols))
+            # Store in results dict:
+            mrs_lists_dict[key] = {}
+            mrs_lists_dict[key]['noncum'] = dist_noncum
+            mrs_lists_dict[key]['cum'] = dist_cum
+            mrs_lists_dict[key]['std'] = dist_std
+
+    mrs_format_dicts = (
+        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
 
     # Prettier formatting for the plot title:
     col_pretty = ''.join([
         f'{stroke_type_str}, ',
         f'{treatment_type_str}'
         ])
-
-    mrs_lists_dict = mrs.calculate_average_mrs(
-        stroke_type,
-        treatment_type,
-        col_region,
-        region_selected,
-        col_to_mask_mrs,
-        # Setup for mRS dists:
-        dict_of_dfs,
-        # The actual mRS dists:
-        st.session_state['df_mrs_ivt'],
-        st.session_state['df_mrs_mt'],
-        input_dict
-        )
-
-    mrs_format_dicts = (
-        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
-
     st.session_state['fig_mrs'] = mrs.plot_mrs_bars(
         mrs_format_dicts, title_text=f'{region_selected}<br>{col_pretty}')
-
 
     with container_bars:
         # Options for the mode bar.

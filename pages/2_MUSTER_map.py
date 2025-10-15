@@ -17,6 +17,7 @@ import utilities.calculations as calc
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
 import utilities.plot_mrs_dists as mrs
+from utilities.utils import load_reference_mrs_dists
 # import classes.model_module as model
 # Containers:
 import utilities.inputs as inputs
@@ -76,8 +77,10 @@ def main_calculations(df_times):
     # Run the outcome model for only the unique treatment times
     # instead of one row per LSOA.
     # Run results for IVT and for MT separately.
-    outcomes_by_stroke_type_ivt_only, outcomes_by_stroke_type_mt_only = (
-        calc.run_outcome_model_for_unique_times(times_to_ivt, times_to_mt))
+    outcomes_by_stroke_type_ivt_only = (
+        calc.run_outcome_model_for_unique_times_ivt(times_to_ivt))
+    outcomes_by_stroke_type_mt_only = (
+        calc.run_outcome_model_for_unique_times_mt(times_to_mt))
 
     # Convert these results dictionaries into dataframes:
     df_outcomes_ivt, df_outcomes_mt = (
@@ -105,22 +108,10 @@ def main_calculations(df_times):
 
 
 # @st.cache_data
-def gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-            df_lsoa_regions
-            ):
-    df_lsoa = calc.build_full_lsoa_outcomes_from_unique_time_results(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            df_mrs_ivt,
-            df_mrs_mt,
-    )
-
+def calculate_outcomes_for_combo_groups(
+        df_lsoa,
+        input_dict
+        ):
     df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
     df_lsoa = df_lsoa.set_index('lsoa')
 
@@ -130,14 +121,55 @@ def gather_outcomes_by_region(
         scenario_types=['msu', 'usual_care']
         )
 
-    df_icb, df_isdn, df_nearest_ivt, df_ambo = calc.group_results_by_region(
-        df_lsoa.reset_index().rename(columns={'LSOA': 'lsoa'}),
-        df_unit_services,
-        df_lsoa_regions
-        )
+    return df_lsoa
 
-    return df_lsoa, df_icb, df_isdn, df_nearest_ivt, df_ambo
 
+def calculate_pdeath_for_combo_groups(
+        df_pdeath, scenarios, input_dict,
+        treatment_types=['ivt', 'mt', 'ivt_mt']
+        ):
+    """
+    input_dict must contain keys 'prop_nlvo' and 'prop_lvo'.
+
+    f'{s}_probdeath_nlvo_ivt',
+    f'{s}_probdeath_lvo_ivt',
+    f'{s}_probdeath_lvo_mt',
+    f'{s}_probdeath_lvo_ivt_mt',
+    """
+    # Combine nLVO and LVO groups.
+    # Set up data for no treatment:
+    dist_dict = load_reference_mrs_dists()
+    df_pdeath['probdeath_nlvo_no_treatment'] = (
+        dist_dict['nlvo_no_treatment_noncum'][-1])
+    # Gather the column names here:
+    cols_nlvo = []
+    cols_lvo = []
+    cols_combo = []
+    for s in scenarios:
+        for t in treatment_types:
+            # Set up existing column names.
+            col_nlvo = f'{s}_probdeath_nlvo_{t}'
+            col_lvo = col_nlvo.replace('nlvo', 'lvo')
+            # New column name:
+            col_combo = col_nlvo.replace('nlvo', 'combo')
+            # Change nLVO column for special cases where the treatment
+            # option is invalid:
+            if t == 'mt':
+                # Use no-treatment data.
+                col_nlvo = 'probdeath_nlvo_no_treatment'
+            elif t == 'ivt_mt':
+                # Use IVT-only data.
+                col_nlvo = col_nlvo.replace('ivt_mt', 'ivt')
+            else:
+                pass
+            cols_nlvo.append(col_nlvo)
+            cols_lvo.append(col_lvo)
+            cols_combo.append(col_combo)
+    # Combine the data:
+    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
+    df_pdeath = calc.combine_results(
+        df_pdeath, cols_nlvo, cols_lvo, cols_combo, props_list)
+    return df_pdeath
 
 
 # ###########################
@@ -161,6 +193,7 @@ except KeyError:
     # No page has been run yet.
     pass
 st.session_state['page_last_run'] = 'MUSTER'
+
 
 # #####################################
 # ########## CONTAINER SETUP ##########
@@ -595,21 +628,59 @@ with container_rerun:
         ) = main_calculations(df_times)
 
 
-        (
+
+        scenarios = ['usual_care', 'msu']
+        r = {'msu_mt_no_ivt': 'msu_mt', 'msu_mt_with_ivt': 'msu_ivt_mt'}
+        st.session_state['df_lsoa'] = (
+            calc.build_full_lsoa_outcomes_from_unique_time_results(
+                df_times.rename(columns=r), df_outcomes_ivt, df_outcomes_mt, scenarios)
+        )
+
+        # Calculate outcomes:
+        st.session_state['df_lsoa'] = calculate_outcomes_for_combo_groups(
             st.session_state['df_lsoa'],
+            input_dict
+            )
+
+        # Calculate probabilities of death.
+        # Pick out the masks where IVT is better than MT:
+        cols_ivt_better = [f'{s}_lvo_ivt_better_than_mt' for s in scenarios]
+        # Place these masks in the travel time data:
+        df_pdeath = pd.merge(
+            df_times.copy().rename(columns=r).reset_index().rename(columns={'LSOA': 'lsoa'}).set_index('lsoa'),
+            st.session_state['df_lsoa'][cols_ivt_better],
+            left_index=True, right_index=True, how='left'
+            )
+        # Now gather P(death):
+        df_pdeath = calc.gather_pdeath_from_unique_time_results(
+            df_pdeath.reset_index(), st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'], scenarios,
+        )
+        df_pdeath = df_pdeath.set_index('lsoa')
+        # note: cannot currently run the below as we haven't defined
+        # the proportions of nLVO and LVO in the input_dict.
+        # # Calculate P(death) for combined groups, mix of nLVO and LVO.
+        # df_pdeath = calculate_pdeath_for_combo_groups(
+        #     df_pdeath, scenarios, input_dict)
+
+        # Combine outcome and P(death) data:
+        cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
+        st.session_state['df_lsoa'] = pd.merge(
+            st.session_state['df_lsoa'], df_pdeath[cols_pdeath],
+            left_index=True, right_index=True, how='left'
+        )
+
+        # Gather outcomes and P(death) into regions:
+        (
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
             st.session_state['df_ambo']
-        ) = gather_outcomes_by_region(
-            df_times,
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
+        ) = calc.group_results_by_region(
+            st.session_state['df_lsoa'].reset_index().rename(columns={'LSOA': 'lsoa'}),
+            df_unit_services,
             df_lsoa_regions
             )
-
         new_results_run = True
     else:
         new_results_run = False
@@ -773,8 +844,8 @@ df_mrs_usual_care = df_mrs_usual_care.rename(columns={
 cols_to_copy_msu = [
     'Admissions',
     'msu_ivt',
-    'msu_mt_with_ivt',
-    'msu_mt_no_ivt',
+    'msu_ivt_mt',  # 'msu_mt_with_ivt',
+    'msu_mt',  # 'msu_mt_no_ivt',
     'msu_lvo_ivt_better_than_mt',
     'nearest_ivt_unit_name'
     ]
@@ -782,10 +853,11 @@ if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
     cols_to_copy_msu.append(col_to_mask_mrs)
 df_mrs_msu = st.session_state['df_lsoa'][cols_to_copy_msu].copy()
 if 'ivt' in treatment_type:
-    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt_with_ivt']
+    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_ivt_mt']  # 'msu_mt_with_ivt']
 else:
-    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt_no_ivt']
-df_mrs_msu = df_mrs_msu.drop(['msu_mt_with_ivt', 'msu_mt_no_ivt'], axis='columns')
+    df_mrs_msu['time_to_mt'] = df_mrs_msu['msu_mt']  # 'msu_mt_no_ivt']
+# df_mrs_msu = df_mrs_msu.drop(['msu_mt_with_ivt', 'msu_mt_no_ivt'], axis='columns')
+df_mrs_msu = df_mrs_msu.drop(['msu_mt', 'msu_ivt_mt'], axis='columns')
 df_mrs_msu = df_mrs_msu.rename(columns={
     'msu_ivt': 'time_to_ivt',
     'msu_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
@@ -840,19 +912,95 @@ def display_mrs_dists():
         f'{treatment_type_str}'
         ])
 
-    mrs_lists_dict = mrs.calculate_average_mrs(
-        stroke_type,
-        treatment_type,
-        col_region,
-        region_selected,
-        col_to_mask_mrs,
-        # Setup for mRS dists:
-        dict_of_dfs,
-        # The actual mRS dists:
-        st.session_state['df_mrs_ivt'],
-        st.session_state['df_mrs_mt'],
-        input_dict
-        )
+    # mrs_lists_dict = mrs.calculate_average_mrs(
+    #     stroke_type,
+    #     treatment_type,
+    #     col_region,
+    #     region_selected,
+    #     col_to_mask_mrs,
+    #     # Setup for mRS dists:
+    #     dict_of_dfs,
+    #     # The actual mRS dists:
+    #     st.session_state['df_mrs_ivt'],
+    #     st.session_state['df_mrs_mt'],
+    #     input_dict
+    #     )
+
+    # Find reference mRS distributions (no treatment).
+    # If occ_type is nLVO or LVO, this returns the normal dists.
+    # Otherwise it returns a scaled sum of the nLVO and LVO dists.
+    dist_ref_cum, dist_ref_noncum = mrs.load_no_treatment_mrs_dists(
+        stroke_type)
+    # Store no-treatment data:
+    dict_no_treatment = {
+        'noncum': dist_ref_noncum,
+        'cum': dist_ref_cum,
+        'std': None
+    }
+
+    # Store results in here:
+    keys = ['no_treatment'] + scenario_mrs
+
+    # Decide whether to use no-treatment dists or to
+    # fish dists out of the big mRS lists.
+    use_ref_data = (True if
+                    ((stroke_type == 'nlvo') & (treatment_type == 'mt'))
+                    else False)
+    # Use nLVO IVT data instead of nLVO IVT & MT.
+    # (Getting UnboundLocalError if attempting this while changing
+    # value of treatment_type)
+    # if ((stroke_type == 'nlvo') & ('mt' in treatment_type)):
+    #     treat_type = 'ivt'
+    # else:
+    treat_type = treatment_type
+    # Calculate mRS for both nLVO and LVO so that we can find the mRS
+    # for "redirection considered" and for combo nLVO+LVO group.
+    stroke_types = ['nlvo', 'lvo']
+
+    mrs_dfs_dict = {}
+    if use_ref_data:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key in keys:
+            mrs_lists_dict[key] = dict_no_treatment
+    else:
+        for key in scenario_mrs:
+            mrs_dfs_dict[key] = {}
+        lsoa_names = mrs.find_lsoa_names_to_keep(
+            dict_of_dfs['usual_care'],
+            col_to_mask_mrs,
+            col_region,
+            region_selected
+            )
+        mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
+            dict_of_dfs,
+            lsoa_names,
+            treat_type,
+            stroke_types,
+            st.session_state['df_mrs_ivt'],
+            st.session_state['df_mrs_mt'],
+            )
+
+        # Pick out which columns should be displayed:
+        if stroke_type == 'nlvo':
+            dist_cols = [c for c in dist_cols if 'nlvo' in c]
+        elif stroke_type == 'lvo':
+            dist_cols = [c for c in dist_cols if
+                         (('lvo' in c) & ('nlvo' not in c))]
+        else:
+            pass
+
+        # Average these mRS dists:
+        mrs_lists_dict = {}
+        mrs_lists_dict['no_treatment'] = dict_no_treatment
+        for key, df in mrs_dfs_dict.items():
+            dist_noncum, dist_cum, dist_std = (
+                mrs.calculate_average_mrs_dists(df, dist_cols))
+            # Store in results dict:
+            mrs_lists_dict[key] = {}
+            mrs_lists_dict[key]['noncum'] = dist_noncum
+            mrs_lists_dict[key]['cum'] = dist_cum
+            mrs_lists_dict[key]['std'] = dist_std
 
     mrs_format_dicts = (
         mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
