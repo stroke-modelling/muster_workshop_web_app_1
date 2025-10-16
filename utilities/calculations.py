@@ -926,7 +926,14 @@ def group_results_by_region(df_lsoa, df_unit_services, df_lsoa_regions):
     df_isdn = group_results_by_isdn(df_lsoa)
     df_ambo = group_results_by_ambo(df_lsoa)
 
-    return df_icb, df_isdn, df_nearest_ivt, df_ambo
+    # Repeat for only patients who require a transfer:
+    df_masked = df_lsoa.loc[df_lsoa['transfer_required'] == 1].copy()
+    df_benefit_icb = group_results_by_icb(df_masked)
+    df_benefit_isdn = group_results_by_isdn(df_masked)
+    df_benefit_ambo = group_results_by_ambo(df_masked)
+    df_benefit_nearest_ivt = group_results_by_nearest_ivt(df_masked, df_unit_services)
+
+    return df_icb, df_isdn, df_nearest_ivt, df_ambo, df_benefit_icb, df_benefit_isdn, df_benefit_nearest_ivt, df_benefit_ambo
 
 
 def group_results_by_icb(df_lsoa):

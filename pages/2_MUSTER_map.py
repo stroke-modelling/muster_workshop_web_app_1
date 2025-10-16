@@ -675,7 +675,11 @@ with container_rerun:
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
-            st.session_state['df_ambo']
+            st.session_state['df_ambo'],
+            st.session_state['df_benefit_icb'],
+            st.session_state['df_benefit_isdn'],
+            st.session_state['df_benefit_nearest_ivt'],
+            st.session_state['df_benefit_ambo'],
         ) = calc.group_results_by_region(
             st.session_state['df_lsoa'].reset_index().rename(columns={'LSOA': 'lsoa'}),
             df_unit_services,
@@ -1187,7 +1191,7 @@ else:
         gdf_catchment_rhs,
         gdf_catchment_pop,
     ) = calc.load_or_calculate_region_outlines(
-            outline_name, st.session_state['df_lsoa'], use_msu=True)
+            outline_name, st.session_state['df_lsoa'])
 
 
 # ----- Process geography for plotting -----
