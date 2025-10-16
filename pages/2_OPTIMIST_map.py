@@ -433,6 +433,11 @@ with container_services_dataeditor:
 
 with tab_results:
     container_rerun = st.container()
+
+    st.markdown('## Summary results')
+    # Places to put summary boxes:
+    container_summary_results = st.container()
+
     st.markdown('## Full results')
     with st.expander('Full data tables'):
         container_results_tables = st.container()
@@ -777,7 +782,11 @@ with container_rerun:
             st.session_state['df_icb'],
             st.session_state['df_isdn'],
             st.session_state['df_nearest_ivt'],
-            st.session_state['df_ambo']
+            st.session_state['df_ambo'],
+            st.session_state['df_benefit_icb'],
+            st.session_state['df_benefit_isdn'],
+            st.session_state['df_benefit_nearest_ivt'],
+            st.session_state['df_benefit_ambo'],
         ) = calc.group_results_by_region(
             st.session_state['df_lsoa'].reset_index().rename(
                 columns={'LSOA': 'lsoa'}),
@@ -819,10 +828,84 @@ else:
     st.stop()
 
 
+# #################################################
+# ########## RESULTS - SUMMARY BY REGION ##########
+# #################################################
+
+@st.fragment
+def display_summary_stats():
+    # Select a region based on what's actually in the data,
+    # not by guessing in advance which IVT units are included for example.
+    region_options_dict = inputs.load_region_lists(df_unit_services_full)
+    select_options = []  # ['National']
+    for key, region_list in region_options_dict.items():
+        select_options += [f'{key}: {v}' for v in region_list]
+    selected_rows = st.multiselect('Highlighted regions', select_options)
+    limit_summary_to_benefit = st.toggle('Limit summary stats to areas that benefit from redirection')
+    container_summary_metrics = st.container(
+        horizontal=True, horizontal_alignment='left', border=False)
+
+    for r, row in enumerate(selected_rows):
+        region_type = row.split(': ')[0]
+        if row.startswith('ISDN'):
+            df_here = st.session_state['df_isdn']
+            df_ben = st.session_state['df_benefit_isdn']
+        elif row.startswith('ICB'):
+            df_here = st.session_state['df_icb']
+            df_ben = st.session_state['df_benefit_icb']
+        elif row.startswith('Nearest unit'):
+            df_here = st.session_state['df_nearest_ivt']
+            df_ben = st.session_state['df_benefit_nearest_ivt']
+        elif row.startswith('Amb'):
+            df_here = st.session_state['df_ambo']
+            df_ben = st.session_state['df_benefit_ambo']
+        else:
+            st.write('meep')
+
+        if row.startswith('Nearest'):
+            series_row = df_here.loc[df_here['ssnap_name'] == row.replace(f'{region_type}: ', '')].squeeze()
+            series_ben = df_ben.loc[df_ben['ssnap_name'] == row.replace(f'{region_type}: ', '')].squeeze()
+        else:
+            series_row = df_here.loc[row.replace(f'{region_type}: ', '')].squeeze()
+            series_ben = df_ben.loc[row.replace(f'{region_type}: ', '')].squeeze()
+
+        with container_summary_metrics:
+            ch = st.container(border=True)
+        with ch:
+            title = f'__{row}__'
+
+            # st.markdown(title.ljust(longest_str, '~'))
+            st.markdown(title)
+
+            s = series_ben if limit_summary_to_benefit else series_row
+            if s.empty:
+                st.write('No patients in this category.')
+                pass
+            else:
+                # Only patients who benefit:
+                t = s['transfer_required']
+                v_uc = s['usual_care_combo_ivt_mt_mrs_0-2']
+                v_rc = s['redirection_considered_combo_ivt_mt_mrs_0-2']
+                v_di = s['diff_redirection_considered_minus_usual_care_combo_ivt_mt_mrs_0-2']
+                d_uc = s['usual_care_probdeath_combo_ivt_mt']
+                d_rc = s['redirection_considered_probdeath_combo_ivt_mt']
+                d_di = d_rc - d_uc
+
+                st.write('Proportion of patients with:')
+                st.metric('Nearest unit offering MT', f'{1.0 - t:.1%}')
+                st.metric('mRS<=2', f'{v_rc:.1%}', f'{v_di:.1%} from usual care')
+                st.metric('Dead', f'{d_rc:.1%}', f'{d_di:.1%} from usual care', delta_color='inverse')
+
+
+with container_summary_results:
+    display_summary_stats()
+
+
 # #########################################
 # ########## RESULTS - FULL DATA ##########
 # #########################################
 with container_results_tables:
+
     table_choice = st.selectbox(
         'Display the following results table:',
         options=[
@@ -834,41 +917,47 @@ with container_results_tables:
             ]
         )
 
+    show_summary_boxes = True
     if 'IVT unit' in table_choice:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each IVT unit catchment area.'
             ]))
-        st.dataframe(
-            st.session_state['df_nearest_ivt'],
-            # Set some columns to bool for nicer display:
-            column_config={
-                'transfer_required': st.column_config.CheckboxColumn()
-                }
-            )
+        df_here = st.session_state['df_nearest_ivt']
+        column_config = {
+            'transfer_required': st.column_config.CheckboxColumn(),
+            }
+
     elif 'ISDN' in table_choice:
         st.markdown('Results are the mean values of all LSOA in each ISDN.')
-        st.dataframe(st.session_state['df_isdn'])
+        df_here = st.session_state['df_isdn']
+        column_config = {}
 
     elif 'ICB' in table_choice:
         st.markdown('Results are the mean values of all LSOA in each ICB.')
-        st.dataframe(st.session_state['df_icb'])
+        df_here = st.session_state['df_icb']
+        column_config= {}
 
     elif 'ambulance' in table_choice:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
             'in each ambulance service.'
             ]))
-        st.dataframe(st.session_state['df_ambo'])
-
+        df_here = st.session_state['df_ambo']
+        column_config = {}
     else:
-        st.dataframe(
-            st.session_state['df_lsoa'],
-            # Set some columns to bool for nicer display:
-            column_config={
-                'transfer_required': st.column_config.CheckboxColumn()
-                }
-            )
+        df_here = st.session_state['df_lsoa']
+        column_config = {
+            'transfer_required': st.column_config.CheckboxColumn(),
+            }
+        show_summary_boxes = False
+
+    # Main results table:
+    st.dataframe(
+        df_here,
+        # Set some columns to bool for nicer display:
+        column_config=column_config,
+        )
 
 
 # #########################################
