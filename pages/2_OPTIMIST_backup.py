@@ -917,7 +917,6 @@ with container_results_tables:
             ]
         )
 
-    show_summary_boxes = True
     if 'IVT unit' in table_choice:
         st.markdown(''.join([
             'Results are the mean values of all LSOA ',
@@ -950,7 +949,6 @@ with container_results_tables:
         column_config = {
             'transfer_required': st.column_config.CheckboxColumn(),
             }
-        show_summary_boxes = False
 
     # Main results table:
     st.dataframe(
