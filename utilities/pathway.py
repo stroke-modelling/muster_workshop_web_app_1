@@ -170,3 +170,69 @@ def find_unique_treatment_time_pairs(
         p = 'Found unique treatment time pairs.'
         print_progress_loc(p, _log_loc)
     return df_treat
+
+
+def calculate_treatment_times_each_lsoa_scenarios(
+        df_lsoa_units_times,
+        series_treatment_times,
+        _log=True, _log_loc=None, test=False
+        ):
+    """
+    series_treatment_times is without travel.
+    """
+    # LSOA-level scenario timings.
+    mask = df_lsoa_units_times['transfer_required']
+    # Usual care:
+    s = 'usual_care'
+    df_lsoa_units_times[f'{s}_ivt'] = (
+        df_lsoa_units_times['nearest_ivt_time'] +
+        series_treatment_times[f'{s}_time_to_ivt']
+    )
+    df_lsoa_units_times.loc[mask, f'{s}_mt'] = (
+        df_lsoa_units_times['nearest_ivt_then_mt_time'] +
+        series_treatment_times[f'{s}_time_to_mt_transfer']
+    )
+    df_lsoa_units_times.loc[~mask, f'{s}_mt'] = (
+        df_lsoa_units_times['nearest_ivt_then_mt_time'] +
+        series_treatment_times[f'{s}_time_to_mt_no_transfer']
+    )
+    # Redirection approved:
+    s = 'redirection_approved'
+    df_lsoa_units_times[f'{s}_ivt'] = (
+        df_lsoa_units_times['nearest_mt_time'] +
+        series_treatment_times['prehospdiag_time_to_ivt']
+    )
+    df_lsoa_units_times[f'{s}_mt'] = (
+        df_lsoa_units_times['nearest_mt_time'] +
+        series_treatment_times['prehospdiag_time_to_mt_no_transfer']
+    )
+    # Redirection rejected:
+    s = 'redirection_rejected'
+    df_lsoa_units_times[f'{s}_ivt'] = (
+        df_lsoa_units_times['nearest_ivt_time'] +
+        series_treatment_times['prehospdiag_time_to_ivt']
+    )
+    df_lsoa_units_times.loc[mask, f'{s}_mt'] = (
+        df_lsoa_units_times['nearest_ivt_then_mt_time'] +
+        series_treatment_times['prehospdiag_time_to_mt_transfer']
+    )
+    df_lsoa_units_times.loc[~mask, f'{s}_mt'] = (
+        df_lsoa_units_times['nearest_ivt_then_mt_time'] +
+        series_treatment_times['prehospdiag_time_to_mt_no_transfer']
+    )
+    if test:
+        # How many unique combinations of these times are there?
+        # Default setup, roughly 33,000 LSOA and 9,000 combos.
+        # Worth calculating for unique combinations of times and
+        # then admissions-weighting.
+        st.write(len(df_lsoa_units_times))
+        scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
+        treats = ['ivt', 'mt']
+        cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+        st.write(len(
+            df_lsoa_units_times[cols_treat_scen].drop_duplicates()))
+
+    if _log:
+        p = 'Found treatment times by LSOA for base scenarios.'
+        print_progress_loc(p, _log_loc)
+    return df_lsoa_units_times

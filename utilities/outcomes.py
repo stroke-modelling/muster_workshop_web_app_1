@@ -17,6 +17,12 @@ def calculate_unique_outcomes(
     """
     Run the outcome model for only the unique treatment times
     instead of one row per LSOA.
+
+    Result is a dictionary with one key per population.
+    Each df has the keys: time_to_ivt or time_to_mt,
+    mrs_0-2, mrs_shift,
+    utility_shift, mrs_dists_i for i in 0 to 6,
+    mrs_dists_noncum_i for i in 0 to 6.
     """
     times = {'ivt': times_to_ivt, 'mt': times_to_mt}
     # Run results for IVT and for MT separately.
@@ -38,19 +44,19 @@ def calculate_unique_outcomes(
         key_mrs = f'{pop}_each_patient_mrs_dist_post_stroke'
         vals_mrs = outcomes_by_stroke_type[t][key_mrs]
         cols_mrs = [f'{pop}_mrs_dists_{i}' for i in range(7)]
-        # Create non-cumulative mRS dists:
-        vals_mrs_n = np.diff(vals_mrs, prepend=0.0)
-        cols_mrs_n = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
+        # # Create non-cumulative mRS dists:
+        # vals_mrs_n = np.diff(vals_mrs, prepend=0.0)
+        # cols_mrs_n = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
         # Gather data:
         arrs = [
             np.array(times[t]).reshape(len(times[t]), 1),
             np.array(vals).T,
             vals_mrs,
-            vals_mrs_n
+            # vals_mrs_n
             ]
         df = pd.DataFrame(
             np.hstack(arrs),
-            columns=[f'time_to_{t}'] + keys + cols_mrs + cols_mrs_n
+            columns=[f'time_to_{t}'] + keys + cols_mrs  # + cols_mrs_n
         )
         df = np.round(df, 5)
         # Remove "each patient" and occlusion/treatment from columns:
@@ -130,6 +136,30 @@ def flag_lvo_ivt_better_than_mt(
     df['ivt_better'] = (df[f'{out}_mt'] < df[f'{out}_ivt'])
 
     if _log:
-        p = 'Marked unique treatment time pairs where LVO with IVT is better than MT in base scenarios.'
+        p = 'Marked unique treatment time pairs where LVO with IVT is better than MT.'
+        print_progress_loc(p, _log_loc)
+    return df
+
+
+def combine_lvo_ivt_mt_outcomes(
+        df_lvo_ivt, df_lvo_mt, df_lvo_ivt_mt_better,
+        _log=True, _log_loc=None,
+        ):
+    # Combine IVT&MT. Start with MT results and replace with
+    # the IVT results when IVT is better than MT.
+    df = df_lvo_ivt_mt_better.copy()
+    df = pd.merge(
+        df, df_lvo_mt,
+        on='time_to_mt', how='left'
+        )
+    # Remove MT results where IVT is better:
+    cols_outcomes = [c for c in df_lvo_mt.columns if 'time' not in c]
+    df.loc[~df['ivt_better'], cols_outcomes] = pd.NA
+    # Substiture in the IVT results:
+    df = df.set_index('time_to_ivt').combine_first(
+        df_lvo_ivt.set_index('time_to_ivt')
+        ).reset_index().set_index(['time_to_ivt', 'time_to_mt'])
+    if _log:
+        p = 'Gathered outcomes for LVO with both IVT and MT.'
         print_progress_loc(p, _log_loc)
     return df

@@ -209,7 +209,7 @@ def find_unique_travel_times(
 
 @st.cache_data
 def find_region_admissions_by_unique_travel_times(
-        df_lsoa_units_times, keep_only_england=True,
+        df_lsoa_units_times, keep_only_england=True, unique_travel=True,
         _log=True, _log_loc=None
         ):
     """
@@ -234,9 +234,17 @@ def find_region_admissions_by_unique_travel_times(
         df_lsoa_regions = df_lsoa_regions.loc[mask_eng].copy()
 
     # Merge in admissions and timings data:
-    cols_to_merge = ['LSOA', 'Admissions', 'nearest_ivt_time',
-                     'nearest_mt_time', 'nearest_ivt_then_mt_time',
-                     'transfer_required']
+    cols_to_merge = ['LSOA', 'Admissions', 'transfer_required']
+    if unique_travel:
+        cols_to_merge += ['nearest_ivt_time', 'nearest_mt_time',
+                          'nearest_ivt_then_mt_time']
+    else:
+        scens = ['usual_care', 'redirection_approved',
+                 'redirection_rejected']
+        treats = ['ivt', 'mt']
+        cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+        cols_to_merge += cols_treat_scen
+
     df_lsoa_regions = pd.merge(
         df_lsoa_regions, df_lsoa_units_times[cols_to_merge],
         left_on='lsoa', right_on='LSOA', how='right'
@@ -246,38 +254,67 @@ def find_region_admissions_by_unique_travel_times(
     dict_region_unique_times = {}
     masks = {'all_patients': slice(None),
              'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
-    # For usual care, all IVT is at "nearest ivt unit"
-    # and all MT is at "nearest MT unit" after "time to nearest
-    # ivt unit plus transfer time" (for no transfer, time is
-    # zero). Under redirection, all IVT and all MT is at
-    # "nearest MT unit".
-    time_cols_dict = {
-        'usual_care_ivt': ['nearest_ivt_time'],
-        'usual_care_mt': ['nearest_ivt_then_mt_time'],
-        'redirection_ivt': ['nearest_mt_time'],
-        'redirection_mt': ['nearest_mt_time']
-        }
-    for mask_label, mask in masks.items():
-        dict_region_unique_times[mask_label] = {}
-        df_here = df_lsoa_regions.loc[mask]
-        for region_type in region_types:
-            dict_region_unique_times[mask_label][region_type] = {}
-            for time_label, time_cols in time_cols_dict.items():
 
-                cols = [region_type, 'Admissions'] + time_cols
+    if unique_travel:
+        # For usual care, all IVT is at "nearest ivt unit"
+        # and all MT is at "nearest MT unit" after "time to nearest
+        # ivt unit plus transfer time" (for no transfer, time is
+        # zero). Under redirection, all IVT and all MT is at
+        # "nearest MT unit".
+        time_cols_dict = {
+            'usual_care_ivt': ['nearest_ivt_time'],
+            'usual_care_mt': ['nearest_ivt_then_mt_time'],
+            'redirection_ivt': ['nearest_mt_time'],
+            'redirection_mt': ['nearest_mt_time']
+            }
+        for mask_label, mask in masks.items():
+            dict_region_unique_times[mask_label] = {}
+            df_here = df_lsoa_regions.loc[mask]
+            for region_type in region_types:
+                dict_region_unique_times[mask_label][region_type] = {}
+                for time_label, time_cols in time_cols_dict.items():
+
+                    cols = [region_type, 'Admissions'] + time_cols
+                    df = df_here[cols].groupby(
+                        [region_type, *time_cols]).sum()
+                    # df has columns for region, time, and admissions.
+                    # Change to index of time, one column per region,
+                    # values of admissions:
+                    df = (df.unstack(time_cols).transpose()
+                          .reset_index().set_index(time_cols)
+                          .drop('level_0', axis='columns')
+                          )
+                    dict_region_unique_times[
+                        mask_label][region_type][time_label] = df
+
+        if _log:
+            p = 'Found total admissions with each unique travel time per region.'
+            print_progress_loc(p, _log_loc)
+    else:
+        # Unique treatment time combinations.
+        # For usual care, all IVT is at "nearest ivt unit"
+        # and all MT is at "nearest MT unit" after "time to nearest
+        # ivt unit plus transfer time" (for no transfer, time is
+        # zero). Under redirection, all IVT and all MT is at
+        # "nearest MT unit".
+        for mask_label, mask in masks.items():
+            dict_region_unique_times[mask_label] = {}
+            df_here = df_lsoa_regions.loc[mask]
+            for region_type in region_types:
+                cols = [region_type, 'Admissions'] + cols_treat_scen
                 df = df_here[cols].groupby(
-                    [region_type, *time_cols]).sum()
+                    [region_type, *cols_treat_scen]).sum()
                 # df has columns for region, time, and admissions.
                 # Change to index of time, one column per region,
                 # values of admissions:
-                df = (df.unstack(time_cols).transpose()
-                      .reset_index().set_index(time_cols)
+                df = (df.unstack(cols_treat_scen).transpose()
+                      .reset_index().set_index(cols_treat_scen)
                       .drop('level_0', axis='columns')
                       )
                 dict_region_unique_times[
-                    mask_label][region_type][time_label] = df
+                    mask_label][region_type] = df
 
-    if _log:
-        p = 'Found total admissions with each unique travel time per region.'
-        print_progress_loc(p, _log_loc)
+        if _log:
+            p = 'Found total admissions with each set of unique treatment times per region.'
+            print_progress_loc(p, _log_loc)
     return dict_region_unique_times

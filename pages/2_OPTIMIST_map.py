@@ -17,6 +17,7 @@ import utilities.regions as reg
 import utilities.maps as maps
 import utilities.pathway as pathway
 import utilities.outcomes as outcomes
+import utilities.population as pop
 
 
 #MARK: Functions
@@ -130,8 +131,34 @@ unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     )
 unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
     dict_unique_travel_pairs, series_treatment_times_without_travel,
-    _log=True, _log_loc=None,
+    _log=True, _log_loc=containers['pathway'],
 )
+# LSOA-level treatment times:
+df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
+    df_lsoa_units_times,
+    series_treatment_times_without_travel,
+    _log_loc=containers['pathway']
+    )
+# Find the unique sets of treatment times:
+scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
+treats = ['ivt', 'mt']
+cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+df_treat_times_sets_unique = (
+    df_lsoa_units_times[cols_treat_scen].drop_duplicates())
+# Update index to normal range:
+df_treat_times_sets_unique['index'] = range(
+    len(df_treat_times_sets_unique))
+df_treat_times_sets_unique = (
+    df_treat_times_sets_unique.set_index('index'))
+# Find how many admissions per region have each set of
+# unique treatment times:
+dict_region_admissions_unique_treatment_times = (
+    reg.find_region_admissions_by_unique_travel_times(
+        df_lsoa_units_times, unique_travel=False,
+        _log_loc=containers['pathway'])
+    )
+st.write(dict_region_admissions_unique_treatment_times['all_patients']['isdn'])
+
 
 # ----- Base outcomes -----
 # Calculate base outcomes for the given travel times and scenarios.
@@ -142,7 +169,9 @@ unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
 # + For unique pairs of times to treatment, find when LVO + IVT
 #   is better than LVO + MT.
 dict_base_outcomes = outcomes.calculate_unique_outcomes(
-    unique_treatment_ivt, unique_treatment_mt, _log_loc=containers['pathway'])
+    unique_treatment_ivt, unique_treatment_mt,
+    _log_loc=containers['pathway'])
+
 df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
     dict_base_outcomes['lvo_ivt'],
     dict_base_outcomes['lvo_mt'],
@@ -157,16 +186,19 @@ df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
 # type and the proportions of patients who will be redirected.
 # Inputs:
 # + nLVO / LVO proportions in this subgroup,
-# + nLVO / LVO proportions considered for redirection,
+# + full population proportions considered for redirection,
 # + sensitivity / specificity of redirection diagnostic.
 # --- CALCULATIONS:
 # + Unique time results for nLVO + LVO combo for usual care
 #   and for "redirection considered" groups.
 
 with containers['onion_setup']:
-    dict_onion = select_onion_population()
-dict_outcomes = calculate_unique_outcomes_onion(
-    dict_base_outcomes, df_base_lvo_ivt_mt_better,
+    dict_onion = pop.select_onion_population()
+dict_onion = pop.calculate_population_subgroups(dict_onion)
+st.write(dict_onion)
+dict_outcomes = pop.calculate_unique_outcomes_onion(
+    dict_base_outcomes, df_base_lvo_ivt_mt_better, dict_onion,
+    df_treat_times_sets_unique,
     _log_loc=containers['onion_setup']
 )
 
