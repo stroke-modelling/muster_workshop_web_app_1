@@ -196,6 +196,17 @@ with containers['onion_setup']:
     dict_onion = pop.select_onion_population()
 dict_onion = pop.calculate_population_subgroups(dict_onion)
 st.write(dict_onion)
+
+df_subgroups = pop.select_subgroups_for_results()
+st.write(df_subgroups)
+
+df_pop_usual_care, df_pop_redir = (
+    pop.calculate_population_subgroup_grid(dict_onion))
+st.write(df_pop_usual_care, df_pop_redir)
+# df_pop_usual_care, df_pop_redir = pop.calculate_populations_for_subgroups(
+#     df_pop_usual_care, df_pop_redir)
+
+
 dict_outcomes = pop.calculate_unique_outcomes_onion(
     dict_base_outcomes, df_base_lvo_ivt_mt_better, dict_onion,
     df_treat_times_sets_unique,

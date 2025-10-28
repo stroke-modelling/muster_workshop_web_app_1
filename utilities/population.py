@@ -22,14 +22,16 @@ def select_onion_population():
 
     number_cols = [c for c in df_pops.columns if is_numeric_dtype(df_pops[c])]
 
-    # Convert to percent:
+    # # Convert to percent:
     df_pops[number_cols] = df_pops[number_cols] * 100.0
 
     # Set up display:
     conf = dict()
     for col in number_cols:
         conf[col] = st.column_config.NumberColumn(
-            min_value=0.0, max_value=100.0, step=1, format='%.0f%%'
+            min_value=0.0, max_value=100.0, step=1.0,
+            # format='percent',
+            format='%.0f%%'
         )
 
     df_pops = st.data_editor(
@@ -103,15 +105,15 @@ def calculate_population_subgroups(d):
     s = 0.0  # checksum
     for occ in ['nlvo', 'lvo']:
         d[f'prop_{occ}_redir_usual_care'] = (
-            d[f'prop_{occ}'] * (1.0 - d[f'prop_redir_considered']))
+            d[f'prop_{occ}'] * (1.0 - d['prop_redir_considered']))
         d[f'prop_{occ}_redir_accepted'] = (
             d[f'prop_{occ}'] *
-            d[f'prop_redir_considered'] *
+            d['prop_redir_considered'] *
             (d[f'prop_redir_{occ}'])
             )
         d[f'prop_{occ}_redir_rejected'] = (
             d[f'prop_{occ}'] *
-            d[f'prop_redir_considered'] *
+            d['prop_redir_considered'] *
             (1.0 - d[f'prop_redir_{occ}'])
             )
         s += d[f'prop_{occ}_redir_usual_care']
@@ -122,6 +124,110 @@ def calculate_population_subgroups(d):
         st.error(f'Check proportions for {occ}: {s}.')
 
     return d
+
+
+def select_subgroups_for_results():
+
+    # Load in subgroup names and labels from file:
+    f = './data/subgroup_names.csv'
+    df_subgroups = pd.read_csv(f, index_col='label')
+    df_subgroups = df_subgroups.drop('subgroup', axis='columns')
+    # Make index values:
+    label_cols = []
+    for c in df_subgroups.columns:
+        lc = f'{c}_label'
+        label_cols.append(lc)
+        c_dict = {1: c, 0: ''}
+        df_subgroups[lc] = df_subgroups[c].map(c_dict)
+    df_subgroups['subgroup'] = df_subgroups[label_cols].apply(lambda x: '_'.join(x), axis=1)
+    # Remove leading and trailing _ and repeated _:
+    df_subgroups['subgroup'] = df_subgroups['subgroup'].str.strip('_')
+    for i in range(len(label_cols), 1, -1):
+        df_subgroups['subgroup'] = df_subgroups['subgroup'].str.replace('_'*i, '_')
+    df_subgroups = df_subgroups.drop(label_cols, axis='columns')
+    st.write(df_subgroups)
+
+    df_subgroups = df_subgroups.reset_index().set_index('subgroup')
+    dict_labels = df_subgroups['label'].to_dict()
+
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return dict_labels[label]
+    list_selected_subgroups = st.multiselect(
+        'Subgroups to calculate outcomes for',
+        dict_labels.keys(),
+        format_func=f,
+        default='nlvo_lvo_ivt_mt_ivt_mt'
+    )
+    df_subgroups = df_subgroups.loc[list_selected_subgroups]
+
+    return df_subgroups
+
+
+def calculate_population_subgroup_grid(d):
+    """
+
+    REDO THIS ------------------------------------------------------
+
+    There are two sets of "usual care". One is for the current
+    real-life setup, and the other is for the redirection scenario
+    when some patients are not considered for redirection.
+    """
+    # Each individual subgroup.
+    # nLVO with no treatment / IVT,
+    # LVO with no treatment / IVT / IVT & MT / MT,
+    # for each of usual care, redir usual care, redir aproved,
+    # and redir rejected. 18 subgroups for redir scenario.
+
+    scenarios = ['usual_care', 'redir_usual_care',
+                 'redir_accepted', 'redir_rejected']
+    treatment_groups = [
+        'nlvo_ivt', 'nlvo_no_treatment',
+        'lvo_ivt', 'lvo_mt', 'lvo_ivt_mt', 'lvo_no_treatment',
+        ]
+
+    # Extra values:
+    d = d.copy()
+    d['prop_nlvo_no_treatment'] = (1.0 - d['prop_nlvo_ivt'])
+    d['prop_lvo_no_treatment'] = (1.0 - (
+        d['prop_lvo_ivt'] + d['prop_lvo_mt'] + d['prop_lvo_ivt_mt']))
+
+    df = pd.DataFrame()
+    props = {}
+    # Full population:
+    s = pd.Series()
+    s.name = 'full_population'
+    for tre in treatment_groups:
+        occ = tre.split('_')[0]
+        # treat = '_'.join(tre.split('_')[1:])
+        s[tre] = d[f'prop_{occ}'] * d[f'prop_{tre}']
+    props['usual_care'] = s
+    st.write(s.sum())
+
+    # Store separate results for "usual care" by itself:
+
+
+    for scen in scenarios[1:]:
+        r = pd.Series()
+        r.name = 'full_population'
+        for tre in treatment_groups:
+            occ = tre.split('_')[0]
+            p = d[f'prop_{occ}_{scen}']
+            r[f'{tre}'] = p * d[f'prop_{tre}']
+        props[scen] = r
+    # Gather this full population into one dataframe:
+    df = pd.DataFrame.from_dict(props)
+    df.index.name = 'treatment_group'
+    df.columns.name = 'scenario'
+    df = df.unstack()
+    df = pd.DataFrame(df).rename(columns={0: 'full_population'})
+
+
+    for scenario in scenarios:
+        df_here = df.loc[scenario]
+        st.write(scenario, df_here.sum())
+
+    return df_pop_usual_care, df_pop_redir
 
 
 def calculate_unique_outcomes_onion(
@@ -164,7 +270,9 @@ def calculate_unique_outcomes_onion(
         dict_base_outcomes['lvo_mt'] * dict_onion['prop_lvo']
     )
     dict_outcomes['usual_care_combo_ivt_mt'] = (
-        df_lvo_ivt_mt * dict_onion['prop_lvo']
+        df_lvo_ivt_mt * dict_onion['prop_lvo_ivt_mt'] +
+        df_lvo_no_treat * dict_onion['prop_lvo_no_treat'] + 
+        df_nlvo_no_treat * dict_onion['prop_nlvo'] 
     )
     # Usual care / redirection considered outcomes.
     # Take admissions-weighted average of the outcomes in the

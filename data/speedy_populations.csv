@@ -1,0 +1,6 @@
+population,label,prop_nlvo,prop_lvo,prop_other,prop_redir_considered,redir_sensitivity,redir_specificity,prop_nlvo_ivt,prop_lvo_ivt,prop_lvo_mt,prop_lvo_ivt_mt
+white_full_study,Full study population,0.25,0.7,0.05,0.7,0.66,0.87,0.1,0.15,0.03,0.03
+red_suspect_stroke,Ambulance-suspected stroke population,0.25,0.7,0.05,0.7,0.66,0.87,0.1,0.15,0.03,0.03
+yellow_target_population,Target population,0.25,0.7,0.05,0.7,0.66,0.87,0.1,0.15,0.03,0.03
+green_ischaemic,Primary analysis population,0.25,0.75,0,0.7,0.66,0.87,0.1,0.15,0.03,0.03
+blue_thrombectomy,Thrombectomy,0,1,0,0.7,0.66,0.87,0.1,0.15,0.03,0.03

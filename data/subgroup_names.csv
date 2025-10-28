@@ -1,0 +1,19 @@
+subgroup,label,nlvo,lvo,ivt,mt,ivt_mt,no_treatment
+nlvo_ivt,"nLVO, IVT, only treated patients",1,0,1,0,0,0
+nlvo_ivt_no_treatment,"nLVO, IVT",1,0,1,0,0,1
+lvo_ivt,"LVO, IVT only, only treated patients",0,1,1,0,0,0
+lvo_ivt_no_treatment,"LVO, IVT only",0,1,1,0,0,1
+lvo_ivt_mt,"LVO, both IVT&MT only, only treated patients",0,1,0,0,1,0
+lvo_ivt_mt_no_treatment,"LVO, both IVT&MT only",0,1,0,0,1,1
+lvo_mt,"LVO, MT only, only treated patients",0,1,0,1,0,0
+lvo_mt_no_treatment,"LVO, MT only",0,1,0,1,0,1
+lvo_ivt_ivt_mt_mt,"LVO, all treatments, only treated patients",0,1,1,1,1,0
+lvo_ivt_ivt_mt_mt_no_treatment,"LVO, all treatments",0,1,1,1,1,1
+nlvo_lvo_ivt,"nLVO & LVO, IVT only, only treated patients",1,1,1,0,0,0
+nlvo_lvo_ivt_no_treatment,"nLVO & LVO, IVT only",1,1,1,0,0,1
+nlvo_lvo_ivt_mt,"nLVO & LVO, both IVT&MT only, only treated patients",1,1,0,0,1,0
+nlvo_lvo_ivt_mt_no_treatment,"nLVO & LVO, both IVT&MT only",1,1,0,0,1,1
+nlvo_lvo_mt,"nLVO & LVO, MT only, only treated patients",1,1,0,1,0,0
+nlvo_lvo_mt_no_treatment,"nLVO & LVO, MT only",1,1,0,1,0,1
+nlvo_lvo_ivt_ivt_mt_mt,"nLVO & LVO, all treatments, only treated patients",1,1,1,1,1,0
+nlvo_lvo_ivt_ivt_mt_mt_no_treatment,"nLVO & LVO, all treatments",1,1,1,1,1,1
