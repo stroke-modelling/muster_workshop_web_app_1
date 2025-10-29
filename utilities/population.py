@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
 from utilities.outcomes import combine_lvo_ivt_mt_outcomes
 from utilities.utils import print_progress_loc
 
@@ -132,6 +135,7 @@ def select_subgroups_for_results():
     f = './data/subgroup_names.csv'
     df_subgroups = pd.read_csv(f, index_col='label')
     df_subgroups = df_subgroups.drop('subgroup', axis='columns')
+
     # Make index values:
     label_cols = []
     for c in df_subgroups.columns:
@@ -139,14 +143,24 @@ def select_subgroups_for_results():
         label_cols.append(lc)
         c_dict = {1: c, 0: ''}
         df_subgroups[lc] = df_subgroups[c].map(c_dict)
-    df_subgroups['subgroup'] = df_subgroups[label_cols].apply(lambda x: '_'.join(x), axis=1)
+    df_subgroups['subgroup'] = (
+        df_subgroups[label_cols].apply(lambda x: '_'.join(x), axis=1))
     # Remove leading and trailing _ and repeated _:
     df_subgroups['subgroup'] = df_subgroups['subgroup'].str.strip('_')
     for i in range(len(label_cols), 1, -1):
-        df_subgroups['subgroup'] = df_subgroups['subgroup'].str.replace('_'*i, '_')
+        df_subgroups['subgroup'] = (
+            df_subgroups['subgroup'].str.replace('_'*i, '_'))
     df_subgroups = df_subgroups.drop(label_cols, axis='columns')
-    st.write(df_subgroups)
 
+    # Set up which occlusion/treatment combinations are included:
+    occs_tres = ['nlvo_ivt', 'nlvo_no_treatment',
+                 'lvo_ivt', 'lvo_mt', 'lvo_ivt_mt', 'lvo_no_treatment']
+    for ot in occs_tres:
+        o = ot.split('_')[0]
+        t = '_'.join(ot.split('_')[1:])
+        df_subgroups[f'{o}_{t}'] = df_subgroups[o] * df_subgroups[t]
+
+    # Select which groups to use:
     df_subgroups = df_subgroups.reset_index().set_index('subgroup')
     dict_labels = df_subgroups['label'].to_dict()
 
@@ -164,50 +178,43 @@ def select_subgroups_for_results():
     return df_subgroups
 
 
-def calculate_population_subgroup_grid(d):
+def calculate_population_subgroup_grid(d, df_subgroups=None):
     """
-
-    REDO THIS ------------------------------------------------------
 
     There are two sets of "usual care". One is for the current
     real-life setup, and the other is for the redirection scenario
     when some patients are not considered for redirection.
     """
     # Each individual subgroup.
-    # nLVO with no treatment / IVT,
-    # LVO with no treatment / IVT / IVT & MT / MT,
-    # for each of usual care, redir usual care, redir aproved,
-    # and redir rejected. 18 subgroups for redir scenario.
-
-    scenarios = ['usual_care', 'redir_usual_care',
-                 'redir_accepted', 'redir_rejected']
     treatment_groups = [
         'nlvo_ivt', 'nlvo_no_treatment',
         'lvo_ivt', 'lvo_mt', 'lvo_ivt_mt', 'lvo_no_treatment',
         ]
 
-    # Extra values:
+    # Extra proportions to let all props be looked up in the
+    # same way:
     d = d.copy()
     d['prop_nlvo_no_treatment'] = (1.0 - d['prop_nlvo_ivt'])
     d['prop_lvo_no_treatment'] = (1.0 - (
         d['prop_lvo_ivt'] + d['prop_lvo_mt'] + d['prop_lvo_ivt_mt']))
 
-    df = pd.DataFrame()
-    props = {}
-    # Full population:
+    # Full population, usual care:
     s = pd.Series()
     s.name = 'full_population'
     for tre in treatment_groups:
         occ = tre.split('_')[0]
-        # treat = '_'.join(tre.split('_')[1:])
         s[tre] = d[f'prop_{occ}'] * d[f'prop_{tre}']
-    props['usual_care'] = s
-    st.write(s.sum())
-
     # Store separate results for "usual care" by itself:
+    df_pop_usual_care = pd.DataFrame(s)
+    df_pop_usual_care.index.name = 'treatment_group'
+    # Scenario label for consistency with redir df:
+    df_pop_usual_care.insert(0, 'scenario', 'usual_care')
 
-
-    for scen in scenarios[1:]:
+    # Full population, redir options:
+    redir_scenarios = [
+        'redir_usual_care', 'redir_accepted', 'redir_rejected']
+    props = {}
+    for scen in redir_scenarios:
         r = pd.Series()
         r.name = 'full_population'
         for tre in treatment_groups:
@@ -216,25 +223,114 @@ def calculate_population_subgroup_grid(d):
             r[f'{tre}'] = p * d[f'prop_{tre}']
         props[scen] = r
     # Gather this full population into one dataframe:
-    df = pd.DataFrame.from_dict(props)
-    df.index.name = 'treatment_group'
-    df.columns.name = 'scenario'
-    df = df.unstack()
-    df = pd.DataFrame(df).rename(columns={0: 'full_population'})
+    df_pop_redir = pd.DataFrame.from_dict(props)
+    df_pop_redir.index.name = 'treatment_group'
+    df_pop_redir.columns.name = 'scenario'
+    df_pop_redir = df_pop_redir.unstack()
+    df_pop_redir = (pd.DataFrame(df_pop_redir).rename(
+        columns={0: 'full_population'})
+        .reset_index().set_index('treatment_group'))
 
+    # Split "treatment group" column into occlusion / treatment
+    # columns. To match df_subgroups.
+    cols_bits = ['nlvo', 'lvo', 'ivt', 'mt', 'ivt_mt', 'no_treatment']
+    for df in [df_pop_usual_care, df_pop_redir]:
+        # Set treatment group as index to make loc easier:
+        i_col = df.index.name
+        df.reset_index(inplace=True)
+        df.set_index('treatment_group', inplace=True)
+        # Start with all columns 0...
+        df[cols_bits] = 0
+        # ... then update the values for each subgroup:
+        for t in df.index:
+            if t.startswith('nlvo'):
+                df.loc[t, 'nlvo'] = 1
+            elif t.startswith('lvo'):
+                df.loc[t, 'lvo'] = 1
+            if 'no_treatment' in t:
+                df.loc[t, 'no_treatment'] = 1
+            elif 'ivt_mt' in t:
+                df.loc[t, 'ivt_mt'] = 1
+            elif 'ivt' in t:
+                df.loc[t, 'ivt'] = 1
+            elif 'mt' in t:
+                df.loc[t, 'mt'] = 1
+        # Undo earlier index change:
+        df.reset_index(inplace=True)
+        df.set_index(i_col, inplace=True)
 
-    for scenario in scenarios:
-        df_here = df.loc[scenario]
-        st.write(scenario, df_here.sum())
+    # Calculate proportions for the selected subgroups.
+    for sub_name in df_subgroups.index:
+        s = df_subgroups.loc[sub_name]
+        for df in [df_pop_usual_care, df_pop_redir]:
+            # Start with all rows allowed...
+            mask = np.full(len(df), True)
+            # ... then remove rows that don't match setup:
+            for c in cols_bits:
+                if s[c] == 0:
+                    mask[df[c] == 1] = 0
+            # Copy over values from only allowed rows:
+            df[sub_name] = df['full_population'] * mask
+            # Normalise:
+            df[sub_name] = df[sub_name] / df[sub_name].sum()
 
     return df_pop_usual_care, df_pop_redir
 
 
+def plot_population_props(
+        props_usual_care,
+        props_redir,
+        s,
+        subgroup_setup
+        ):
+    titles = ['Usual care', 'Redirection available']
+    fig = make_subplots(rows=2, cols=1, subplot_titles=titles)
+
+    fig.add_trace(go.Bar(
+        x=props_usual_care.index,
+        y=100.0 * props_usual_care[s],
+        name='Usual care'
+    ), row=1, col=1)
+
+    redir_scenarios = props_redir['scenario'].unique()
+    redir_labels = {
+        'redir_usual_care': 'Usual care',
+        'redir_accepted': 'Accept redirection',
+        'redir_rejected': 'Reject redirection',
+    }
+    for scenario in redir_scenarios:
+        m = props_redir['scenario'] == scenario
+        fig.add_trace(go.Bar(
+            x=props_redir.loc[m].index,
+            y=100.0 * props_redir.loc[m, s],
+            name=redir_labels[scenario],
+        ), row=2, col=1)
+
+    fig.update_layout(barmode='group')
+    fig.update_layout(height=600, width=600,
+                      title_text=subgroup_setup['label'])
+    fig.update_xaxes(title_text='Treatment group', row=2, col=1)
+    for i in [1, 2]:
+        fig.update_yaxes(
+            title_text='Percentage of subgroup patients', row=i, col=1)
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="top",
+        y=-0.3,
+        xanchor="center",
+        x=0.5,
+    ))
+    st.plotly_chart(fig)
+
+
 def calculate_unique_outcomes_onion(
         dict_base_outcomes,
-        df_base_lvo_ivt_mt_better,
-        dict_onion,
+        df_pop_usual_care,
+        df_pop_redir,
+        df_subgroups,
         df_treat_times_sets_unique,
+        s,
+        check_mrs_noncum=False,
         _log=True, _log_loc=None,
         ):
     """
@@ -248,91 +344,169 @@ def calculate_unique_outcomes_onion(
     prop_X_redir_rejected for X in nlvo, lvo.
     Each base outcome df has the keys:
     time_to_ivt or time_to_mt, mrs_0-2, mrs_shift,
-    utility_shift, mrs_dists_i for i in 0 to 6,
-    mrs_dists_noncum_i for i in 0 to 6.
+    utility_shift, mrs_dists_i for i in 0 to 6
+
+    Note: checked the mRS distribution combination.
+    The result is the same for combining non-cumulative scores
+    as for combining cumulative scores and then taking diff.
     """
-    dict_outcomes = {}
+    # Which outcome data do we need?
+    base_outcome_keys = list(dict_base_outcomes.keys())
+    base_outcome_keys_here = [
+        k for k in base_outcome_keys if df_subgroups[k] == 1]
 
-    df_lvo_ivt_mt = combine_lvo_ivt_mt_outcomes(
-        dict_base_outcomes['lvo_ivt'],
-        dict_base_outcomes['lvo_mt'],
-        df_base_lvo_ivt_mt_better,
-        _log=False
-    )
-
-    # Combo nLVO and LVO outcomes for IVT only:
-    dict_outcomes['usual_care_combo_ivt'] = (
-        dict_base_outcomes['nlvo_ivt'] * dict_onion['prop_nlvo'] +
-        dict_base_outcomes['lvo_ivt'] * dict_onion['prop_lvo']
-    )
-    # mRS distributions won't sum to 1 - CHECK THIS -------------------------------------------------
-    dict_outcomes['usual_care_combo_mt'] = (
-        dict_base_outcomes['lvo_mt'] * dict_onion['prop_lvo']
-    )
-    dict_outcomes['usual_care_combo_ivt_mt'] = (
-        df_lvo_ivt_mt * dict_onion['prop_lvo_ivt_mt'] +
-        df_lvo_no_treat * dict_onion['prop_lvo_no_treat'] + 
-        df_nlvo_no_treat * dict_onion['prop_nlvo'] 
-    )
-    # Usual care / redirection considered outcomes.
-    # Take admissions-weighted average of the outcomes in the
-    # base scenarios.
-    scenarios = ['usual_care', 'redirection_approved',
-                 'redirection_rejected']
-    treats = ['ivt', 'mt']
-    occs = ['nlvo', 'lvo']
-    cols_treat_scen = [f'{s}_{t}' for s in scenarios for t in treats]
-    base_scens = ['nlvo_ivt', 'lvo_ivt', 'lvo_mt']
-    prop_lookup = {
-        'usual_care': 'redir_usual_care',
-        'redirection_approved': 'redir_accepted',
-        'redirection_rejected': 'redir_rejected',
+    # Match scenario with simpler proportions dataframes:
+    dict_scenario_props = {
+        'usual_care': df_pop_usual_care,
+        'redir_usual_care': df_pop_redir.loc[
+            df_pop_redir['scenario'] == 'redir_usual_care'],
+        'redir_accepted': df_pop_redir.loc[
+            df_pop_redir['scenario'] == 'redir_accepted'],
+        'redir_rejected': df_pop_redir.loc[
+            df_pop_redir['scenario'] == 'redir_rejected'],
     }
 
-    # Take a copy of each set of treatment times
-    # and make a new version of the relevant outcomes
-    # with repeated rows where necessary.
-    # The indices of the resulting dataframes must match.
-    df = df_treat_times_sets_unique.copy()
+    # Match the scenario names with the treatment times
+    # in the outcomes data.
+    time_lookup = {
+        'usual_care': 'usual_care',
+        'redir_usual_care': 'usual_care',
+        'redir_accepted': 'redirection_approved',
+        'redir_rejected': 'redirection_rejected',
+    }
+    time_cols = list(df_treat_times_sets_unique.columns)
 
-    # mRS distributions won't sum to 1 - CHECK THIS -------------------------------------------------
-    dfs_to_combine = {}
-    for scenario in scenarios:
-        for base_scen in base_scens:
-            occ, treat = base_scen.split('_')
-            treat_time = f'{scenario}_{treat}'
-            df_outcomes = pd.merge(
-                df,
-                dict_base_outcomes[base_scen],
-                left_on=treat_time, right_on=f'time_to_{treat}',
-                how='left'
-            )
-            df_outcomes = df_outcomes.drop(f'time_to_{treat}',
-                                           axis='columns')
-            df_outcomes = df_outcomes.set_index(cols_treat_scen)
-            prop_key = f'prop_{occ}_{prop_lookup[scenario]}'
-            # CHECK THIS - what about proportions who receive IVT, MT?
-            # LVO is currently being counted twice so proportions don't
-            # sum to 1. Adding the full LVO population instead of just
-            # IVT plus just MT plus both IVT and MT.
-            # Maybe in props need to include prop of LVO/nLVO who
-            # receive IVT/MT/both... --------------------------------------------------TO DO
-            k = f'{scenario}_{base_scen}'
-            dfs_to_combine[k] = {}
-            dfs_to_combine[k]['prop'] = dict_onion[prop_key]
-            dfs_to_combine[k]['df'] = df_outcomes
-    df = sum([dfs_to_combine[k]['prop'] * dfs_to_combine[k]['df']
-              for k in dfs_to_combine.keys()])
-    prop_sum = sum([dfs_to_combine[k]['prop']
-                    for k in dfs_to_combine.keys()])
-    st.write('eg')
-    st.write(prop_sum)
-    st.write(df)
-    st.write('egg')
+    def gather_outcomes_and_props(
+            scenarios,
+            dict_scenario_props,
+            df_treat_times_sets_unique,
+            base_outcome_keys_here,
+            time_lookup
+            ):
+        """
+        """
+        # Take a copy of each set of treatment times
+        # and make a new version of the relevant outcomes
+        # with repeated rows where necessary.
+        # The indices of the resulting dataframes must match.
+        df = df_treat_times_sets_unique.copy()
+        dfs_to_combine = {}
+        for scenario in scenarios:
+            props = dict_scenario_props[scenario]
+            for base_scen in base_outcome_keys_here:
+                occ = base_scen.split('_')[0]
+                treat = '_'.join(base_scen.split('_')[1:])
+
+                if treat == 'no_treatment':
+                    # Make as many copies of the no-treatment data
+                    # as there are rows of treatment times.
+                    df_out = dict_base_outcomes[base_scen]
+                    # Set up values:
+                    arr = np.tile(df_out.values, len(df)).reshape(
+                        len(df), len(df_out.columns))
+                    # Set up index:
+                    df_idx = df.copy()
+                    df_idx = df_idx.set_index(list(df_idx.columns))
+                    # Make new dataframe.
+                    # Reset index because later we set it again (!).
+                    df_outcomes = pd.DataFrame(
+                        arr,
+                        index=df_idx.index,
+                        columns=df_out.columns
+                    ).reset_index()
+                elif treat == 'ivt_mt':
+                    # Have to check against the time to IVT and the
+                    # time to MT.
+                    treat_times = [ f'{time_lookup[scenario]}_ivt',
+                                    f'{time_lookup[scenario]}_mt']
+                    time_tos = ['time_to_ivt', 'time_to_mt']
+
+                    rename_dict = dict(zip(time_tos, treat_times))
+                    df_out = (dict_base_outcomes[base_scen].reset_index()
+                              .rename(columns=rename_dict))
+                    df_outcomes = pd.merge(
+                        df,
+                        df_out,
+                        on=treat_times,
+                        how='left'
+                    )
+                    # Drop unwanted columns with no counterparts in the
+                    # other outcome data.
+                    cols_ivt_mt = ['ivt_better', 'mrs_0-2_ivt', 'mrs_0-2_mt']
+                    df_outcomes = df_outcomes.drop(cols_ivt_mt, axis='columns')
+                else:
+                    treat_time = f'{time_lookup[scenario]}_{treat}'
+                    df_outcomes = pd.merge(
+                        df,
+                        dict_base_outcomes[base_scen],
+                        left_on=treat_time, right_on=f'time_to_{treat}',
+                        how='left'
+                    )
+                    df_outcomes = df_outcomes.drop(
+                        f'time_to_{treat}', axis='columns')
+                if check_mrs_noncum:
+                    # Sanity check:
+                    # Convert mRS distributions to non-cumulative:
+                    mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
+                    mrs_noncum_cols = [c.replace('dists_', 'dists_noncum_')
+                                    for c in mrs_cols]
+                    df_outcomes[mrs_noncum_cols] = np.diff(
+                        df_outcomes[mrs_cols], prepend=0.0)
+
+                # All outcome dfs must share these time columns:
+                df_outcomes = df_outcomes.set_index(time_cols)
+                # Store for later combination:
+                k = f'{scenario}_{base_scen}'
+                dfs_to_combine[k] = {}
+                dfs_to_combine[k]['prop'] = props.loc[base_scen, s]
+                dfs_to_combine[k]['df'] = df_outcomes
+
+        df = sum([dfs_to_combine[k]['prop'] * dfs_to_combine[k]['df']
+                  for k in dfs_to_combine.keys()])
+        # Sanity check:
+        prop_sum = sum([dfs_to_combine[k]['prop']
+                        for k in dfs_to_combine.keys()])
+        if np.round(prop_sum, 5) != 1.0:
+            st.error('Check outcome combination proportions.')
+        return df
 
 
+    df_usual_care = gather_outcomes_and_props(
+        ['usual_care'],
+        dict_scenario_props,
+        df_treat_times_sets_unique,
+        base_outcome_keys_here,
+        time_lookup
+        )
+    df_redir = gather_outcomes_and_props(
+        ['redir_usual_care', 'redir_accepted', 'redir_rejected'],
+        dict_scenario_props,
+        df_treat_times_sets_unique,
+        base_outcome_keys_here,
+        time_lookup
+        )
+
+    if check_mrs_noncum:
+        mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
+        mrs_noncum_cols = [c.replace('dists_', 'dists_noncum_')
+                           for c in mrs_cols]
+
+        st.write('eg')
+        st.write(df_usual_care)
+        c = pd.DataFrame(
+            np.diff(df_usual_care[mrs_cols], prepend=0.0),
+            columns=mrs_noncum_cols,
+            index=df_usual_care.index
+        )
+        st.write(c)
+        st.write(df_usual_care[mrs_noncum_cols])
+        df_check = (np.round(c, 5) ==
+                    np.round(df_usual_care[mrs_noncum_cols], 5))
+        st.write(df_check)
+        st.write(df_check.sum(axis='columns'))
+        st.write('egg')
 
     if _log:
         p = 'Calculated unique outcomes for this population.'
         print_progress_loc(p, _log_loc)
-    return dict_outcomes
+    return {'usual_care': df_usual_care, 'redir_allowed': df_redir}

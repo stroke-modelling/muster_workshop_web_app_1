@@ -19,6 +19,8 @@ import utilities.pathway as pathway
 import utilities.outcomes as outcomes
 import utilities.population as pop
 
+from utilities.utils import print_progress_loc
+
 
 #MARK: Functions
 # #####################
@@ -48,15 +50,14 @@ def set_up_page_layout():
     c = {}
     st.title('Benefit in outcomes from redirection')
     c['units_setup'] = st.container()
-    with c['units_setup']:
-        c['units_map'] = st.container()
-        with st.expander('Edit unit services'):
-            c['units_df'] = st.container()
+    c['units_map'] = st.container()
+    with st.expander('Edit unit services'):
+        c['units_df'] = st.container()
 
     c['pathway'] = st.container()
-    with c['pathway']:
-        c['pathway_inputs'] = st.container(horizontal=True)
+    c['pathway_inputs'] = st.container(horizontal=True)
     c['onion_setup'] = st.container()
+    c['pop_plots'] = st.container(horizontal=True)
 
     # ----- Results -----
     c['region_summaries'] = st.container()
@@ -157,7 +158,8 @@ dict_region_admissions_unique_treatment_times = (
         df_lsoa_units_times, unique_travel=False,
         _log_loc=containers['pathway'])
     )
-st.write(dict_region_admissions_unique_treatment_times['all_patients']['isdn'])
+# TO DO - MAKE SURE THIS INCLUDES "region" REGION TYPE AND
+# NATIONAL AND NEAREST IVT UNIT.
 
 
 # ----- Base outcomes -----
@@ -168,14 +170,24 @@ st.write(dict_region_admissions_unique_treatment_times['all_patients']['isdn'])
 #   groups: nLVO + IVT, LVO + IVT, LVO + MT.
 # + For unique pairs of times to treatment, find when LVO + IVT
 #   is better than LVO + MT.
+dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
+    _log_loc=containers['pathway'])
 dict_base_outcomes = outcomes.calculate_unique_outcomes(
     unique_treatment_ivt, unique_treatment_mt,
     _log_loc=containers['pathway'])
+# Combine dicts:
+dict_base_outcomes = dict_base_outcomes | dict_no_treatment_outcomes
 
 df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
     dict_base_outcomes['lvo_ivt'],
     dict_base_outcomes['lvo_mt'],
     unique_treatment_pairs,
+    _log_loc=containers['pathway']
+    )
+dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
+    dict_base_outcomes['lvo_ivt'],
+    dict_base_outcomes['lvo_mt'],
+    df_base_lvo_ivt_mt_better,
     _log_loc=containers['pathway']
     )
 
@@ -195,43 +207,89 @@ df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
 with containers['onion_setup']:
     dict_onion = pop.select_onion_population()
 dict_onion = pop.calculate_population_subgroups(dict_onion)
-st.write(dict_onion)
 
-df_subgroups = pop.select_subgroups_for_results()
-st.write(df_subgroups)
+with containers['onion_setup']:
+    df_subgroups = pop.select_subgroups_for_results()
 
 df_pop_usual_care, df_pop_redir = (
-    pop.calculate_population_subgroup_grid(dict_onion))
-st.write(df_pop_usual_care, df_pop_redir)
-# df_pop_usual_care, df_pop_redir = pop.calculate_populations_for_subgroups(
-#     df_pop_usual_care, df_pop_redir)
+    pop.calculate_population_subgroup_grid(dict_onion, df_subgroups))
 
+with containers['pop_plots']:
+    for s in df_subgroups.index:
+        pop.plot_population_props(
+            df_pop_usual_care[['scenario'] + [s]],
+            df_pop_redir[['scenario'] + [s]],
+            s,
+            df_subgroups.loc[s]
+            )
 
-dict_outcomes = pop.calculate_unique_outcomes_onion(
-    dict_base_outcomes, df_base_lvo_ivt_mt_better, dict_onion,
-    df_treat_times_sets_unique,
-    _log_loc=containers['onion_setup']
-)
-
-
-# ----- Region summaries -----
-# Average the results over each geographical region.
-# Find two copies of the results - one with all LSOA in the region
-# and one with only LSOA whose nearest unit is not a CSC.
-# --- CALCULATIONS:
-# + Calculate admissions-weighted average outcomes.
-dict_region_outcomes = calculate_region_outcomes(
-    dict_region_unique_times, dict_base_outcomes,
-    df_base_lvo_ivt_mt, _log_loc=containers['region_summaries']
+dict_outcomes = {}
+for s in df_subgroups.index:
+    dict_outcomes[s] = pop.calculate_unique_outcomes_onion(
+        dict_base_outcomes,
+        df_pop_usual_care,
+        df_pop_redir,
+        df_subgroups.loc[s],
+        df_treat_times_sets_unique,
+        s,
+        _log_loc=containers['onion_setup']
     )
+
+st.title('Scratch space')
+
+st.write(df_subgroups)
+st.write(df_pop_usual_care, df_pop_redir)
+st.write(dict_region_admissions_unique_treatment_times['all_patients']['isdn'])
+st.write(df_treat_times_sets_unique)
+
 
 #MARK: Results
 # ###################
 # ##### RESULTS #####
 # ###################
 # ----- Region summaries -----
+for lsoa_subset, region_dicts in (
+    dict_region_admissions_unique_treatment_times.items()
+    ):
+    st.write(region_dicts.keys())
+
 with containers['region_summaries']:
-    highlighted_regions = select_highlighted_regions()
+    df_highlighted_regions = reg.select_highlighted_regions(df_unit_services)
+st.write(df_highlighted_regions)
+highlighted_region_types = sorted(list(set(df_highlighted_regions['region_type'])))
+st.write(highlighted_region_types)
+# Average the results over each geographical region.
+# Find two copies of the results - one with all LSOA in the region
+# and one with only LSOA whose nearest unit is not a CSC.
+# --- CALCULATIONS:
+# + Calculate admissions-weighted average outcomes.
+dict_region_outcomes = {}
+for subgroup, dict_subgroup_outcomes in dict_outcomes.items():
+    dict_region_outcomes[subgroup] = {}
+    for scenario, df_subgroup_outcomes in dict_subgroup_outcomes.items():
+        dict_region_outcomes[subgroup][scenario] = {}
+        for lsoa_subset, region_dicts in (
+                dict_region_admissions_unique_treatment_times.items()
+                ):
+            dict_region_outcomes[subgroup][scenario][lsoa_subset] = {}
+            for region_type in highlighted_region_types:
+                admissions_df = region_dicts[region_type]
+                df = reg.calculate_region_outcomes(
+                    admissions_df,
+                    df_subgroup_outcomes,
+                    _log=False
+                    )
+                dict_region_outcomes[subgroup][scenario][lsoa_subset][
+                    region_type] = df
+p = 'Found average outcomes for each region.'
+print_progress_loc(p, containers['onion_setup'])
+
+st.stop()
+
+# TO DO - need special case when selected region is a nearest stroke unit,
+# convert the unit name (selectbox) to postcode (outcome df)
+# so that the data can be pulled out.
+
 containers_highlighted_regions = st.container(horizontal=True)
 df_summary = gather_summary_for_regions(
     dict_region_outcomes, highlighted_regions,

@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
+
 import stroke_maps.load_data
 
 from classes.geography_processing import Geoprocessing
@@ -234,7 +236,8 @@ def find_region_admissions_by_unique_travel_times(
         df_lsoa_regions = df_lsoa_regions.loc[mask_eng].copy()
 
     # Merge in admissions and timings data:
-    cols_to_merge = ['LSOA', 'Admissions', 'transfer_required']
+    cols_to_merge = ['LSOA', 'Admissions', 'transfer_required',
+                     'nearest_ivt_unit']
     if unique_travel:
         cols_to_merge += ['nearest_ivt_time', 'nearest_mt_time',
                           'nearest_ivt_then_mt_time']
@@ -250,7 +253,7 @@ def find_region_admissions_by_unique_travel_times(
         left_on='lsoa', right_on='LSOA', how='right'
         )
     # Calculate this separately for each region type.
-    region_types = ['region', 'icb', 'isdn', 'ambo22']
+    region_types = ['National', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']  # 'region
     dict_region_unique_times = {}
     masks = {'all_patients': slice(None),
              'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
@@ -273,17 +276,21 @@ def find_region_admissions_by_unique_travel_times(
             for region_type in region_types:
                 dict_region_unique_times[mask_label][region_type] = {}
                 for time_label, time_cols in time_cols_dict.items():
-
-                    cols = [region_type, 'Admissions'] + time_cols
-                    df = df_here[cols].groupby(
-                        [region_type, *time_cols]).sum()
-                    # df has columns for region, time, and admissions.
-                    # Change to index of time, one column per region,
-                    # values of admissions:
-                    df = (df.unstack(time_cols).transpose()
-                          .reset_index().set_index(time_cols)
-                          .drop('level_0', axis='columns')
-                          )
+                    if region_type == 'National':
+                        cols = ['Admissions'] + time_cols
+                        df = df_here[cols].groupby(time_cols).sum()
+                        df = df.rename(columns={'Admissions': 'National'})
+                    else:
+                        cols = [region_type, 'Admissions'] + time_cols
+                        df = df_here[cols].groupby(
+                            [region_type, *time_cols]).sum()
+                        # df has columns for region, time, and admissions.
+                        # Change to index of time, one column per region,
+                        # values of admissions:
+                        df = (df.unstack(time_cols).transpose()
+                              .reset_index().set_index(time_cols)
+                              .drop('level_0', axis='columns')
+                              )
                     dict_region_unique_times[
                         mask_label][region_type][time_label] = df
 
@@ -301,16 +308,21 @@ def find_region_admissions_by_unique_travel_times(
             dict_region_unique_times[mask_label] = {}
             df_here = df_lsoa_regions.loc[mask]
             for region_type in region_types:
-                cols = [region_type, 'Admissions'] + cols_treat_scen
-                df = df_here[cols].groupby(
-                    [region_type, *cols_treat_scen]).sum()
-                # df has columns for region, time, and admissions.
-                # Change to index of time, one column per region,
-                # values of admissions:
-                df = (df.unstack(cols_treat_scen).transpose()
-                      .reset_index().set_index(cols_treat_scen)
-                      .drop('level_0', axis='columns')
-                      )
+                if region_type == 'National':
+                    cols = ['Admissions'] + cols_treat_scen
+                    df = df_here[cols].groupby(cols_treat_scen).sum()
+                    df = df.rename(columns={'Admissions': 'National'})
+                else:
+                    cols = [region_type, 'Admissions'] + cols_treat_scen
+                    df = df_here[cols].groupby(
+                        [region_type, *cols_treat_scen]).sum()
+                    # df has columns for region, time, and admissions.
+                    # Change to index of time, one column per region,
+                    # values of admissions:
+                    df = (df.unstack(cols_treat_scen).transpose()
+                          .reset_index().set_index(cols_treat_scen)
+                          .drop('level_0', axis='columns')
+                          )
                 dict_region_unique_times[
                     mask_label][region_type] = df
 
@@ -318,3 +330,134 @@ def find_region_admissions_by_unique_travel_times(
             p = 'Found total admissions with each set of unique treatment times per region.'
             print_progress_loc(p, _log_loc)
     return dict_region_unique_times
+
+
+def calculate_region_outcomes(
+        df_regions,
+        df_outcomes,
+        _log=True,
+        _log_loc=None
+        ):
+    """
+    df_regions contains admission numbers for unique treatment times.
+    """
+    df_outcomes = df_outcomes.copy()
+    # Convert mRS distributions to non-cumulative:
+    cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
+    cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_')
+                       for c in cols_mrs]
+    df_outcomes[cols_mrs_noncum] = (
+        np.diff(df_outcomes[cols_mrs], axis=1, prepend=0.0))
+
+    df_in = pd.concat((df_regions, df_outcomes), axis='columns')
+
+    cols_out = list(df_outcomes.columns)
+    cols_std = [f'{c}_std' for c in cols_out]
+    df_out = pd.DataFrame(columns=cols_out+cols_std)
+    for region in df_regions.columns:
+        mask = df_in[region].notna()
+        # Take admissions-weighted average of outcomes.
+        vals = df_in.loc[mask, cols_out]
+        weights = df_in.loc[mask, region]
+        # Create stats from these data:
+        weighted_stats = DescrStatsW(vals, weights=weights, ddof=0)
+        # Means (one value per outcome, mRS band):
+        means = weighted_stats.mean
+        # Standard deviations (one value per outcome, mRS band):
+        stds = weighted_stats.std
+        # Round these values:
+        means = np.round(means, 3)
+        stds = np.round(stds, 3)
+        # Store result:
+        s = pd.Series(list(means) + list(stds), index=cols_out+cols_std)
+        df_out.loc[region] = s
+
+    if _log:
+        p = 'Found average outcomes for each region.'
+        print_progress_loc(p, _log_loc)
+    return df_out
+
+
+def select_highlighted_regions(df_unit_services):
+    # Select a region based on what's actually in the data,
+    # not by guessing in advance which IVT units are included for example.
+    region_options_dict = load_region_lists(df_unit_services)
+    bar_options = ['National']
+    for key, region_list in region_options_dict.items():
+        bar_options += [f'{key}: {v}' for v in region_list]
+
+    highlighted_options = st.multiselect(
+        'Regions to highlight',
+        bar_options
+        )
+
+    def pick_out_region_name(bar_option):
+        if bar_option.startswith('ISDN: '):
+            str_selected_region = bar_option.split('ISDN: ')[-1]
+            col_region = 'isdn'
+        elif bar_option.startswith('ICB: '):
+            str_selected_region = bar_option.split('ICB: ')[-1]
+            col_region = 'icb'
+        elif bar_option.startswith('Ambulance service: '):
+            str_selected_region = bar_option.split('Ambulance service: ')[-1]
+            col_region = 'ambo22'
+        elif bar_option.startswith('Nearest unit: '):
+            str_selected_region = bar_option.split('Nearest unit: ')[-1]
+            col_region = 'nearest_ivt_unit'
+        else:
+            str_selected_region = 'National'
+            col_region = ''
+        return str_selected_region, col_region
+
+    highlighted_regions = []
+    region_types = []
+    for h in highlighted_options:
+        s, c = pick_out_region_name(h)
+        highlighted_regions.append(s)
+        region_types.append(c)
+    df = pd.DataFrame(np.vstack((highlighted_regions, region_types)).T,
+                      columns=['highlighted_region', 'region_type'])
+
+    return df
+
+
+def load_region_lists(df_unit_services_full):
+    """
+    # Nearest units from IVT units in df_unit_services,
+    # ISDN and ICB from the reference data.
+    """
+
+    # Load region data:
+    df_regions = stroke_maps.load_data.region_lookup()
+    df_regions = df_regions.reset_index()
+    # Only keep English regions:
+    mask = df_regions['region_code'].str.contains('E')
+    df_regions = df_regions.loc[mask]
+
+    # Lists of ICBs and ISDNs without repeats:
+    icb_list = sorted(list(set(df_regions['icb'])))
+    isdn_list = sorted(list(set(df_regions['isdn'])))
+
+    # Load ambulance service data:
+    df_lsoa_ambo = stroke_maps.load_data.ambulance_lsoa_lookup()
+    # List of ambulance services without repeats:
+    ambo_list = sorted(list(set(df_lsoa_ambo['ambo22'])))
+    # Drop Wales:
+    ambo_list.remove('WAST')
+
+    # Find list of units offering IVT.
+    # Use names not postcodes here to match ICB and ISDN names
+    # and have nicer display on the app.
+    mask = df_unit_services_full['Use_IVT'] == 1
+    nearest_ivt_unit_names_list = sorted(
+        df_unit_services_full.loc[mask, 'ssnap_name'])
+
+    # Key for region type, value for list of options.
+    region_options_dict = {
+        'ISDN': isdn_list,
+        'ICB': icb_list,
+        'Nearest unit': nearest_ivt_unit_names_list,
+        'Ambulance service': ambo_list
+    }
+
+    return region_options_dict

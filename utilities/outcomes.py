@@ -5,9 +5,40 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+import stroke_outcome  # for reference dists
 import classes.model_module as model
 
 from utilities.utils import print_progress_loc
+
+
+def load_no_treatment_outcomes(_log=True, _log_loc=None):
+    """
+    """
+    # mRS distributions:
+    mrs_dists_ref = (
+        stroke_outcome.outcome_utilities.import_mrs_dists_from_file())
+    label_dict = {
+        'no_treatment_nlvo': 'nlvo_no_treatment',
+        'no_treatment_lvo': 'lvo_no_treatment'
+        }
+
+    dict_no_treatment_outcomes = {}
+    for dist_key, new_key in label_dict.items():
+        dist = mrs_dists_ref.loc[dist_key].values
+        # Place in Series:
+        s = pd.Series(dist, index=[f'mrs_dists_{i}' for i in range(7)])
+        # Calculate other outcomes.
+        s['mrs_0-2'] = dist[2]
+        # Changes from "no treatment":
+        s['mrs_shift'] = 0.0
+        s['utility_shift'] = 0.0
+        # Store:
+        dict_no_treatment_outcomes[new_key] = pd.DataFrame(s).transpose()
+
+    if _log:
+        p = 'Loaded reference no-treatment outcomes.'
+        print_progress_loc(p, _log_loc)
+    return dict_no_treatment_outcomes
 
 
 def calculate_unique_outcomes(
