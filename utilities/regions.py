@@ -5,8 +5,11 @@ Geography.
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 
 from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 import stroke_maps.load_data
 
@@ -253,7 +256,7 @@ def find_region_admissions_by_unique_travel_times(
         left_on='lsoa', right_on='LSOA', how='right'
         )
     # Calculate this separately for each region type.
-    region_types = ['National', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']  # 'region
+    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']  # 'region
     dict_region_unique_times = {}
     masks = {'all_patients': slice(None),
              'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
@@ -276,7 +279,7 @@ def find_region_admissions_by_unique_travel_times(
             for region_type in region_types:
                 dict_region_unique_times[mask_label][region_type] = {}
                 for time_label, time_cols in time_cols_dict.items():
-                    if region_type == 'National':
+                    if region_type == 'national':
                         cols = ['Admissions'] + time_cols
                         df = df_here[cols].groupby(time_cols).sum()
                         df = df.rename(columns={'Admissions': 'National'})
@@ -308,7 +311,7 @@ def find_region_admissions_by_unique_travel_times(
             dict_region_unique_times[mask_label] = {}
             df_here = df_lsoa_regions.loc[mask]
             for region_type in region_types:
-                if region_type == 'National':
+                if region_type == 'national':
                     cols = ['Admissions'] + cols_treat_scen
                     df = df_here[cols].groupby(cols_treat_scen).sum()
                     df = df.rename(columns={'Admissions': 'National'})
@@ -386,10 +389,8 @@ def select_highlighted_regions(df_unit_services):
     for key, region_list in region_options_dict.items():
         bar_options += [f'{key}: {v}' for v in region_list]
 
-    highlighted_options = st.multiselect(
-        'Regions to highlight',
-        bar_options
-        )
+    highlighted_options = st.multiselect('Regions to highlight',
+                                         bar_options, default='National')
 
     def pick_out_region_name(bar_option):
         if bar_option.startswith('ISDN: '):
@@ -402,11 +403,14 @@ def select_highlighted_regions(df_unit_services):
             str_selected_region = bar_option.split('Ambulance service: ')[-1]
             col_region = 'ambo22'
         elif bar_option.startswith('Nearest unit: '):
-            str_selected_region = bar_option.split('Nearest unit: ')[-1]
+            str_selected_region_name = bar_option.split('Nearest unit: ')[-1]
+            # Convert unit name to postcode:
+            mask = df_unit_services['ssnap_name'] == str_selected_region_name
+            str_selected_region = df_unit_services.loc[mask].index[0]
             col_region = 'nearest_ivt_unit'
         else:
             str_selected_region = 'National'
-            col_region = ''
+            col_region = 'national'
         return str_selected_region, col_region
 
     highlighted_regions = []
@@ -461,3 +465,247 @@ def load_region_lists(df_unit_services_full):
     }
 
     return region_options_dict
+
+
+def calculate_nested_average_outcomes(
+        dict_outcomes,
+        dict_region_admissions_unique,
+        region_types,
+        df_highlight=None,
+        _log=True, _log_loc=None,
+        ):
+    """
+    dict_region_admissions_unique_treatment_times
+
+    If highlighted teams are given, calculate only the data for
+    those teams and store the mixed region types in a single dataframe.
+    If all regions are being calculated, then calculate the
+    data for all regions and store a separate df for each region type. 
+    """
+    d = {}
+    for subgroup, dict_subgroup_outcomes in dict_outcomes.items():
+        d[subgroup] = {}
+        for scenario, df_subgroup_outcomes in dict_subgroup_outcomes.items():
+            d[subgroup][scenario] = {}
+            for lsoa_subset, region_dicts in (
+                    dict_region_admissions_unique.items()
+                    ):
+                if df_highlight is not None:
+                    # Gather dataframes for different regions types
+                    # in here:
+                    list_df_h = []
+                else:
+                    d[subgroup][scenario][lsoa_subset] = {}
+                for region_type in region_types:
+                    admissions_df = region_dicts[region_type]
+                    if df_highlight is not None:
+                        # Limit to only the highlighted teams:
+                        mask = (df_highlight['region_type'] ==
+                                region_type)
+                        teams_here = df_highlight.loc[
+                            mask, 'highlighted_region']
+                        sc = ((region_type == 'nearest_ivt_unit') &
+                              (lsoa_subset == 'nearest_unit_no_mt'))
+                        if sc:
+                            # Special case: expect that CSCs will be missing
+                            # for the lsoa subset of only areas whose nearest
+                            # unit does not provide MT. So drop CSCs here.
+                            teams_removed = list(
+                                set(teams_here) -
+                                set(list(admissions_df.columns))
+                                )
+                            teams_here = [t for t in teams_here if t in
+                                          admissions_df.columns]
+                        else:
+                            pass
+                        admissions_df = admissions_df[teams_here]
+                    else:
+                        sc = False
+                    # Gather weighted outcomes for these teams:
+                    df = calculate_region_outcomes(
+                        admissions_df,
+                        df_subgroup_outcomes,
+                        _log=False
+                        )
+                    if sc:
+                        # Placeholder data for CSCs.
+                        for t in teams_removed:
+                            df.loc[t] = pd.NA
+                    else:
+                        pass
+                    if df_highlight is not None:
+                        list_df_h.append(df)
+                    else:
+                        # Store full df for each region type in here:
+                        d[subgroup][scenario][lsoa_subset][region_type] = df
+
+                if df_highlight is not None:
+                    # Combine all region types into one dataframe:
+                    df_h = pd.concat(list_df_h, axis='rows')
+                    d[subgroup][scenario][lsoa_subset] = df_h
+    if _log:
+        if df_highlight is not None:
+            p = 'Found average outcomes for each highlighted region.'
+        else:
+            p = 'Found average outcomes for selected region type.'
+        print_progress_loc(p, _log_loc)
+    return d
+
+
+def display_region_summary(series_u, series_r):
+    """
+    Show metrics of key outcomes.
+
+    u is usual care, r is redirection available.
+    """
+    label_dict = {
+        'mrs_0-2': {
+            'label': 'Proportion with mRS<2',
+            'format': '.1%',
+            'delta_color': 'normal',
+        },
+        'mrs_shift': {
+            'label': 'Change in mRS score',
+            'format': '.3f',
+            'delta_color': 'inverse',
+        },
+        'utility_shift': {
+            'label': 'Change in utility',
+            'format': '.3f',
+            'delta_color': 'normal',
+        },
+    }
+    keys_to_use = ['mrs_0-2', 'mrs_shift', 'utility_shift']
+    s = 'from usual care'
+    for k in keys_to_use:
+        d = series_r[k] - series_u[k]
+        st.metric(
+            label_dict[k]['label'],
+            value=f"{series_r[k]:^{label_dict[k]['format']}}",
+            delta=f"{d:^{label_dict[k]['format']}} {s}",
+            delta_color=label_dict[k]['delta_color']
+            )
+        st.write(series_r[k], series_u[k])
+        st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
+
+
+def plot_mrs_bars(mrs_lists_dict, title_text='', return_fig=False):
+    # fig = go.Figure()
+    subplot_titles = [
+        'Discharge disability<br>probability distribution',
+        'Cumulative probability<br>of discharge disability'
+    ]
+
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=subplot_titles, shared_xaxes=True)
+    fig.update_layout(xaxis_showticklabels=True)
+
+    for label, mrs_dict in mrs_lists_dict.items():
+
+        fig.add_trace(go.Bar(
+            x=[*range(7)],
+            y=mrs_dict['noncum'],
+            error_y=dict(
+                type='data',
+                array=mrs_dict['std'],
+                visible=True),
+            name=mrs_dict['label'],
+            legendgroup=1,
+            marker_color=mrs_dict['colour'],
+            ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=[*range(7)],
+            y=mrs_dict['cum'],
+            name=mrs_dict['label'],
+            legendgroup=2,
+            marker_color=mrs_dict['colour'],
+            mode='lines',
+            line=dict(dash=mrs_dict['linestyle'])
+            ), row=2, col=1)
+
+    fig.update_layout(barmode='group')
+    # Bump the second half of the legend downwards:
+    # (bump amount is eyeballed based on fig height)
+    fig.update_layout(legend_tracegroupgap=240)
+
+    fig.update_layout(title=title_text)
+    for row in [1, 2]:  # 'all' doesn't work for some reason
+        fig.update_xaxes(
+            title_text='Discharge disability (mRS)',
+            # Ensure that all mRS ticks are shown:
+            tickmode='linear',
+            tick0=0,
+            dtick=1,
+            row=row, col=1
+            )
+    fig.update_yaxes(title_text='Probability', row=1, col=1)
+    fig.update_yaxes(title_text='Cumulative probability', row=2, col=1)
+
+    # Figure setup.
+    # Give enough of a top margin that the main title doesn't
+    # clash with the top subplot title.
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        margin_t=150,
+        )
+
+    if return_fig:
+        return fig
+    else:
+        # Options for the mode bar.
+        # (which doesn't appear on touch devices.)
+        plotly_config = {
+            # Mode bar always visible:
+            # 'displayModeBar': True,
+            # Plotly logo in the mode bar:
+            'displaylogo': False,
+            # Remove the following from the mode bar:
+            'modeBarButtonsToRemove': [
+                # 'zoom',
+                # 'pan',
+                'select',
+                # 'zoomIn',
+                # 'zoomOut',
+                'autoScale',
+                'lasso2d'
+                ],
+            # Options when the image is saved:
+            'toImageButtonOptions': {'height': None, 'width': None},
+            }
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config=plotly_config
+            )
+
+
+def load_lsoa_demog():
+    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
+    return df_demog
+
+
+def select_full_data_type():
+    region_types = ['lsoa', 'national', 'icb', 'isdn', 'ambo22',
+                    'nearest_ivt_unit']
+    dict_labels = {
+        'lsoa': 'Full results by LSOA',
+        'national': 'National average',
+        'icb': 'Integrated Care Board',
+        'isdn': 'Integrated Stroke Delivery Network',
+        'ambo22': 'Ambulance service',
+        'nearest_ivt_unit': 'Nearest unit with IVT'
+    }
+
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return dict_labels[label]
+    # Pick a layer to use for calculating population results:
+    full_data_type = st.selectbox(
+        'Choose a region type for the full results.',
+        options=region_types,
+        format_func=f,
+        index=3,
+        )
+    return full_data_type

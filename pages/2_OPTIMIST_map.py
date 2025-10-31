@@ -11,6 +11,7 @@ The full LSOA results are only built up at the end when required.
 # ##### IMPORTS #####
 # ###################
 import streamlit as st
+import pandas as pd
 
 # ----- Custom functions -----
 import utilities.regions as reg
@@ -61,6 +62,7 @@ def set_up_page_layout():
 
     # ----- Results -----
     c['region_summaries'] = st.container()
+    c['highlighted_regions'] = st.container(horizontal=True)
     c['maps'] = st.container()
     with st.expander('Full data tables'):
         c['full_results'] = st.container()
@@ -158,8 +160,6 @@ dict_region_admissions_unique_treatment_times = (
         df_lsoa_units_times, unique_travel=False,
         _log_loc=containers['pathway'])
     )
-# TO DO - MAKE SURE THIS INCLUDES "region" REGION TYPE AND
-# NATIONAL AND NEAREST IVT UNIT.
 
 
 # ----- Base outcomes -----
@@ -235,101 +235,166 @@ for s in df_subgroups.index:
         _log_loc=containers['onion_setup']
     )
 
-st.title('Scratch space')
-
-st.write(df_subgroups)
-st.write(df_pop_usual_care, df_pop_redir)
-st.write(dict_region_admissions_unique_treatment_times['all_patients']['isdn'])
-st.write(df_treat_times_sets_unique)
-
 
 #MARK: Results
 # ###################
 # ##### RESULTS #####
 # ###################
 # ----- Region summaries -----
-for lsoa_subset, region_dicts in (
-    dict_region_admissions_unique_treatment_times.items()
-    ):
-    st.write(region_dicts.keys())
-
 with containers['region_summaries']:
     df_highlighted_regions = reg.select_highlighted_regions(df_unit_services)
-st.write(df_highlighted_regions)
-highlighted_region_types = sorted(list(set(df_highlighted_regions['region_type'])))
-st.write(highlighted_region_types)
+# Only find the region results for highlighted region types:
+highlighted_region_types = sorted(list(set(
+    df_highlighted_regions['region_type'])))
 # Average the results over each geographical region.
 # Find two copies of the results - one with all LSOA in the region
 # and one with only LSOA whose nearest unit is not a CSC.
 # --- CALCULATIONS:
 # + Calculate admissions-weighted average outcomes.
-dict_region_outcomes = {}
-for subgroup, dict_subgroup_outcomes in dict_outcomes.items():
-    dict_region_outcomes[subgroup] = {}
-    for scenario, df_subgroup_outcomes in dict_subgroup_outcomes.items():
-        dict_region_outcomes[subgroup][scenario] = {}
-        for lsoa_subset, region_dicts in (
-                dict_region_admissions_unique_treatment_times.items()
-                ):
-            dict_region_outcomes[subgroup][scenario][lsoa_subset] = {}
-            for region_type in highlighted_region_types:
-                admissions_df = region_dicts[region_type]
-                df = reg.calculate_region_outcomes(
-                    admissions_df,
-                    df_subgroup_outcomes,
-                    _log=False
-                    )
-                dict_region_outcomes[subgroup][scenario][lsoa_subset][
-                    region_type] = df
-p = 'Found average outcomes for each region.'
-print_progress_loc(p, containers['onion_setup'])
 
-st.stop()
-
-# TO DO - need special case when selected region is a nearest stroke unit,
-# convert the unit name (selectbox) to postcode (outcome df)
-# so that the data can be pulled out.
-
-containers_highlighted_regions = st.container(horizontal=True)
-df_summary = gather_summary_for_regions(
-    dict_region_outcomes, highlighted_regions,
+# Nest levels: subgroup, scenario, lsoa subset.
+dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
+    dict_outcomes,
+    dict_region_admissions_unique_treatment_times,
+    highlighted_region_types,
+    df_highlighted_regions,
     _log_loc=containers['region_summaries']
-    )  # 'Gathering mRS distributions for highlighted regions.'
-df_mrs = gather_mrs_for_regions(
-    dict_region_outcomes, highlighted_regions,
-    _log_loc=containers['mrs_dists']
-    )  # 'Gathering mRS distributions for highlighted regions.'
+    )
 
-for r, region in enumerate(highlighted_regions):
-    with containers_highlighted_regions:
-        ch = st.container()
+# Display chosen results:
+with containers['region_summaries']:
+    use_lsoa_subset = st.toggle(
+        'Use only patients whose nearest unit does not provide MT',
+        value=True,
+        )
+lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
+
+cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
+cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
+cols_mrs_std = [f'{c}_std' for c in cols_mrs]
+
+for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+    region_type = df_highlighted_regions.loc[
+        df_highlighted_regions['highlighted_region'] == region,
+        'region_type'].values[0]
+    # Pick out label for the box:
+    if region_type == 'nearest_ivt_unit':
+        region_label = df_unit_services.loc[region, 'ssnap_name']
+    else:
+        region_label = region
+    with containers['highlighted_regions']:
+        ch = st.container(border=True)
     with ch:
-        display_region_summary()
-        plot_region_mrs_dists()
+        st.header(region_label)
+        for subgroup in df_subgroups.index:
+            df_u = dict_highlighted_region_outcomes[subgroup][
+                'usual_care'][lsoa_subset].loc[region]
+            df_r = dict_highlighted_region_outcomes[subgroup][
+                'redir_allowed'][lsoa_subset].loc[region]
+            cs = st.container(border=True)
+            with cs:
+                if df_u.isna().all() & df_r.isna().all():
+                    st.markdown('No data available.')
+                else:
+                    st.subheader(df_subgroups.loc[subgroup, 'label'])
+                    reg.display_region_summary(df_u, df_r)
+                    mrs_lists_dict = {
+                        'usual_care': {
+                            'noncum': df_u[cols_mrs_noncum],
+                            'cum': df_u[cols_mrs],
+                            'std': df_u[cols_mrs_std],
+                            'colour': '#0072b2',
+                            'linestyle': 'solid',
+                            'label': 'Usual care',
+                        },
+                        'redir_allowed': {
+                            'noncum': df_r[cols_mrs_noncum],
+                            'cum': df_r[cols_mrs],
+                            'std': df_r[cols_mrs_std],
+                            'colour': '#56b4e9',
+                            'linestyle': 'dash',
+                            'label': 'Redirection available'
+                        },
+                    }
+                    reg.plot_mrs_bars(mrs_lists_dict)
 
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
 # LSOA-level data.
 with containers['maps']:
-    dict_map_options = select_map_data()
-map_arrs = gather_map_data(
-    dict_map_options, dict_outcomes,
-    df_lsoa_units_times, _log_loc=containers['maps']  # 'Gathering data for maps.'
+    subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
+
+map_arrs = maps.gather_map_arrays(
+    dict_outcomes[subgroup_map]['usual_care'],
+    dict_outcomes[subgroup_map]['redir_allowed'],
+    df_lsoa_units_times,
+    _log_loc=containers['maps']
     )
+
+# TO DO - COLOUR SETUP.
+# 'Population density (people per square kilometre)'
+
 with containers['maps']:
-    plot_maps(map_arrs)
+    maps.plot_maps(map_arrs)
 
 
 # ----- Full LSOA results -----
 # Generate on request, not by default with each re-run.
 with containers['full_results']:
-    full_results_type = select_full_data_type()
-try:
-    df_full = dict_region_outcomes[full_results_type]
-except KeyError:
-    df_full = gather_lsoa_level_outcomes(
-        dict_base_outcomes, df_base_lvo_ivt_mt, df_lsoa_units_times,
-        _log_loc=containers['full_results']  # 'Gathering full LSOA-level results.'
-        )
-with containers['full_results']:
-    st.dataframe(df_full)
+    generate_full_data = st.checkbox('Show options to generate full data')
+if generate_full_data:
+    with containers['full_results']:
+        full_results_type = reg.select_full_data_type()
+    if full_results_type == 'lsoa':
+        # Calculate LSOA-level results.
+        dict_full_outcomes = pop.gather_lsoa_level_outcomes(
+            dict_outcomes,
+            df_lsoa_units_times,
+            _log_loc=containers['full_results']
+            )
+    else:
+        # Calculate the full outcomes for just this selected region type
+        # but for all the nested subsets (subgroup, scenario, LSOA subset):
+        dict_full_outcomes = reg.calculate_nested_average_outcomes(
+            dict_outcomes,
+            dict_region_admissions_unique_treatment_times,
+            [full_results_type],
+            _log_loc=containers['full_results']
+            )
+    with containers['full_results']:
+        if full_results_type == 'lsoa':
+            cols = st.columns([1, 4])
+            with cols[0]:
+                st.markdown('Unit postcode lookup')
+                st.dataframe(df_unit_services['ssnap_name'].sort_index())
+            with cols[1]:
+                st.markdown('Travel and treatment times:')
+                st.dataframe(df_lsoa_units_times.set_index('LSOA'))
+            for subgroup, df_full in dict_full_outcomes.items():
+                st.subheader(df_subgroups.loc[subgroup, 'label'])
+                st.dataframe(df_full)
+        else:
+            use_lsoa_subset_full = st.toggle(
+                'Use only patients whose nearest unit does not provide MT',
+                value=True,
+                key='full_lsoa_subset'
+                )
+            lsoa_subset_full = ('nearest_unit_no_mt' if use_lsoa_subset_full
+                                else 'all_patients')
+            for subgroup, dict_full in dict_full_outcomes.items():
+                dfs = []
+                for scen in ['usual_care', 'redir_allowed']:
+                    df = dict_full[scen][lsoa_subset_full][full_results_type]
+                    df = df.rename(columns=dict(
+                        [(c, f'{c}_{scen}') for c in df.columns]))
+                    dfs.append(df)
+                df_full = pd.concat(dfs, axis='columns')
+
+                if full_results_type == 'nearest_ivt_unit':
+                    # Change postcodes to unit names:
+                    df_full.index = df_full.index.map(
+                        df_unit_services['ssnap_name'])
+                    df_full = df_full.sort_index()
+
+                st.subheader(df_subgroups.loc[subgroup, 'label'])
+                st.dataframe(df_full)

@@ -9,7 +9,6 @@ from pandas.api.types import is_numeric_dtype
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
-from utilities.outcomes import combine_lvo_ivt_mt_outcomes
 from utilities.utils import print_progress_loc
 
 
@@ -470,7 +469,6 @@ def calculate_unique_outcomes_onion(
             st.error('Check outcome combination proportions.')
         return df
 
-
     df_usual_care = gather_outcomes_and_props(
         ['usual_care'],
         dict_scenario_props,
@@ -510,3 +508,39 @@ def calculate_unique_outcomes_onion(
         p = 'Calculated unique outcomes for this population.'
         print_progress_loc(p, _log_loc)
     return {'usual_care': df_usual_care, 'redir_allowed': df_redir}
+
+
+def gather_lsoa_level_outcomes(
+        dict_outcomes,
+        df_lsoa_units_times,
+        _log=True, _log_loc=None
+        ):
+    """
+
+    Don't calculate the transfer-only subset
+    because the "transfer_required" column is in
+    df_lsoa_units_times.
+    """
+    redir_scens = ['usual_care', 'redirection_approved',
+                   'redirection_rejected']
+    treats = ['ivt', 'mt']
+    cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
+    df_lsoa = df_lsoa_units_times.set_index(cols_times)
+
+    dict_lsoa = {}
+    for subgroup_name, dict_subgroup in dict_outcomes.items():
+        dfs_here = [df_lsoa['LSOA']]
+        for scenario, df_outcomes in dict_subgroup.items():
+            cols_outcomes = list(df_outcomes.columns)
+            rename_dict = dict([(c, f'{c}_{scenario}') for c in cols_outcomes])
+            df = df_outcomes.rename(columns=rename_dict)
+            dfs_here.append(df)
+
+        df = pd.concat(dfs_here, axis='columns')
+        df = df.reset_index().set_index('LSOA')
+        df = df.drop(cols_times, axis='columns')
+        dict_lsoa[subgroup_name] = df
+    if _log:
+        p = 'Gathered full LSOA-level results.'
+        print_progress_loc(p, _log_loc)
+    return dict_lsoa
