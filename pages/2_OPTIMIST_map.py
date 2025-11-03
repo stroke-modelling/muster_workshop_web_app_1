@@ -16,11 +16,10 @@ import pandas as pd
 # ----- Custom functions -----
 import utilities.regions as reg
 import utilities.maps as maps
+import utilities.plot_maps as plot_maps
 import utilities.pathway as pathway
 import utilities.outcomes as outcomes
 import utilities.population as pop
-
-from utilities.utils import print_progress_loc
 
 
 #MARK: Functions
@@ -57,6 +56,7 @@ def set_up_page_layout():
 
     c['pathway'] = st.container()
     c['pathway_inputs'] = st.container(horizontal=True)
+    c['pathway_summary'] = st.container()
     c['onion_setup'] = st.container()
     c['pop_plots'] = st.container(horizontal=True)
 
@@ -64,12 +64,31 @@ def set_up_page_layout():
     c['region_summaries'] = st.container()
     c['highlighted_regions'] = st.container(horizontal=True)
     c['maps'] = st.container()
-    with st.expander('Full data tables'):
-        c['full_results'] = st.container()
+    with st.sidebar:
+        c['map_colour_setup'] = st.container()
+    # with st.expander('Full data tables'):
+    c['full_results'] = st.container()
     return c
 
 
 containers = set_up_page_layout()
+
+#MARK: Page text
+# #####################
+# ##### PAGE TEXT #####
+# #####################
+with containers['units_setup']:
+    st.header('Stroke units')
+with containers['pathway']:
+    st.header('Pathway')
+with containers['onion_setup']:
+    st.header('Population')
+with containers['region_summaries']:
+    st.header('Region summaries')
+with containers['maps']:
+    st.header('England maps')
+with containers['full_results']:
+    st.header('Full results tables')
 
 #MARK: Setup
 # #################
@@ -94,18 +113,48 @@ containers = set_up_page_layout()
 
 with containers['units_df']:
     df_unit_services = reg.select_unit_services()
-df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
-    df_unit_services, _log_loc=containers['units_setup'])
+with containers['units_setup']:  # for log_loc
+    df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
+        df_unit_services, _log_loc=containers['units_setup'])
+map_traces = plot_maps.make_constant_map_traces()
+# Load LSOA geometry:
+df_raster, transform_dict = maps.load_lsoa_raster_lookup()
+map_traces = (
+    plot_maps.make_shared_map_traces(
+        df_unit_services, df_lsoa_units_times, df_raster, transform_dict
+    ) | map_traces
+)
 with containers['units_map']:
-    maps.draw_units_map(df_unit_services, df_lsoa_units_times)
-unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
-    reg.find_unique_travel_times(df_lsoa_units_times,
-                                 _log_loc=containers['units_setup'])
-    )
-dict_region_admissions_unique_times = (
-    reg.find_region_admissions_by_unique_travel_times(
-        df_lsoa_units_times, _log_loc=containers['units_setup'])
-    )
+    outline_labels_dict = {
+        'none': 'None',
+        'icb': 'Integrated Care Board',
+        'isdn': 'Integrated Stroke Delivery Network',
+        'ambo22': 'Ambulance service',
+    }
+
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return outline_labels_dict[label]
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        outline_labels_dict.keys(),
+        format_func=f,
+        horizontal=True
+        )
+with containers['units_map']:
+    plot_maps.draw_units_map(map_traces, outline_name)
+st.stop()
+with containers['units_setup']:  # for log_loc
+    unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
+        reg.find_unique_travel_times(df_lsoa_units_times,
+                                     _log_loc=containers['units_setup'])
+        )
+    dict_region_admissions_unique_times = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times, _log_loc=containers['units_setup'])
+        )
+# Note: logs print in wrong location for cached functions,
+# so have extra "with" blocks in the lines above.
 
 
 # ----- Pathway timings -----
@@ -126,6 +175,10 @@ series_treatment_times_without_travel = (
         _log_loc=containers['pathway']
         )
     )
+with containers['pathway_summary']:
+    pathway.draw_timeline(df_pathway_steps)
+    pathway.show_treatment_time_summary(
+        series_treatment_times_without_travel)
 unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     series_treatment_times_without_travel,
     unique_travel_for_ivt,
@@ -155,11 +208,12 @@ df_treat_times_sets_unique = (
     df_treat_times_sets_unique.set_index('index'))
 # Find how many admissions per region have each set of
 # unique treatment times:
-dict_region_admissions_unique_treatment_times = (
-    reg.find_region_admissions_by_unique_travel_times(
-        df_lsoa_units_times, unique_travel=False,
-        _log_loc=containers['pathway'])
-    )
+with containers['pathway']:  # for log_loc
+    dict_region_admissions_unique_treatment_times = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times, unique_travel=False,
+            _log_loc=containers['pathway'])
+        )
 
 
 # ----- Base outcomes -----
@@ -324,18 +378,36 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 with containers['maps']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
 
+col_map = 'utility_shift'
 map_arrs = maps.gather_map_arrays(
     dict_outcomes[subgroup_map]['usual_care'],
     dict_outcomes[subgroup_map]['redir_allowed'],
     df_lsoa_units_times,
+    df_raster,
+    transform_dict,
+    col_map=col_map,
     _log_loc=containers['maps']
     )
 
-# TO DO - COLOUR SETUP.
-# 'Population density (people per square kilometre)'
+# Map labels:
+outcome_label_dict = {'utility_shift': 'Utility shift'}
+col_map_label = outcome_label_dict[col_map]
+column_pop_pretty = 'Population density (people per square kilometre)'
+subplot_titles = [
+    f'Usual care: {col_map_label}',
+    f'Benefit of redirection over usual care: {col_map_label}',
+    column_pop_pretty,
+    ]
 
 with containers['maps']:
-    maps.plot_maps(map_arrs)
+
+    st.title('Scratch space')
+
+    maps.plot_outcome_maps(
+        map_arrs, transform_dict, subplot_titles,
+        # dict_colours, dict_colours_diff, dict_colours_pop,
+        # cmap_name, cmap_diff_name, cmap_pop_name,
+        )
 
 
 # ----- Full LSOA results -----

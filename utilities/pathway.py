@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 
 from utilities.utils import print_progress_loc
+import utilities.plot_timeline as timeline
 
 
 def select_pathway_timings(use_col):
@@ -37,6 +38,7 @@ def select_pathway_timings(use_col):
             min_value=d['min_value'].astype(type(d['step'])),
             max_value=d['max_value'].astype(type(d['step'])),
             step=d['step'],
+            format='%0.0f',
             help=f"Reference value: {d['default']}",
             # key=key
             )
@@ -236,3 +238,52 @@ def calculate_treatment_times_each_lsoa_scenarios(
         p = 'Found treatment times by LSOA for base scenarios.'
         print_progress_loc(p, _log_loc)
     return df_lsoa_units_times
+
+
+def draw_timeline(df_pathway_steps):
+    # ----- Timeline -----
+    # Load emoji and labels:
+    timeline_display_dict = timeline.get_timeline_display_dict()
+    # Create timelines:
+    time_dicts = timeline.build_time_dicts_optimist(
+        df_pathway_steps['value'].to_dict()
+    )
+    time_offsets, tmax = timeline.build_time_dicts_for_plot_optimist(
+        time_dicts, gap_between_chunks=45)
+
+    # Make subsets of the dictionaries to be displayed:
+    time_keys_standard = [
+        'prehosp_usual_care', 'prehosp_prehospdiag',
+        'ivt_only_unit', 'mt_transfer_unit', 'ivt_mt_unit'
+        ]
+    time_dicts_standard, time_offsets_standard = (
+        timeline.subset_time_dicts(
+            time_dicts, time_offsets, time_keys_standard
+            )
+        )
+
+    # Draw the timelines:
+    timeline.plot_timeline(
+        time_dicts_standard,
+        timeline_display_dict,
+        y_vals=[0, 2, 1.5, 1.5, 0.5],  # timeline fragment centres
+        time_offsets=time_offsets_standard,
+        tmax=tmax,
+        tmin=-10.0
+        )
+
+
+def show_treatment_time_summary(treatment_times_without_travel):
+    # ----- Treatment times summary -----
+    df_treatment_times = (
+        timeline.make_treatment_time_df_optimist(
+            treatment_times_without_travel)
+        )
+    # Display the times:
+    times_explanation_usual_str = ('''
+    + The "fastest" time to MT is when the first stroke unit provides MT.
+    + The "slowest" time to MT is when a transfer to the MT unit is needed.
+    ''')
+    st.markdown('Summary of treatment times:')
+    st.table(df_treatment_times)
+    st.markdown(times_explanation_usual_str)

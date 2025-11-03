@@ -709,3 +709,76 @@ def select_full_data_type():
         index=3,
         )
     return full_data_type
+
+
+def load_or_calculate_region_outlines(
+        outline_name,
+        df_lsoa,
+        col_lhs='nearest_ivt_unit_name',
+        col_rhs='nearest_mt_unit_name',
+        ):
+    """
+    Don't replace these outlines with stroke-maps!
+    These versions match the simplified LSOA shapes.
+    """
+    # Load in another gdf:
+
+    if outline_name == 'ISDN':
+        load_gdf_catchment = True
+        outline_file = './data/outline_isdns.geojson'
+        outline_names_col = 'isdn'
+    elif outline_name == 'ICB':
+        load_gdf_catchment = True
+        outline_file = './data/outline_icbs.geojson'
+        outline_names_col = 'icb'  # to display
+    elif outline_name == 'Ambulance service':
+        load_gdf_catchment = True
+        outline_file = './data/outline_ambo22s.geojson'
+        outline_names_col = 'ambo22'  # to display
+    elif outline_name == 'Nearest service':
+        load_gdf_catchment = False
+        outline_names_col = 'Nearest service'
+
+        # Make catchment area polygons:
+        gdf_catchment_lhs = dissolve_polygons_by_value(
+            df_lsoa.copy().reset_index()[['lsoa', col_lhs]],
+            col=col_lhs,
+            load_msoa=True
+            )
+        gdf_catchment_lhs = gdf_catchment_lhs.rename(
+            columns={col_lhs: 'Nearest service'})
+
+        gdf_catchment_rhs = dissolve_polygons_by_value(
+            df_lsoa.copy().reset_index()[['lsoa', col_rhs]],
+            col=col_rhs,
+            load_msoa=True
+            )
+        gdf_catchment_rhs = gdf_catchment_rhs.rename(
+            columns={col_rhs: 'Nearest service'})
+
+    if load_gdf_catchment:
+        gdf_catchment_lhs = geopandas.read_file(outline_file)
+        # Convert to British National Grid:
+        gdf_catchment_lhs = gdf_catchment_lhs.to_crs('EPSG:27700')
+        # st.write(gdf_catchment['geometry'])
+        # # Make geometry valid:
+        # gdf_catchment['geometry'] = [
+        #     make_valid(g) if g is not None else g
+        #     for g in gdf_catchment['geometry'].values
+        #     ]
+        gdf_catchment_rhs = gdf_catchment_lhs.copy()
+
+    # Make colour transparent:
+    gdf_catchment_lhs['colour'] = 'rgba(0, 0, 0, 0)'
+    gdf_catchment_rhs['colour'] = 'rgba(0, 0, 0, 0)'
+    # Make a dummy column for the legend entry:
+    gdf_catchment_lhs['outline_type'] = outline_name
+    gdf_catchment_rhs['outline_type'] = outline_name
+
+    gdf_catchment_pop = gdf_catchment_lhs.copy()
+    return (
+        outline_names_col,
+        gdf_catchment_lhs,
+        gdf_catchment_rhs,
+        gdf_catchment_pop
+    )

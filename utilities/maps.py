@@ -5,13 +5,10 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import os
+import geopandas
 
 from utilities.utils import print_progress_loc
 from utilities.regions import load_lsoa_demog
-
-
-def draw_units_map(df_unit_services, df_lsoa_units_times):
-    pass
 
 
 def select_map_data(df_subgroups):
@@ -128,48 +125,42 @@ def gather_map_df(
 
 
 def gather_map_data(
+        df_raster,
+        transform_dict,
         df_maps,
-        column_colours,
-        column_colours_diff,
-        column_pop,
+        cols,
         _log=True, _log_loc=None,
         ):
-    # Load LSOA geometry:
-    df_raster, transform_dict = load_lsoa_raster_lookup()
-
+    df_raster = df_raster.copy()
     df_raster = pd.merge(df_raster, df_maps.reset_index(),
                          left_on='LSOA11NM', right_on='LSOA', how='left')
-
-    burned_lhs = convert_df_to_2darray(df_raster, column_colours,
-                                       transform_dict)
-    burned_rhs = convert_df_to_2darray(df_raster, column_colours_diff,
-                                       transform_dict)
-    burned_pop = convert_df_to_2darray(df_raster, column_pop,
-                                       transform_dict)
+    arrs = []
+    for c in cols:
+        arrs.append(convert_df_to_2darray(df_raster, c, transform_dict))
     if _log:
-        p = 'Created map arrays.'
+        p = 'Created map array.'
         print_progress_loc(p, _log_loc)
-    return burned_lhs, burned_rhs, burned_pop
+    return arrs
 
 
-def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times, _log_loc=None):
+def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
+                      df_raster, transform_dict,
+                      col_map='utility_shift', _log_loc=None):
     """Wrapper for gather map into df then reshape to arrays."""
     df_maps = gather_map_df(
         df_usual,
         df_redir,
         df_lsoa_units_times,
+        cols_map=[col_map],
         _log_loc=_log_loc
         )
 
-    map_arrs = gather_map_data(
-        df_maps,
+    cols = [
         'utility_shift_usual_care',
         'utility_shift_redir_minus_usual_care',
-        'population_density',
-        _log_loc=_log_loc
+        'population_density'
+        ]
+    arrs = gather_map_data(
+        df_raster, transform_dict, df_maps, cols, log_loc=_log_loc
         )
-    return map_arrs
-
-
-def plot_maps(maps_arrs):
-    pass
+    return arrs
