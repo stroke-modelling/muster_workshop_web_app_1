@@ -171,7 +171,11 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
 # #########################
 # ##### CREATE TRACES #####
 # #########################
-def make_constant_map_traces():
+def make_constant_map_traces(
+        df_raster,
+        transform_dict,
+        dict_colours_pop
+        ):
     """
     Make dict of plotly traces for constant map data.
 
@@ -254,6 +258,18 @@ def make_constant_map_traces():
                 ))
         # Store result:
         map_traces[reg_dict['trace_dict_name']] = trace_region
+
+    # ----- Population density -----
+    # For population map. Load in LSOA-level demographic data:
+    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df_demog,
+        ['population_density'],
+        )
+    map_traces['pop'] = make_trace_heatmap(
+        arrs[0], transform_dict, dict_colours_pop, name='pop')
     return map_traces
 
 
@@ -381,6 +397,31 @@ def make_units_traces(gdf_units):
     return traces
 
 
+def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
+    trace = go.Heatmap(
+        z=arr,
+        transpose=False,
+        x0=transform_dict['xmin'],
+        dx=transform_dict['pixel_size'],
+        y0=transform_dict['ymin'],
+        dy=transform_dict['pixel_size'],
+        zmin=dict_colours['vmin'],
+        zmax=dict_colours['vmax'],
+        colorscale=dict_colours['cmap'],
+        colorbar=dict(
+            thickness=20,
+            # tickmode='array',
+            # tickvals=tick_locs,
+            # ticktext=tick_names,
+            # ticklabelposition='outside top'
+            title=dict_colours['title']
+            ),
+        name=name,
+        hoverinfo='skip',
+    )
+    return trace
+
+
 #MARK: Figure setup
 # ########################
 # ##### FIGURE SETUP #####
@@ -452,12 +493,15 @@ def england_map_setup(fig):
 def draw_units_map(map_traces, outline_name='none'):
     fig = go.Figure()
 
-    fig.add_trace(map_traces['england_outline'])
     fig.add_trace(map_traces['raster_nearest_csc']['trace'])
     fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
-    if outline_name != 'none':
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'])
+    else:
         for t in map_traces[f'{outline_name}_outlines']:
             fig.add_trace(t)
+    for r in map_traces['roads']:
+        fig.add_trace(r)
     fig.add_trace(map_traces['units']['ivt'])
     fig.add_trace(map_traces['units']['mt'])
 
@@ -481,33 +525,60 @@ def draw_units_map(map_traces, outline_name='none'):
 
 
 def plot_outcome_maps(
-        maps_arrs, transform_dict, subplot_titles=[],
-        # dict_colours, dict_colours_diff, dict_colours_pop,
-        # cmap_names,
+        map_traces, map_order, colour_dicts,
+        subplot_titles=[], outline_name='none',
         ):
-
-    fig = plot_maps.plotly_many_heatmaps(
-        *maps_arrs,
-        # gdf_catchment_lhs,
-        # gdf_catchment_rhs,
-        # gdf_catchment_pop,
-        # outline_names_col,
-        # outline_name,
-        # traces_units,
-        # unit_subplot_dict,
-        subplot_titles=subplot_titles,
-        dict_colours=dict_colours,
-        dict_colours_diff=dict_colours_diff,
-        dict_colours_pop=dict_colours_pop,
-        transform_dict=transform_dict,
-        cmaps=cmap_names,
+    """"""
+    # Map labels:
+    subplot_titles = [colour_dicts[m]['title'] for m in map_order]
+    fig = make_subplots(
+        rows=1, cols=len(map_order),
+        horizontal_spacing=0.0,
+        subplot_titles=subplot_titles
         )
+
+    cbar_len = 1.0 / len(map_order)
+    for i, m in enumerate(map_order):
+        fig.add_trace(map_traces[m], row=1, col=i+1)
+        fig.update_traces(
+            {'colorbar': {
+                'orientation': 'h',
+                'x': i * cbar_len,
+                'y': -0.2,
+                'len': cbar_len,
+                'xanchor': 'left',
+                'title_side': 'bottom'
+                # 'xref': 'paper'
+                }},
+            selector={'name': m}
+            )
+
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'], row='all', col='all')
+    else:
+        for t in map_traces[f'{outline_name}_outlines']:
+            fig.add_trace(t, row='all', col='all')
+    for r in map_traces['roads']:
+        fig.add_trace(r, row='all', col='all')
+    fig.add_trace(map_traces['units']['ivt'], row='all', col='all')
+    fig.add_trace(map_traces['units']['mt'], row='all', col='all')
+
+    fig = england_map_setup(fig)
+    # Figure setup.
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        margin_t=40,
+        margin_b=0,
+        )
+    for i in range(len(map_order)):
+        # Equivalent to pyplot set_aspect='equal':
+        fig.update_yaxes(col=i+1, scaleanchor='x', scaleratio=1)
+
+    plotly_config = get_map_config()
 
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        # width='content',
         config=plotly_config
         )
-    pass
-
-

@@ -5,10 +5,8 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import os
-import geopandas
 
 from utilities.utils import print_progress_loc
-from utilities.regions import load_lsoa_demog
 
 
 def select_map_data(df_subgroups):
@@ -113,11 +111,6 @@ def gather_map_df(
             df_results[f'{col}_usual_care']
         )
 
-    # For population map. Load in LSOA-level demographic data:
-    df_demog = load_lsoa_demog()
-    df_results = pd.merge(df_results, df_demog.set_index('LSOA'),
-                          left_index=True, right_index=True, how='left')
-
     if _log:
         p = 'Gathered data for maps.'
         print_progress_loc(p, _log_loc)
@@ -156,11 +149,11 @@ def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
         )
 
     cols = [
-        'utility_shift_usual_care',
-        'utility_shift_redir_minus_usual_care',
-        'population_density'
+        f'{col_map}_usual_care',
+        f'{col_map}_redir_minus_usual_care',
         ]
     arrs = gather_map_data(
-        df_raster, transform_dict, df_maps, cols, log_loc=_log_loc
+        df_raster, transform_dict, df_maps, cols, _log_loc=_log_loc
         )
-    return arrs
+    cols = [c.replace(f'{col_map}_', '') for c in cols]
+    return dict(zip(cols, arrs))

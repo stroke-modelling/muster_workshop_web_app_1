@@ -164,6 +164,7 @@ def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
     # Separate column for separate travel time including transfer:
     df_geo['nearest_ivt_then_mt_time'] = (
         df_geo['nearest_ivt_time'] + df_geo['transfer_time'])
+
     # Cache the geo class so that on the next run all of the big
     # data files are not loaded in another time.
     st.session_state['geo'] = geo
@@ -679,11 +680,6 @@ def plot_mrs_bars(mrs_lists_dict, title_text='', return_fig=False):
             use_container_width=True,
             config=plotly_config
             )
-
-
-def load_lsoa_demog():
-    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
-    return df_demog
 
 
 def select_full_data_type():

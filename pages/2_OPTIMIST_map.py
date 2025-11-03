@@ -20,6 +20,7 @@ import utilities.plot_maps as plot_maps
 import utilities.pathway as pathway
 import utilities.outcomes as outcomes
 import utilities.population as pop
+import utilities.colour_setup as colour_setup
 
 
 #MARK: Functions
@@ -65,7 +66,7 @@ def set_up_page_layout():
     c['highlighted_regions'] = st.container(horizontal=True)
     c['maps'] = st.container()
     with st.sidebar:
-        c['map_colour_setup'] = st.container()
+        c['map_setup'] = st.container()
     # with st.expander('Full data tables'):
     c['full_results'] = st.container()
     return c
@@ -94,6 +95,14 @@ with containers['full_results']:
 # #################
 # ##### SETUP #####
 # #################
+
+# ----- Outcome choice -----
+with containers['map_setup']:
+    map_outcome = outcomes.select_outcome_type()
+    cmap_name = colour_setup.select_colour_maps()
+    dicts_colours = colour_setup.select_colour_limits(map_outcome, cmap_name)
+
+
 # ----- Unit services -----
 # Show the map of England with the stroke units and so introduce
 # the idea that some geographical areas are nearest a CSC (MT)
@@ -116,9 +125,10 @@ with containers['units_df']:
 with containers['units_setup']:  # for log_loc
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
         df_unit_services, _log_loc=containers['units_setup'])
-map_traces = plot_maps.make_constant_map_traces()
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
+map_traces = plot_maps.make_constant_map_traces(
+    df_raster, transform_dict, dicts_colours['pop'])
 map_traces = (
     plot_maps.make_shared_map_traces(
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
@@ -143,7 +153,6 @@ with containers['units_map']:
         )
 with containers['units_map']:
     plot_maps.draw_units_map(map_traces, outline_name)
-st.stop()
 with containers['units_setup']:  # for log_loc
     unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
         reg.find_unique_travel_times(df_lsoa_units_times,
@@ -378,35 +387,25 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 with containers['maps']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
 
-col_map = 'utility_shift'
-map_arrs = maps.gather_map_arrays(
+map_arrs_dict = maps.gather_map_arrays(
     dict_outcomes[subgroup_map]['usual_care'],
     dict_outcomes[subgroup_map]['redir_allowed'],
     df_lsoa_units_times,
     df_raster,
     transform_dict,
-    col_map=col_map,
+    col_map=map_outcome,
     _log_loc=containers['maps']
     )
+for col, arr in map_arrs_dict.items():
+    map_traces[col] = plot_maps.make_trace_heatmap(
+        arr, transform_dict, dicts_colours[col], name=col)
 
-# Map labels:
-outcome_label_dict = {'utility_shift': 'Utility shift'}
-col_map_label = outcome_label_dict[col_map]
-column_pop_pretty = 'Population density (people per square kilometre)'
-subplot_titles = [
-    f'Usual care: {col_map_label}',
-    f'Benefit of redirection over usual care: {col_map_label}',
-    column_pop_pretty,
-    ]
 
 with containers['maps']:
-
-    st.title('Scratch space')
-
-    maps.plot_outcome_maps(
-        map_arrs, transform_dict, subplot_titles,
-        # dict_colours, dict_colours_diff, dict_colours_pop,
-        # cmap_name, cmap_diff_name, cmap_pop_name,
+    plot_maps.plot_outcome_maps(
+        map_traces,
+        ['usual_care', 'redir_minus_usual_care', 'pop'],
+        dicts_colours,
         )
 
 

@@ -11,6 +11,27 @@ import classes.model_module as model
 from utilities.utils import print_progress_loc
 
 
+def select_outcome_type():
+    """
+    """
+    outcome_type_dict = {
+        'utility_shift': 'Added utility',
+        'mrs_0-2': 'mRS <= 2',
+    }
+
+    def f(key):
+        return outcome_type_dict[key]
+    # Outcome type input:
+    outcome_type = st.radio(
+        'Outcome measure',
+        ['utility_shift', 'mrs_0-2'],
+        index=0,  # 'added utility' as default
+        format_func=f,
+        # horizontal=True
+    )
+    return outcome_type
+
+
 def load_no_treatment_outcomes(_log=True, _log_loc=None):
     """
     """
