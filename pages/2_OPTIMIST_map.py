@@ -52,25 +52,44 @@ def set_up_page_layout():
     c = {}
     st.title('Benefit in outcomes from redirection')
     c['units_setup'] = st.container()
-    c['units_map'] = st.container()
+    cols = st.columns([1, 1])
+    with cols[0]:
+        c['units_text'] = st.container()
+        c['log_units'] = st.container()
+    with cols[1]:
+        c['units_map'] = st.container()
     with st.expander('Edit unit services'):
         c['units_df'] = st.container()
 
     c['pathway'] = st.container()
     c['pathway_inputs'] = st.container(horizontal=True)
     c['pathway_summary'] = st.container()
-    c['onion_setup'] = st.container()
+    c['log_pathway'] = st.container()
+
+    c['onion'] = st.container()
+    cols = st.columns([1, 1])
+    with cols[0]:
+        c['onion_fig'] = st.container()
+    with cols[1]:
+        c['onion_setup'] = st.container()
     c['onion_subgroups'] = st.container()
     c['pop_plots'] = st.container(horizontal=True)
+    c['log_onion'] = st.container()
 
     # ----- Results -----
+    c['results'] = st.container()
     c['region_summaries'] = st.container()
     c['highlighted_regions'] = st.container(horizontal=True)
+    c['log_regions'] = st.container()
+
     c['maps'] = st.container()
+    c['log_maps'] = st.container()
+
     with st.sidebar:
         c['map_setup'] = st.container()
     # with st.expander('Full data tables'):
     c['full_results'] = st.container()
+    c['log_full_results'] = st.container()
     return c
 
 
@@ -82,12 +101,16 @@ containers = set_up_page_layout()
 # #####################
 with containers['units_setup']:
     st.header('Stroke units')
+with containers['units_text']:
+    st.markdown('Stroke units, different services available, text text text.')
 with containers['pathway']:
     st.header('Pathway')
-with containers['onion_setup']:
+with containers['onion']:
     st.header('Population')
 with containers['onion_subgroups']:
     st.header('Subgroups')
+with containers['results']:
+    st.title('Results')
 with containers['region_summaries']:
     st.header('Region summaries')
 with containers['maps']:
@@ -126,9 +149,9 @@ with containers['map_setup']:
 
 with containers['units_df']:
     df_unit_services = reg.select_unit_services()
-with containers['units_setup']:  # for log_loc
+with containers['log_units']:  # for log_loc
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
-        df_unit_services, _log_loc=containers['units_setup'])
+        df_unit_services, _log_loc=containers['log_units'])
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
 map_traces = plot_maps.make_constant_map_traces(
@@ -138,7 +161,7 @@ map_traces = (
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
     ) | map_traces
 )
-with containers['units_map']:
+with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
         'icb': 'Integrated Care Board',
@@ -157,14 +180,14 @@ with containers['units_map']:
         )
 with containers['units_map']:
     plot_maps.draw_units_map(map_traces, outline_name)
-with containers['units_setup']:  # for log_loc
+with containers['log_units']:  # for log_loc
     unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
         reg.find_unique_travel_times(df_lsoa_units_times,
-                                     _log_loc=containers['units_setup'])
+                                     _log_loc=containers['log_units'])
         )
     dict_region_admissions_unique_times = (
         reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, _log_loc=containers['units_setup'])
+            df_lsoa_units_times, _log_loc=containers['log_units'])
         )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
@@ -185,7 +208,7 @@ with containers['pathway_inputs']:
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
         df_pathway_steps, ['usual_care', 'prehospdiag'],
-        _log_loc=containers['pathway']
+        _log_loc=containers['log_pathway']
         )
     )
 with containers['pathway_summary']:
@@ -196,7 +219,7 @@ unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     series_treatment_times_without_travel,
     unique_travel_for_ivt,
     unique_travel_for_mt,
-    _log_loc=containers['pathway']
+    _log_loc=containers['log_pathway']
     )
 unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
     dict_unique_travel_pairs, series_treatment_times_without_travel,
@@ -206,7 +229,7 @@ unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
 df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
     df_lsoa_units_times,
     series_treatment_times_without_travel,
-    _log_loc=containers['pathway']
+    _log_loc=containers['log_pathway']
     )
 # Find the unique sets of treatment times:
 scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
@@ -221,11 +244,11 @@ df_treat_times_sets_unique = (
     df_treat_times_sets_unique.set_index('index'))
 # Find how many admissions per region have each set of
 # unique treatment times:
-with containers['pathway']:  # for log_loc
+with containers['log_pathway']:  # for log_loc
     dict_region_admissions_unique_treatment_times = (
         reg.find_region_admissions_by_unique_travel_times(
             df_lsoa_units_times, unique_travel=False,
-            _log_loc=containers['pathway'])
+            _log_loc=containers['log_pathway'])
         )
 
 
@@ -271,6 +294,8 @@ dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
 # + Unique time results for nLVO + LVO combo for usual care
 #   and for "redirection considered" groups.
 
+with containers['onion_fig']:
+    pop.plot_onion()
 with containers['onion_setup']:
     dict_onion = pop.select_onion_population()
 dict_onion = pop.calculate_population_subgroups(dict_onion)
@@ -300,7 +325,7 @@ for s in df_subgroups.index:
         df_subgroups.loc[s],
         df_treat_times_sets_unique,
         s,
-        _log_loc=containers['onion_subgroups']
+        _log_loc=containers['log_onion']
     )
 
 
@@ -326,7 +351,7 @@ dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
     dict_region_admissions_unique_treatment_times,
     highlighted_region_types,
     df_highlighted_regions,
-    _log_loc=containers['region_summaries']
+    _log_loc=containers['log_regions']
     )
 
 # Display chosen results:
@@ -416,7 +441,7 @@ map_arrs_dict = maps.gather_map_arrays(
     df_raster,
     transform_dict,
     col_map=map_outcome,
-    _log_loc=containers['maps']
+    _log_loc=containers['log_maps']
     )
 for col, arr in map_arrs_dict.items():
     map_traces[col] = plot_maps.make_trace_heatmap(
@@ -444,7 +469,7 @@ if generate_full_data:
         dict_full_outcomes = pop.gather_lsoa_level_outcomes(
             dict_outcomes,
             df_lsoa_units_times,
-            _log_loc=containers['full_results']
+            _log_loc=containers['log_full_results']
             )
     else:
         # Calculate the full outcomes for just this selected region type
@@ -453,7 +478,7 @@ if generate_full_data:
             dict_outcomes,
             dict_region_admissions_unique_treatment_times,
             [full_results_type],
-            _log_loc=containers['full_results']
+            _log_loc=containers['log_full_results']
             )
     with containers['full_results']:
         if full_results_type == 'lsoa':

@@ -579,3 +579,111 @@ def gather_lsoa_level_outcomes(
         p = 'Gathered full LSOA-level results.'
         print_progress_loc(p, _log_loc)
     return dict_lsoa
+
+
+def plot_onion():
+    """
+    """
+    fig = go.Figure()
+
+    # Add circles
+    dict_circles = {
+        'white_full_study': {
+            'label': 'Full study population',
+            'colour': 'white',
+            'linecolour': 'black',
+            'radius': 5,
+            'angle': 30.0,
+        },
+        'red_suspect_stroke': {
+            'label': 'Ambulance-suspected<br>stroke population',
+            'colour': '#fdceab',
+            'linecolour': '#f6852e',
+            'radius': 4,
+            'angle': 55.0,
+        },
+        'yellow_target_population': {
+            'label': 'Target population',
+            'colour': '#ffd661',
+            'linecolour': '#ffb900',
+            'radius': 3,
+            'angle': 90.0,
+        },
+        'green_ischaemic': {
+            'label': 'Primary analysis<br>population',
+            'colour': '#a6ca8d',
+            'linecolour': '#6ca044',
+            'radius': 2,
+            'angle': 125.0,
+        },
+        'blue_thrombectomy': {
+            'label': 'Thrombectomy',
+            'colour': '#b1c7e9',
+            'linecolour': '#5498d6',
+            'radius': 1,
+            'angle': 180.0,
+        },
+    }
+
+    ybox = 6
+    for circ, c_dict in dict_circles.items():
+        r = c_dict['radius']
+        fig.add_shape(type='circle', xref='x', yref='y',
+                      x0=-r, y0=-r, x1=r, y1=r,
+                      fillcolor=c_dict['colour'],
+                      line_color=c_dict['linecolour'])
+        x = -r*np.sin(c_dict['angle'] * np.pi / 180.0)
+        y = r*np.cos(c_dict['angle'] * np.pi / 180.0)
+        fig.add_annotation(
+            x=x,
+            y=y,
+            text=c_dict['label'],
+            showarrow=True,
+            # yshift=5,
+            # xshift=-5,
+            ax=-10,
+            ay=ybox,
+            axref='x',
+            ayref='y',
+            bgcolor=c_dict['colour'],
+            bordercolor=c_dict['linecolour'],
+            borderwidth=2
+        )
+        ybox -= 3
+
+    # Set axes properties
+    fig.update_xaxes(range=[-10, 5.1], zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(range=[-5.5, 5.5], zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(scaleanchor='x', scaleratio=1)
+    # Set figure size
+    fig.update_layout(width=400, height=400, margin_t=0, margin_b=0,
+                      margin_l=0, margin_r=0,)
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    fig.update_layout(dragmode=False)  # change from default zoombox
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config=plotly_config
+        )
