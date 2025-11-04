@@ -206,8 +206,8 @@ def combine_lvo_ivt_mt_outcomes(
         )
     # Remove MT results where IVT is better:
     cols_outcomes = [c for c in df_lvo_mt.columns if 'time' not in c]
-    df.loc[~df['ivt_better'], cols_outcomes] = pd.NA
-    # Substiture in the IVT results:
+    df.loc[df['ivt_better'], cols_outcomes] = pd.NA
+    # Substitute in the IVT results:
     df = df.set_index('time_to_ivt').combine_first(
         df_lvo_ivt.set_index('time_to_ivt')
         ).reset_index().set_index(['time_to_ivt', 'time_to_mt'])

@@ -13,6 +13,7 @@ The full LSOA results are only built up at the end when required.
 import streamlit as st
 import pandas as pd
 
+
 # ----- Custom functions -----
 import utilities.regions as reg
 import utilities.maps as maps
@@ -361,6 +362,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 else:
                     st.subheader(df_subgroups.loc[subgroup, 'label'])
                     reg.display_region_summary(df_u, df_r)
+
+                    # TO DO - generate "no treatment" data for
+                    # this combination of patients, draw bars.
+
                     mrs_lists_dict = {
                         'usual_care': {
                             'noncum': df_u[cols_mrs_noncum],
@@ -379,7 +384,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'label': 'Redirection available'
                         },
                     }
-                    reg.plot_mrs_bars(mrs_lists_dict)
+                    reg.plot_mrs_bars(mrs_lists_dict, key=subgroup)
 
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
@@ -406,6 +411,7 @@ with containers['maps']:
         map_traces,
         ['usual_care', 'redir_minus_usual_care', 'pop'],
         dicts_colours,
+        outline_name,
         )
 
 

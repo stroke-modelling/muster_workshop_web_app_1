@@ -9,7 +9,7 @@ from pandas.api.types import is_numeric_dtype
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
-from utilities.utils import print_progress_loc
+from utilities.utils import print_progress_loc, update_plotly_font_sizes
 
 
 def select_onion_population():
@@ -319,6 +319,7 @@ def plot_population_props(
         xanchor="center",
         x=0.5,
     ))
+    fig = update_plotly_font_sizes(fig)
     st.plotly_chart(fig)
 
 
@@ -416,8 +417,8 @@ def calculate_unique_outcomes_onion(
                 elif treat == 'ivt_mt':
                     # Have to check against the time to IVT and the
                     # time to MT.
-                    treat_times = [ f'{time_lookup[scenario]}_ivt',
-                                    f'{time_lookup[scenario]}_mt']
+                    treat_times = [f'{time_lookup[scenario]}_ivt',
+                                   f'{time_lookup[scenario]}_mt']
                     time_tos = ['time_to_ivt', 'time_to_mt']
 
                     rename_dict = dict(zip(time_tos, treat_times))

@@ -214,7 +214,10 @@ def select_colour_maps():
 
 def select_colour_limits(map_outcome, cmap_name):
 
-    outcome_label_dict = {'utility_shift': 'Utility shift'}
+    outcome_label_dict = {
+        'utility_shift': 'Utility shift',
+        'mrs_0-2': 'mRS <= 2',
+        }
     map_outcome_label = outcome_label_dict[map_outcome]
 
     d = {}

@@ -9,6 +9,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
+from utilities.utils import update_plotly_font_sizes
+
 # from outcome_utilities.fixed_params import emoji_text_dict, plotly_colours
 
 
@@ -654,7 +656,7 @@ def plot_timeline(
             mode='text',
             text=labels_here,
             textposition='middle right',
-            # textfont=dict(size=24)
+            textfont=dict(size=16),
             showlegend=False,
             hoverinfo='skip'
         ))
@@ -701,6 +703,7 @@ def plot_timeline(
         dragmode='pan'
     )
     # fig.update_yaxes(autorange="reversed")
+    fig = update_plotly_font_sizes(fig)
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
     plotly_config = {

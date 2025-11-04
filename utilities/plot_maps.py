@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import stroke_maps.load_data
 
 from utilities.maps import gather_map_data
+from utilities.utils import update_plotly_font_sizes
 
 
 #MARK: Load geodata
@@ -414,7 +415,9 @@ def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
             # tickvals=tick_locs,
             # ticktext=tick_names,
             # ticklabelposition='outside top'
-            title=dict_colours['title']
+            title=dict_colours['title'],
+            title_font=dict(size=16),
+            tickfont=dict(size=16),
             ),
         name=name,
         hoverinfo='skip',
@@ -515,6 +518,8 @@ def draw_units_map(map_traces, outline_name='none'):
     # Equivalent to pyplot set_aspect='equal':
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
 
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
     plotly_config = get_map_config()
 
     st.plotly_chart(
@@ -526,7 +531,7 @@ def draw_units_map(map_traces, outline_name='none'):
 
 def plot_outcome_maps(
         map_traces, map_order, colour_dicts,
-        subplot_titles=[], outline_name='none',
+        outline_name='none',
         ):
     """"""
     # Map labels:
@@ -575,6 +580,8 @@ def plot_outcome_maps(
         # Equivalent to pyplot set_aspect='equal':
         fig.update_yaxes(col=i+1, scaleanchor='x', scaleratio=1)
 
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
     plotly_config = get_map_config()
 
     st.plotly_chart(

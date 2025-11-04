@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 import stroke_maps.load_data
 
 from classes.geography_processing import Geoprocessing
-from utilities.utils import print_progress_loc
+from utilities.utils import print_progress_loc, update_plotly_font_sizes
 
 
 # ----- Functions -----
@@ -590,7 +590,9 @@ def display_region_summary(series_u, series_r):
         st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
 
 
-def plot_mrs_bars(mrs_lists_dict, title_text='', return_fig=False):
+def plot_mrs_bars(
+        mrs_lists_dict, title_text='', return_fig=False, key=None
+        ):
     # fig = go.Figure()
     subplot_titles = [
         'Discharge disability<br>probability distribution',
@@ -651,6 +653,7 @@ def plot_mrs_bars(mrs_lists_dict, title_text='', return_fig=False):
         height=700,
         margin_t=150,
         )
+    fig = update_plotly_font_sizes(fig)
 
     if return_fig:
         return fig
@@ -678,7 +681,8 @@ def plot_mrs_bars(mrs_lists_dict, title_text='', return_fig=False):
         st.plotly_chart(
             fig,
             use_container_width=True,
-            config=plotly_config
+            config=plotly_config,
+            key=key
             )
 
 
