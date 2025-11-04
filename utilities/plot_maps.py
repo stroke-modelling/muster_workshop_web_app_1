@@ -514,6 +514,7 @@ def draw_units_map(map_traces, outline_name='none'):
         width=500,
         height=600,
         margin_t=25,
+        margin_b=0
         )
     # Equivalent to pyplot set_aspect='equal':
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
@@ -578,7 +579,11 @@ def plot_outcome_maps(
         )
     for i in range(len(map_order)):
         # Equivalent to pyplot set_aspect='equal':
-        fig.update_yaxes(col=i+1, scaleanchor='x', scaleratio=1)
+        x = 'x' if i == 0 else f'x{i+1}'
+        fig.update_yaxes(col=i+1, scaleanchor=x, scaleratio=1)
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
 
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title_text='')
