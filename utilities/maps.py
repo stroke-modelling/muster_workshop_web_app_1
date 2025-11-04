@@ -82,29 +82,31 @@ def gather_map_df(
         ):
     """
     Gather LSOA-level outcomes for usual care, redir, and diff.
+
+    df_redir is mix of usual care, redirection approved, redir rejected.
     """
     scenarios = ['usual_care', 'redirection_approved', 'redirection_rejected']
     treats = ['ivt', 'mt']
     cols_time = [f'{s}_{t}' for s in scenarios for t in treats]
-
+    # Gather the LSOA names and treatment times:
     cols_to_keep = ['LSOA']
-
     df_results = df_lsoa_units_times[cols_to_keep + cols_time].copy()
     df_results = df_results.set_index(cols_time).copy()
-
+    # Merge in results for usual care...
     df_results = pd.merge(df_results, df_usual[cols_map], left_index=True,
                           right_index=True, how='left')
     rename_dict = dict([(c, f'{c}_usual_care') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
+    # ... and redirection (mix of usual care, approved, rejected):
     df_results = pd.merge(df_results, df_redir[cols_map], left_index=True,
                           right_index=True, how='left')
     rename_dict = dict([(c, f'{c}_redir') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
-
+    # Only keep LSOA names and outcomes:
     df_results = df_results.reset_index()
     df_results = df_results.drop(cols_time, axis='columns')
     df_results = df_results.set_index('LSOA')
-
+    # Calculate difference between redir scenario and usual care:
     for col in cols_map:
         df_results[f'{col}_redir_minus_usual_care'] = (
             df_results[f'{col}_redir'] -

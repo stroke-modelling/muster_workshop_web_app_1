@@ -553,7 +553,7 @@ def calculate_nested_average_outcomes(
     return d
 
 
-def display_region_summary(series_u, series_r):
+def display_region_summary(series_u, series_r, k='mrs_0-2'):
     """
     Show metrics of key outcomes.
 
@@ -576,18 +576,16 @@ def display_region_summary(series_u, series_r):
             'delta_color': 'normal',
         },
     }
-    keys_to_use = ['mrs_0-2', 'mrs_shift', 'utility_shift']
     s = 'from usual care'
-    for k in keys_to_use:
-        d = series_r[k] - series_u[k]
-        st.metric(
-            label_dict[k]['label'],
-            value=f"{series_r[k]:^{label_dict[k]['format']}}",
-            delta=f"{d:^{label_dict[k]['format']}} {s}",
-            delta_color=label_dict[k]['delta_color']
-            )
-        st.write(series_r[k], series_u[k])
-        st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
+    d = series_r[k] - series_u[k]
+    st.metric(
+        label_dict[k]['label'],
+        value=f"{series_r[k]:^{label_dict[k]['format']}}",
+        delta=f"{d:^{label_dict[k]['format']}} {s}",
+        delta_color=label_dict[k]['delta_color']
+        )
+    st.write(series_r[k], series_u[k])
+    st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
 
 
 def plot_mrs_bars(

@@ -230,10 +230,30 @@ def calculate_population_subgroup_grid(d, df_subgroups=None):
         columns={0: 'full_population'})
         .reset_index().set_index('treatment_group'))
 
+    # Full population, only redirection approved:
+    scen = 'redir_accepted'
+    r = pd.Series()
+    r.name = 'full_population'
+    for tre in treatment_groups:
+        occ = tre.split('_')[0]
+        p = d[f'prop_{occ}_{scen}']
+        r[f'{tre}'] = p * d[f'prop_{tre}']
+    # Normalise:
+    r = r / r.sum()
+    # Store separate results for "redir approved only" by itself:
+    df_pop_redir_approved_only = pd.DataFrame(s)
+    df_pop_redir_approved_only.index.name = 'treatment_group'
+    # Scenario label for consistency with redir df:
+    df_pop_redir_approved_only.insert(0, 'scenario', 'redir_accepted_only')
+
+    # Gather the new props dataframes:
+    list_of_dfs = [df_pop_usual_care, df_pop_redir,
+                   df_pop_redir_approved_only]
+
     # Split "treatment group" column into occlusion / treatment
     # columns. To match df_subgroups.
     cols_bits = ['nlvo', 'lvo', 'ivt', 'mt', 'ivt_mt', 'no_treatment']
-    for df in [df_pop_usual_care, df_pop_redir]:
+    for df in list_of_dfs:
         # Set treatment group as index to make loc easier:
         i_col = df.index.name
         df.reset_index(inplace=True)
@@ -261,7 +281,7 @@ def calculate_population_subgroup_grid(d, df_subgroups=None):
     # Calculate proportions for the selected subgroups.
     for sub_name in df_subgroups.index:
         s = df_subgroups.loc[sub_name]
-        for df in [df_pop_usual_care, df_pop_redir]:
+        for df in list_of_dfs:
             # Start with all rows allowed...
             mask = np.full(len(df), True)
             # ... then remove rows that don't match setup:
@@ -273,7 +293,7 @@ def calculate_population_subgroup_grid(d, df_subgroups=None):
             # Normalise:
             df[sub_name] = df[sub_name] / df[sub_name].sum()
 
-    return df_pop_usual_care, df_pop_redir
+    return tuple(list_of_dfs)
 
 
 def plot_population_props(
@@ -327,6 +347,7 @@ def calculate_unique_outcomes_onion(
         dict_base_outcomes,
         df_pop_usual_care,
         df_pop_redir,
+        df_pop_redir_accepted_only,
         df_subgroups,
         df_treat_times_sets_unique,
         s,
@@ -364,6 +385,7 @@ def calculate_unique_outcomes_onion(
             df_pop_redir['scenario'] == 'redir_accepted'],
         'redir_rejected': df_pop_redir.loc[
             df_pop_redir['scenario'] == 'redir_rejected'],
+        'redir_accepted_only': df_pop_redir_accepted_only,
     }
 
     # Match the scenario names with the treatment times
@@ -373,6 +395,7 @@ def calculate_unique_outcomes_onion(
         'redir_usual_care': 'usual_care',
         'redir_accepted': 'redirection_approved',
         'redir_rejected': 'redirection_rejected',
+        'redir_accepted_only': 'redirection_approved',
     }
     time_cols = list(df_treat_times_sets_unique.columns)
 
@@ -484,6 +507,13 @@ def calculate_unique_outcomes_onion(
         base_outcome_keys_here,
         time_lookup
         )
+    df_redir_accepted_only = gather_outcomes_and_props(
+        ['redir_accepted_only'],
+        dict_scenario_props,
+        df_treat_times_sets_unique,
+        base_outcome_keys_here,
+        time_lookup
+        )
 
     if check_mrs_noncum:
         mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
@@ -508,7 +538,11 @@ def calculate_unique_outcomes_onion(
     if _log:
         p = 'Calculated unique outcomes for this population.'
         print_progress_loc(p, _log_loc)
-    return {'usual_care': df_usual_care, 'redir_allowed': df_redir}
+    return {
+        'usual_care': df_usual_care,
+        'redir_allowed': df_redir,
+        'redir_accepted_only': df_redir_accepted_only,
+        }
 
 
 def gather_lsoa_level_outcomes(

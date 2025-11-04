@@ -60,6 +60,7 @@ def set_up_page_layout():
     c['pathway_inputs'] = st.container(horizontal=True)
     c['pathway_summary'] = st.container()
     c['onion_setup'] = st.container()
+    c['onion_subgroups'] = st.container()
     c['pop_plots'] = st.container(horizontal=True)
 
     # ----- Results -----
@@ -85,6 +86,8 @@ with containers['pathway']:
     st.header('Pathway')
 with containers['onion_setup']:
     st.header('Population')
+with containers['onion_subgroups']:
+    st.header('Subgroups')
 with containers['region_summaries']:
     st.header('Region summaries')
 with containers['maps']:
@@ -272,10 +275,10 @@ with containers['onion_setup']:
     dict_onion = pop.select_onion_population()
 dict_onion = pop.calculate_population_subgroups(dict_onion)
 
-with containers['onion_setup']:
+with containers['onion_subgroups']:
     df_subgroups = pop.select_subgroups_for_results()
 
-df_pop_usual_care, df_pop_redir = (
+df_pop_usual_care, df_pop_redir, df_pop_redir_accepted_only = (
     pop.calculate_population_subgroup_grid(dict_onion, df_subgroups))
 
 with containers['pop_plots']:
@@ -293,10 +296,11 @@ for s in df_subgroups.index:
         dict_base_outcomes,
         df_pop_usual_care,
         df_pop_redir,
+        df_pop_redir_accepted_only,
         df_subgroups.loc[s],
         df_treat_times_sets_unique,
         s,
-        _log_loc=containers['onion_setup']
+        _log_loc=containers['onion_subgroups']
     )
 
 
@@ -328,7 +332,7 @@ dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
 # Display chosen results:
 with containers['region_summaries']:
     use_lsoa_subset = st.toggle(
-        'Use only patients whose nearest unit does not provide MT',
+        'Use only patients whose nearest unit does not provide MT.',
         value=True,
         )
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
@@ -349,19 +353,22 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     with containers['highlighted_regions']:
         ch = st.container(border=True)
     with ch:
-        st.header(region_label)
+        st.subheader(region_label)
         for subgroup in df_subgroups.index:
             df_u = dict_highlighted_region_outcomes[subgroup][
                 'usual_care'][lsoa_subset].loc[region]
             df_r = dict_highlighted_region_outcomes[subgroup][
                 'redir_allowed'][lsoa_subset].loc[region]
-            cs = st.container(border=True)
+            cs = st.expander(df_subgroups.loc[subgroup, 'label'])
             with cs:
                 if df_u.isna().all() & df_r.isna().all():
                     st.markdown('No data available.')
                 else:
-                    st.subheader(df_subgroups.loc[subgroup, 'label'])
-                    reg.display_region_summary(df_u, df_r)
+                    cc = st.container(horizontal=True)
+                    with cc:
+                        for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+                            with st.container():
+                                reg.display_region_summary(df_u, df_r, key)
 
                     # TO DO - generate "no treatment" data for
                     # this combination of patients, draw bars.
@@ -384,17 +391,27 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'label': 'Redirection available'
                         },
                     }
-                    reg.plot_mrs_bars(mrs_lists_dict, key=subgroup)
+                    reg.plot_mrs_bars(mrs_lists_dict, key='_'.join([region, subgroup]))
 
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
 # LSOA-level data.
+
+# TO DO - should map be showing only the "redirection approved"
+# patients?
 with containers['maps']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
+    use_full_redir = st.toggle(
+        'In middle map, include "reject redirection" and "usual care" patients.',
+        value=False,
+        key='full_redir_subset'
+        )
+    redir_subset = ('redir_allowed' if use_full_redir
+                    else 'redir_accepted_only')
 
 map_arrs_dict = maps.gather_map_arrays(
     dict_outcomes[subgroup_map]['usual_care'],
-    dict_outcomes[subgroup_map]['redir_allowed'],
+    dict_outcomes[subgroup_map][redir_subset],
     df_lsoa_units_times,
     df_raster,
     transform_dict,
@@ -452,7 +469,7 @@ if generate_full_data:
                 st.dataframe(df_full)
         else:
             use_lsoa_subset_full = st.toggle(
-                'Use only patients whose nearest unit does not provide MT',
+                'Use only patients whose nearest unit does not provide MT.',
                 value=True,
                 key='full_lsoa_subset'
                 )
