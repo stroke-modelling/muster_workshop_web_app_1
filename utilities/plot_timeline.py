@@ -299,7 +299,7 @@ def draw_timeline(times_cum_dicts, times_cum_label_dicts):
             label = labels[t]
             time_label = time_cum_str_list[t]
             if labels[t] in ['IVT', 'MT']:
-                colour = 'red'
+                colour = '#ff4b4b'
                 # label = f'<b>{label}'  # bold
                 label += f': {time_label}'  # time
             else:

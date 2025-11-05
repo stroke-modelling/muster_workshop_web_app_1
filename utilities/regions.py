@@ -780,3 +780,130 @@ def load_or_calculate_region_outlines(
         gdf_catchment_rhs,
         gdf_catchment_pop
     )
+
+
+def plot_basic_travel_options():
+    fig = go.Figure()
+
+    t = 2.0
+    label_y_off = 0.5
+    t_max = t*np.cos(45*np.pi/180.0)
+    coords_dict = {
+        'patient': [0, 0],
+        'csc': [t, 0],
+        'psc': [t*0.5, t_max]
+    }
+    arrow_kwargs = dict(
+        mode='lines+markers',
+        marker=dict(size=20, symbol='arrow-up', angleref='previous', standoff=16),
+        showlegend=False,
+        hoverinfo='skip',
+    )
+
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['patient'][0], coords_dict['psc'][0], coords_dict['csc'][0],],
+        y=[coords_dict['patient'][1], coords_dict['psc'][1], coords_dict['csc'][1],],
+        **arrow_kwargs,
+        line=dict(color='grey', width=10),
+    ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['patient'][0], coords_dict['csc'][0],],
+        y=[coords_dict['patient'][1], coords_dict['csc'][1],],
+        **arrow_kwargs,
+        line=dict(color='#ff4b4b', width=10),
+    ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['patient'][0]],
+        y=[coords_dict['patient'][1]],
+        text=['🏠'],
+        mode='text+markers',
+        textfont=dict(size=32),
+        marker=dict(size=0, color='rgba(0, 0, 0, 0)'),
+        showlegend=False,
+        hoverinfo='skip',
+    ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['psc'][0]],
+        y=[coords_dict['psc'][1]],
+        mode='markers',
+        marker=dict(size=20, symbol='circle', color='white', line={'color': 'black', 'width': 1},),
+        name='IVT unit',
+        hoverinfo='skip',
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['csc'][0]],
+        y=[coords_dict['csc'][1]],
+        mode='markers',
+        marker=dict(size=26, symbol='star', color='white', line={'color': 'black', 'width': 1},),
+        name='MT unit',
+        hoverinfo='skip',
+        showlegend=False,
+    ))
+
+    fig.add_annotation(
+        y=coords_dict['patient'][1] - label_y_off,
+        x=coords_dict['patient'][0],
+        text='Patient<br>location',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='top',
+        )
+    fig.add_annotation(
+        y=coords_dict['psc'][1] + label_y_off,
+        x=coords_dict['psc'][0],
+        text='IVT unit',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='bottom',
+        )
+    fig.add_annotation(
+        y=coords_dict['csc'][1] - label_y_off,
+        x=coords_dict['csc'][0],
+        text='MT unit',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='top',
+        )
+
+    # Set axes properties
+    fig.update_xaxes(range=[-label_y_off, t+label_y_off],
+                     zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(range=[-3.0*label_y_off, t_max+3.0*label_y_off],
+                     zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(scaleanchor='x', scaleratio=1)
+    # Set figure size
+    fig.update_layout(width=200, height=200, margin_t=0, margin_b=0,
+                      margin_l=0, margin_r=0,)
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    fig.update_layout(dragmode=False)  # change from default zoombox
+    # Turn off legend click events
+    # (default is click on legend item, remove that item from the plot)
+    fig.update_layout(legend_itemclick=False)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(
+        fig,
+        width='content',
+        config=plotly_config
+        )

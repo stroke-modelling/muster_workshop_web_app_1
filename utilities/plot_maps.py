@@ -255,7 +255,7 @@ def make_constant_map_traces(
                 name=reg_dict['display_name'],
                 text=gdf_region.loc[i, n],
                 hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
+                hoverlabel=dict(bgcolor='#ff4b4b'),
                 ))
         # Store result:
         map_traces[reg_dict['trace_dict_name']] = trace_region
@@ -268,6 +268,7 @@ def make_constant_map_traces(
         transform_dict,
         df_demog,
         ['population_density'],
+        _log=False
         )
     map_traces['pop'] = make_trace_heatmap(
         arrs[0], transform_dict, dict_colours_pop, name='pop')
@@ -297,8 +298,9 @@ def make_shared_map_traces(
         transform_dict,
         df_lsoa_units_times,
         ['nearest_csc'],
+        _log=False
         )
-    colour = 'rgb(255,0,0)'
+    colour = '#ff4b4b'
     map_traces['raster_nearest_csc'] = {}
     # Sneaky invisible marker so we can have just the colour
     # in the legend:

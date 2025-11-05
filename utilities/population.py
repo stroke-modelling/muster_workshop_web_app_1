@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from utilities.utils import print_progress_loc, update_plotly_font_sizes
 
 
-def select_onion_population():
+def set_up_onion_parameters():
     """
     Resulting series keys: population, label, prop_nlvo, prop_lvo,
     prop_other, prop_redir_considered, redir_sensitivity,
@@ -57,7 +57,10 @@ def select_onion_population():
         df_pops.loc[mask, 'label'].str.lower()
         .replace(' ', '_', regex=True)
         )
+    return df_pops
 
+
+def select_onion_population(df_pops):
     # Set up for layer selection:
     try:
         ind_default = int(np.where(
@@ -96,7 +99,7 @@ def select_onion_population():
     return series_chosen_pops
 
 
-def calculate_population_subgroups(d):
+def calculate_population_subgroups(d, _log=True, _log_loc=None):
     """
     Combine the existing proportions to find subgroups.
     """
@@ -125,6 +128,9 @@ def calculate_population_subgroups(d):
     if not round(s, 7) == 1.0:
         st.error(f'Check proportions for {occ}: {s}.')
 
+    if _log:
+        p = 'Calculated proportions of patients with each stroke type in each redirection category.'
+        print_progress_loc(p, _log_loc)
     return d
 
 
@@ -177,7 +183,8 @@ def select_subgroups_for_results():
     return df_subgroups
 
 
-def calculate_population_subgroup_grid(d, df_subgroups=None):
+def calculate_population_subgroup_grid(
+        d, df_subgroups=None, _log=True, _log_loc=None):
     """
 
     There are two sets of "usual care". One is for the current
@@ -293,6 +300,9 @@ def calculate_population_subgroup_grid(d, df_subgroups=None):
             # Normalise:
             df[sub_name] = df[sub_name] / df[sub_name].sum()
 
+    if _log:
+        p = 'Calculated proportions of patients with each stroke type and treatment combo in each redirection category.'
+        print_progress_loc(p, _log_loc)
     return tuple(list_of_dfs)
 
 
@@ -302,13 +312,23 @@ def plot_population_props(
         s,
         subgroup_setup
         ):
-    titles = ['Usual care', 'Redirection available']
-    fig = make_subplots(rows=2, cols=1, subplot_titles=titles)
+    treat_labels = {
+        'nlvo_ivt': 'nLVO<br>IVT',
+        'nlvo_no_treatment': 'nLVO<br>no treat',
+        'lvo_ivt': 'LVO<br>IVT',
+        'lvo_ivt_mt': 'LVO<br>IVT&MT',
+        'lvo_mt': 'LVO<br>MT',
+        'lvo_no_treatment': 'LVO<br>no treat',
+    }
+    titles = ['<b>Usual care</b>', '<b>Redirection available</b>']
+    fig = make_subplots(rows=2, cols=1, subplot_titles=titles,
+                        shared_xaxes=True)
 
     fig.add_trace(go.Bar(
-        x=props_usual_care.index,
+        x=[treat_labels[b] for b in props_usual_care.index],
         y=100.0 * props_usual_care[s],
-        name='Usual care'
+        name='Usual care',
+        hovertemplate='%{y:.1f}%',
     ), row=1, col=1)
 
     redir_scenarios = props_redir['scenario'].unique()
@@ -317,21 +337,25 @@ def plot_population_props(
         'redir_accepted': 'Accept redirection',
         'redir_rejected': 'Reject redirection',
     }
+
     for scenario in redir_scenarios:
         m = props_redir['scenario'] == scenario
         fig.add_trace(go.Bar(
-            x=props_redir.loc[m].index,
+            x=[treat_labels[b] for b in props_redir.loc[m].index],
             y=100.0 * props_redir.loc[m, s],
             name=redir_labels[scenario],
+            hovertemplate='%{y:.1f}%',
         ), row=2, col=1)
 
     fig.update_layout(barmode='group')
-    fig.update_layout(height=600, width=600,
-                      title_text=subgroup_setup['label'])
-    fig.update_xaxes(title_text='Treatment group', row=2, col=1)
-    for i in [1, 2]:
+    fig.update_layout(height=400, width=500,
+                      title_text=subgroup_setup['label'],
+                      margin_r=0,)
+    # fig.update_xaxes(title_text='Treatment group', row=2, col=1)
+    for i in range(1, 3):
         fig.update_yaxes(
-            title_text='Percentage of subgroup patients', row=i, col=1)
+            title_text='Patients (%)', row=i, col=1,
+            )
     fig.update_layout(legend=dict(
         orientation="h",
         yanchor="top",
@@ -340,7 +364,38 @@ def plot_population_props(
         x=0.5,
     ))
     fig = update_plotly_font_sizes(fig)
-    st.plotly_chart(fig)
+
+    # Reduce size of figure by adjusting margins:
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=60))
+
+    # Disable zoom and pan:
+    fig.update_layout(xaxis=dict(fixedrange=True),
+                      yaxis=dict(fixedrange=True))
+
+    # Turn off legend click events
+    # (default is click on legend item, remove that item from the plot)
+    fig.update_layout(legend_itemclick=False)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, config=plotly_config, width='content')
 
 
 def calculate_unique_outcomes_onion(
@@ -591,9 +646,10 @@ def plot_onion():
         'white_full_study': {
             'label': 'Full study population',
             'colour': 'white',
-            'linecolour': 'black',
+            'linecolour': 'grey',
             'radius': 5,
             'angle': 30.0,
+            'ax': -5,
         },
         'red_suspect_stroke': {
             'label': 'Ambulance-suspected<br>stroke population',
@@ -601,6 +657,7 @@ def plot_onion():
             'linecolour': '#f6852e',
             'radius': 4,
             'angle': 55.0,
+            'ax': -7.5,
         },
         'yellow_target_population': {
             'label': 'Target population',
@@ -608,6 +665,7 @@ def plot_onion():
             'linecolour': '#ffb900',
             'radius': 3,
             'angle': 90.0,
+            'ax': -10,
         },
         'green_ischaemic': {
             'label': 'Primary analysis<br>population',
@@ -615,6 +673,7 @@ def plot_onion():
             'linecolour': '#6ca044',
             'radius': 2,
             'angle': 125.0,
+            'ax': -7.5,
         },
         'blue_thrombectomy': {
             'label': 'Thrombectomy',
@@ -622,6 +681,7 @@ def plot_onion():
             'linecolour': '#5498d6',
             'radius': 1,
             'angle': 180.0,
+            'ax': -5,
         },
     }
 
@@ -632,16 +692,15 @@ def plot_onion():
                       x0=-r, y0=-r, x1=r, y1=r,
                       fillcolor=c_dict['colour'],
                       line_color=c_dict['linecolour'])
-        x = -r*np.sin(c_dict['angle'] * np.pi / 180.0)
-        y = r*np.cos(c_dict['angle'] * np.pi / 180.0)
+        x = -(r - 0.5) * np.sin(c_dict['angle'] * np.pi / 180.0)
+        y = (r - 0.5) * np.cos(c_dict['angle'] * np.pi / 180.0)
         fig.add_annotation(
             x=x,
             y=y,
             text=c_dict['label'],
+            font_color='black',
             showarrow=True,
-            # yshift=5,
-            # xshift=-5,
-            ax=-10,
+            ax=c_dict['ax'],
             ay=ybox,
             axref='x',
             ayref='y',
@@ -652,7 +711,7 @@ def plot_onion():
         ybox -= 3
 
     # Set axes properties
-    fig.update_xaxes(range=[-10, 5.1], zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_xaxes(range=[-14, 5.1], zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(range=[-5.5, 5.5], zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
     # Set figure size

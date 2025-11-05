@@ -49,47 +49,76 @@ def set_up_page_layout():
     """
     Set up container placement and return as dict.
     """
+    log_kwargs = dict(border=True, width=500)
     c = {}
     st.title('Benefit in outcomes from redirection')
-    c['units_setup'] = st.container()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        c['units_text'] = st.container()
-        c['log_units'] = st.container()
-    with cols[1]:
-        c['units_map'] = st.container()
-    with st.expander('Edit unit services'):
-        c['units_df'] = st.container()
 
-    c['pathway'] = st.container()
-    c['pathway_inputs'] = st.container(horizontal=True)
-    c['pathway_summary'] = st.container()
-    c['log_pathway'] = st.container()
+    # ----- Setup -----
+    c['setup'] = st.container(border=True)
+    tab_titles = [
+        'Stroke units', 'Treatment pathway', 'Population onion', 'Subgroups'
+    ]
+    with c['setup']:
+        st.header('Setup')
+        (c['units_setup'], c['pathway'], c['onion'], c['onion_subgroups']) = (
+            st.tabs(tab_titles))
 
-    c['onion'] = st.container()
-    cols = st.columns([1, 1])
-    with cols[0]:
-        c['onion_fig'] = st.container()
-    with cols[1]:
+    with c['units_setup']:
+        cols = st.columns([1, 1])
+        with cols[0]:
+            c['units_text'] = st.container()
+        with cols[1]:
+            c['units_map'] = st.container()
+        with st.expander('Edit unit services'):
+            c['units_df'] = st.container()
+        c['log_units'] = st.container(**log_kwargs)
+
+    with c['pathway']:
+        c['pathway_inputs'] = st.container(horizontal=True)
+        c['pathway_summary'] = st.container()
+        c['log_pathway'] = st.container(**log_kwargs)
+
+    with c['onion']:
+        cols = st.columns([1, 1])
+        with cols[0]:
+            c['onion_fig'] = st.container()
+        with cols[1]:
+            c['onion_text'] = st.container()
         c['onion_setup'] = st.container()
-    c['onion_subgroups'] = st.container()
-    c['pop_plots'] = st.container(horizontal=True)
-    c['log_onion'] = st.container()
+        c['log_onion'] = st.container(**log_kwargs)
+
+    with c['onion_subgroups']:
+        c['pop_plots'] = st.container()
+        c['log_subgroups'] = st.container(**log_kwargs)
 
     # ----- Results -----
-    c['results'] = st.container()
-    c['region_summaries'] = st.container()
-    c['highlighted_regions'] = st.container(horizontal=True)
-    c['log_regions'] = st.container()
+    c['run_results'] = st.container()
+    c['results'] = st.container(border=True)
+    tabs_results = ['Region summaries', 'England maps', 'Full results tables']
+    with c['results']:
+        st.header('Results')
+        (c['region_summaries'], c['maps'], c['full_results']) = (
+            st.tabs(tabs_results))
 
-    c['maps'] = st.container()
-    c['log_maps'] = st.container()
+    with c['region_summaries']:
+        c['region_select'] = st.container()
+        c['highlighted_regions'] = st.container(horizontal=True)
+        c['log_regions'] = st.container(**log_kwargs)
+
+    with c['maps']:
+        c['map_fig'] = st.container()
+        c['log_maps'] = st.container(**log_kwargs)
 
     with st.sidebar:
         c['map_setup'] = st.container()
-    # with st.expander('Full data tables'):
-    c['full_results'] = st.container()
-    c['log_full_results'] = st.container()
+    with c['full_results']:
+        c['full_results_setup'] = st.container()
+        c['log_full_results'] = st.container(**log_kwargs)
+
+    logs = [k for k in c.keys() if k.startswith('log_')]
+    for k in logs:
+        with c[k]:
+            st.markdown(':green[_Calculations:_]')
     return c
 
 
@@ -99,24 +128,46 @@ containers = set_up_page_layout()
 # #####################
 # ##### PAGE TEXT #####
 # #####################
-with containers['units_setup']:
-    st.header('Stroke units')
 with containers['units_text']:
-    st.markdown('Stroke units, different services available, text text text.')
-with containers['pathway']:
-    st.header('Pathway')
-with containers['onion']:
-    st.header('Population')
-with containers['onion_subgroups']:
-    st.header('Subgroups')
-with containers['results']:
-    st.title('Results')
-with containers['region_summaries']:
-    st.header('Region summaries')
-with containers['maps']:
-    st.header('England maps')
-with containers['full_results']:
-    st.header('Full results tables')
+    cols = st.columns([1, 2])
+    with cols[1]:
+        st.markdown('''
+In usual care:
++ patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
++ other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
+
+With redirection, patients who would normally travel to the IVT unit first (:grey[grey path]) instead travel directly to the MT unit (:primary[red path]).
+''')
+    with cols[0]:
+        reg.plot_basic_travel_options()
+    st.markdown('''
+
+For most patients this means faster access to MT because of the reduced travel time and delays for hospital transfer.
+It also means slower access to IVT because of the increased travel time to the MT unit compared with the IVT unit.
+''')
+with containers['onion_text']:
+    st.markdown('''
+The population can be grouped in a series of subsets:
++ :grey-background[Full study population]:  
+  + All patients suspected to be stroke by ambulance staff  
+  __and__  
+  + All patients confirmed to be stroke at hospital, conveyed by ambulance but not initially suspected to be stroke by ambulance staff.
++ :orange-background[Ambulance suspected stroke population]: patients suspected to be stroke by ambulance staff.
++ :yellow-background[Target population]: Ambulance suspected stroke patients who have the pathway initiation crieria i.e. drip-ship area, specified clinical features.
++ :green-background[Primary analysis population]: Patients with ischaemic stroke.
++ :blue-background[Thrombectomy]: Patients with LVO ischaemic stroke who receive thrombectomy.
+''')
+with containers['onion_setup']:
+    st.markdown('''
+The different layers of the onion have different make-ups of patients,
+e.g. types of stroke and proportions treated.  
+These proportions can be changed in the following table:
+:red-background[(NOTE, November 2025, all values are placeholders)]
+''')
+with containers['pop_plots']:
+    st.markdown('''
+We calculate six base outcomes. These can be combined in different proportions to find the outcomes for a selected subgroup of patients.
+''')
 
 #MARK: Setup
 # #################
@@ -297,24 +348,37 @@ dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
 with containers['onion_fig']:
     pop.plot_onion()
 with containers['onion_setup']:
-    dict_onion = pop.select_onion_population()
-dict_onion = pop.calculate_population_subgroups(dict_onion)
+    df_onion_pops = pop.set_up_onion_parameters()
+with containers['onion_text']:
+    dict_onion = pop.select_onion_population(df_onion_pops)
+dict_onion = pop.calculate_population_subgroups(
+    dict_onion, _log_loc=containers['log_onion'])
 
-with containers['onion_subgroups']:
+
+# ----- Subgroups (this onion layer) -----
+with containers['pop_plots']:
     df_subgroups = pop.select_subgroups_for_results()
 
 df_pop_usual_care, df_pop_redir, df_pop_redir_accepted_only = (
-    pop.calculate_population_subgroup_grid(dict_onion, df_subgroups))
+    pop.calculate_population_subgroup_grid(
+        dict_onion, df_subgroups, _log_loc=containers['log_subgroups']
+        ))
 
 with containers['pop_plots']:
-    for s in df_subgroups.index:
-        pop.plot_population_props(
-            df_pop_usual_care[['scenario'] + [s]],
-            df_pop_redir[['scenario'] + [s]],
-            s,
-            df_subgroups.loc[s]
-            )
+    cols = st.columns(2)
+    for i, s in enumerate(df_subgroups.index):
+        with cols[i % 2]:
+            c = st.container(border=True)
+        with c:
+            pop.plot_population_props(
+                df_pop_usual_care[['scenario'] + [s]],
+                df_pop_redir[['scenario'] + [s]],
+                s,
+                df_subgroups.loc[s]
+                )
 
+
+# ----- Outcomes -----
 dict_outcomes = {}
 for s in df_subgroups.index:
     dict_outcomes[s] = pop.calculate_unique_outcomes_onion(
@@ -325,8 +389,19 @@ for s in df_subgroups.index:
         df_subgroups.loc[s],
         df_treat_times_sets_unique,
         s,
-        _log_loc=containers['log_onion']
+        _log_loc=containers['log_subgroups']
     )
+
+with containers['run_results']:
+    run_results = st.button('Calculate results - currently this button does nothing', type='primary')
+if run_results:
+    pass
+else:
+    # TO DO - make it so that the results don't recalculate entirely
+    # while you're still setting up. Also perhaps cache the old results
+    # and show them while setting up?
+    pass
+
 
 
 #MARK: Results
@@ -334,7 +409,7 @@ for s in df_subgroups.index:
 # ##### RESULTS #####
 # ###################
 # ----- Region summaries -----
-with containers['region_summaries']:
+with containers['region_select']:
     df_highlighted_regions = reg.select_highlighted_regions(df_unit_services)
 # Only find the region results for highlighted region types:
 highlighted_region_types = sorted(list(set(
@@ -355,7 +430,7 @@ dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
     )
 
 # Display chosen results:
-with containers['region_summaries']:
+with containers['region_select']:
     use_lsoa_subset = st.toggle(
         'Use only patients whose nearest unit does not provide MT.',
         value=True,
@@ -379,12 +454,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         ch = st.container(border=True)
     with ch:
         st.subheader(region_label)
-        for subgroup in df_subgroups.index:
+        for s, subgroup in enumerate(df_subgroups.index):
             df_u = dict_highlighted_region_outcomes[subgroup][
                 'usual_care'][lsoa_subset].loc[region]
             df_r = dict_highlighted_region_outcomes[subgroup][
                 'redir_allowed'][lsoa_subset].loc[region]
-            cs = st.expander(df_subgroups.loc[subgroup, 'label'])
+            cs = st.expander(df_subgroups.loc[subgroup, 'label'],
+                             expanded=(True if s == 0 else False))
             with cs:
                 if df_u.isna().all() & df_r.isna().all():
                     st.markdown('No data available.')
@@ -422,9 +498,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 # For the selected data type to show on the maps, gather the full
 # LSOA-level data.
 
-# TO DO - should map be showing only the "redirection approved"
-# patients?
-with containers['maps']:
+with containers['map_fig']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
     use_full_redir = st.toggle(
         'In middle map, include "reject redirection" and "usual care" patients.',
@@ -448,7 +522,7 @@ for col, arr in map_arrs_dict.items():
         arr, transform_dict, dicts_colours[col], name=col)
 
 
-with containers['maps']:
+with containers['map_fig']:
     plot_maps.plot_outcome_maps(
         map_traces,
         ['usual_care', 'redir_minus_usual_care', 'pop'],
@@ -459,10 +533,10 @@ with containers['maps']:
 
 # ----- Full LSOA results -----
 # Generate on request, not by default with each re-run.
-with containers['full_results']:
+with containers['full_results_setup']:
     generate_full_data = st.checkbox('Show options to generate full data')
 if generate_full_data:
-    with containers['full_results']:
+    with containers['full_results_setup']:
         full_results_type = reg.select_full_data_type()
     if full_results_type == 'lsoa':
         # Calculate LSOA-level results.
@@ -480,7 +554,7 @@ if generate_full_data:
             [full_results_type],
             _log_loc=containers['log_full_results']
             )
-    with containers['full_results']:
+    with containers['full_results_setup']:
         if full_results_type == 'lsoa':
             cols = st.columns([1, 4])
             with cols[0]:
