@@ -147,45 +147,46 @@ def make_treatment_time_df_msu(treatment_times_without_travel):
 def make_treatment_time_df_optimist(treatment_times_without_travel):
     # Add strings to show travel times:
     usual_care_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
-        '+ 🚑 travel to nearest unit'
+        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}  ',
+        '\n\+ 🚑 travel to nearest unit'
         ])
     usual_care_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_mt_no_transfer"]}',
-        '+ 🚑 travel to nearest unit'
+        f'{treatment_times_without_travel["usual_care_time_to_mt_no_transfer"]}  ',
+        '\n\+ 🚑 travel to nearest unit'
         ])
     usual_care_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_mt_transfer"]}',
-        '+ 🚑 travel to nearest unit',
-        '+ 🚑 travel between units'
+        f'{treatment_times_without_travel["usual_care_time_to_mt_transfer"]}  ',
+        '\n\+ 🚑 travel to nearest unit  ',
+        '\n\+ 🚑 travel between units'
         ])
 
     prehospdiag_rej_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-        '+ 🚑 travel to nearest unit'
+        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}  ',
+        '\n\+ 🚑 travel to nearest unit'
         ])
     prehospdiag_rej_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}',
-        '+ 🚑 travel to nearest unit'
+        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
+        '\n\+ 🚑 travel to nearest unit'
         ])
     prehospdiag_rej_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_transfer"]}',
-        '+ 🚑 travel to nearest unit',
-        '+ 🚑 travel between units'
+        f'{treatment_times_without_travel["prehospdiag_time_to_mt_transfer"]}  ',
+        '\n\+ 🚑 travel to nearest unit  ',
+        '\n\+ 🚑 travel between units'
         ])
 
     prehospdiag_app_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-        '+ 🚑 travel to MT unit'
+        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}  ',
+        '\n\+ 🚑 travel to MT unit'
         ])
     prehospdiag_app_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}',
-        '+ 🚑 travel to MT unit'
+        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
+        '\n\+ 🚑 travel to MT unit'
         ])
-    prehospdiag_app_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}',
-        '+ 🚑 travel to MT unit',
-        ])
+    prehospdiag_app_mt_transfer_str = '\-'
+    # ' '.join([
+    #     f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
+    #     '\n\+ 🚑 travel to MT unit',
+    #     ])
 
     # Place these into a dataframe:
     r1 = [usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str,
@@ -194,8 +195,8 @@ def make_treatment_time_df_optimist(treatment_times_without_travel):
           prehospdiag_app_mt_no_transfer_str]
     r3 = [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str,
           prehospdiag_app_mt_transfer_str]
-    cols = ['Standard pathway', 'Redirection rejected', 'Redirection approved']
-    ind = ['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
+    cols = ['Usual care', 'Redirection rejected', 'Redirection approved']
+    ind = ['Time to IVT 💉  \n(minutes)', 'Time to MT 🔧  \n(fastest, minutes)', 'Time to MT 🔧  \n(slowest, minutes)']
     df_treatment_times = pd.DataFrame([r1, r2, r3], columns=cols, index=ind)
     return df_treatment_times
 
@@ -445,11 +446,12 @@ def draw_timeline(df_pathway_steps):
             line_width=0, fillcolor='silver', opacity=0.2
             )
         fig.add_annotation(
-            y=1.15,
+            y=1.0,
             x=0.5 * (s['min'] + s['max']),
             text=s['label'],
             showarrow=False,
-            yref='paper'
+            yref='paper',
+            yanchor='bottom'
         )
 
     # Draw the scatter data.
@@ -536,7 +538,7 @@ def draw_timeline(df_pathway_steps):
 
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title_text='Treatment pathways')
-    fig.update_layout(width=2000, height=500, margin_b=0,)
+    fig.update_layout(width=2000, height=500, margin_b=0, margin_t=75)
     fig.update_layout(dragmode=False)
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)

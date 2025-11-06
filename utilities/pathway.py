@@ -249,14 +249,7 @@ def show_treatment_time_summary(treatment_times_without_travel):
         timeline.make_treatment_time_df_optimist(
             treatment_times_without_travel)
         )
-    # Display the times:
-    times_explanation_usual_str = ('''
-    + The "fastest" time to MT is when the first stroke unit provides MT.
-    + The "slowest" time to MT is when a transfer to the MT unit is needed.
-    ''')
-    st.markdown('Summary of treatment times:')
     st.table(df_treatment_times)
-    st.markdown(times_explanation_usual_str)
 
 
 def draw_timeline(df_pathway_steps):
