@@ -1,0 +1,18 @@
+name,emoji,label_timeline,optimist,muster,order_prehospital_usual_care,order_prehospital_prehospdiag,order_ivt_only_unit,order_mt_unit_no_transfer,order_mt_unit_transfer
+onset,🏠,Onset,1,1,0,0,,,
+process_time_call_ambulance,☎,Call ambulance,1,1,1,1,,,
+process_time_ambulance_response,🚑,Ambulance arrives on scene,1,1,2,2,,,
+process_ambulance_on_scene_duration,🚑,Ambulance leaves,1,1,3,,,,
+ambo_arrival_to_prehospdiag,📈,Pre-hospital diagnostic,1,0,,3,,,
+process_ambulance_on_scene_diagnostic_duration,🚑,Ambulance leaves,1,0,,4,,,
+arrival_ivt_only,🏥,Arrival IVT unit,1,1,,,0,,
+arrival_ivt_mt,🏥,Arrival MT unit,1,1,,,,0,0
+process_time_arrival_to_needle,💉,"<b><span style=""color:red"">IVT</span></b>",1,1,,,1,1,
+needle_to_door_out,🚑,Ambulance transfer begins,1,1,,,2,,
+needle_to_puncture,🔧,"<b><span style=""color:red"">MT</span></b>",1,1,,,,2,
+process_time_transfer_arrival_to_puncture,🔧,"<b><span style=""color:red"">MT</span></b>",1,1,,,,,1
+process_msu_dispatch,🚑,MSU leaves base,0,1,,,,,
+msu_arrival_on_scene,🚑,MSU arrives on scene,0,1,,,,,
+process_msu_thrombolysis,💉,"<b><span style=""color:red"">IVT</span></b>",0,1,,,,,
+process_msu_on_scene_post_thrombolysis,🚑,MSU leaves scene,0,1,,,,,
+process_msu_on_scene_no_thrombolysis,🚑,MSU leaves scene,0,1,,,,,

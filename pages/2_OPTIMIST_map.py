@@ -74,8 +74,17 @@ def set_up_page_layout():
         c['log_units'] = st.container(**log_kwargs)
 
     with c['pathway']:
-        c['pathway_inputs'] = st.container(horizontal=True)
         c['pathway_summary'] = st.container()
+        c['pathway_fig'] = st.container()
+        c['pathway_drop'] = st.expander('Edit pathway timings')
+        with c['pathway_drop']:
+            cols = st.columns(2)
+            with cols[0]:
+                st.markdown('Pre-hospital:')
+                c['pathway_inputs_prehosp'] = st.container(border=True, horizontal=True)
+            with cols[1]:
+                st.markdown('After arrival:')
+                c['pathway_inputs_units'] = st.container(border=True, horizontal=True)
         c['log_pathway'] = st.container(**log_kwargs)
 
     with c['onion']:
@@ -84,7 +93,8 @@ def set_up_page_layout():
             c['onion_fig'] = st.container()
         with cols[1]:
             c['onion_text'] = st.container()
-        c['onion_setup'] = st.container()
+        c['onion_text2'] = st.container()
+        c['onion_setup'] = st.expander('Edit population proportions')
         c['log_onion'] = st.container(**log_kwargs)
 
     with c['onion_subgroups']:
@@ -157,7 +167,7 @@ The population can be grouped in a series of subsets:
 + :green-background[Primary analysis population]: Patients with ischaemic stroke.
 + :blue-background[Thrombectomy]: Patients with LVO ischaemic stroke who receive thrombectomy.
 ''')
-with containers['onion_setup']:
+with containers['onion_text2']:
     st.markdown('''
 The different layers of the onion have different make-ups of patients,
 e.g. types of stroke and proportions treated.  
@@ -254,18 +264,27 @@ with containers['log_units']:  # for log_loc
 #   in each scenario.
 # + Find unique treatment times and pairs of treatment times.
 
-with containers['pathway_inputs']:
-    df_pathway_steps = pathway.select_pathway_timings('optimist')
+df_pathway_steps = pathway.select_pathway_timings(
+    'optimist', [containers['pathway_inputs_prehosp'],
+                 containers['pathway_inputs_units']]
+    )
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
         df_pathway_steps, ['usual_care', 'prehospdiag'],
         _log_loc=containers['log_pathway']
         )
     )
+st.write(df_pathway_steps)
+st.write(series_treatment_times_without_travel)
 with containers['pathway_summary']:
-    pathway.draw_timeline(df_pathway_steps)
     pathway.show_treatment_time_summary(
         series_treatment_times_without_travel)
+with containers['pathway_fig']:
+    pathway.draw_timeline(df_pathway_steps)
+    
+st.stop()
+
+
 unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     series_treatment_times_without_travel,
     unique_travel_for_ivt,
@@ -274,7 +293,7 @@ unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     )
 unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
     dict_unique_travel_pairs, series_treatment_times_without_travel,
-    _log=True, _log_loc=containers['pathway'],
+    _log=True, _log_loc=containers['log_pathway'],
 )
 # LSOA-level treatment times:
 df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
@@ -312,10 +331,10 @@ with containers['log_pathway']:  # for log_loc
 # + For unique pairs of times to treatment, find when LVO + IVT
 #   is better than LVO + MT.
 dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
-    _log_loc=containers['pathway'])
+    _log_loc=containers['log_pathway'])
 dict_base_outcomes = outcomes.calculate_unique_outcomes(
     unique_treatment_ivt, unique_treatment_mt,
-    _log_loc=containers['pathway'])
+    _log_loc=containers['log_pathway'])
 # Combine dicts:
 dict_base_outcomes = dict_base_outcomes | dict_no_treatment_outcomes
 
@@ -323,13 +342,13 @@ df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
     dict_base_outcomes['lvo_ivt'],
     dict_base_outcomes['lvo_mt'],
     unique_treatment_pairs,
-    _log_loc=containers['pathway']
+    _log_loc=containers['log_pathway']
     )
 dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
     dict_base_outcomes['lvo_ivt'],
     dict_base_outcomes['lvo_mt'],
     df_base_lvo_ivt_mt_better,
-    _log_loc=containers['pathway']
+    _log_loc=containers['log_pathway']
     )
 
 # ----- Patient population (onion layer) -----

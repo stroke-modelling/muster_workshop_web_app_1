@@ -1,0 +1,6 @@
+scenario,label,prehosp,first_unit,second_unit,optimist,muster
+usual_care_transfer,Usual care<br>(transfer),usual_care,ivt_only_unit,mt_unit_transfer,1,1
+usual_care_no_transfer,Usual care<br>(no transfer),usual_care,mt_unit_no_transfer,,1,0
+redir_approved,Redirection<br>approved,prehospdiag,mt_unit_no_transfer,,1,0
+redir_rejected_transfer,Redirection<br>rejected<br>(transfer),prehospdiag,ivt_only_unit,mt_unit_transfer,1,0
+redir_rejected_no_transfer,Redirection<br>rejected<br>(no transfer),prehospdiag,mt_unit_no_transfer,,1,0

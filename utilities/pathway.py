@@ -9,7 +9,7 @@ from utilities.utils import print_progress_loc
 import utilities.plot_timeline as timeline
 
 
-def select_pathway_timings(use_col):
+def select_pathway_timings(use_col, containers):
     """
     This version creates a long list of number inputs.
 
@@ -29,19 +29,22 @@ def select_pathway_timings(use_col):
 
     # Draw each widget separately:
     for key in df_pathway.index:
+        c = containers[0] if 'ambulance' in key else containers[1]
+
         d = df_pathway.loc[key]
         # Convert types to match step to make sure that numeric
         # dtypes match, e.g. all int or all float.
-        df_pathway.loc[key, 'value'] = st.number_input(
-            d['label'],
-            value=d['default'].astype(type(d['step'])),
-            min_value=d['min_value'].astype(type(d['step'])),
-            max_value=d['max_value'].astype(type(d['step'])),
-            step=d['step'],
-            format='%0.0f',
-            help=f"Reference value: {d['default']}",
-            # key=key
-            )
+        with c:
+            df_pathway.loc[key, 'value'] = st.number_input(
+                d['label'],
+                value=d['default'].astype(type(d['step'])),
+                min_value=d['min_value'].astype(type(d['step'])),
+                max_value=d['max_value'].astype(type(d['step'])),
+                step=d['step'],
+                format='%0.0f',
+                help=f"Reference value: {d['default']}",
+                # key=key
+                )
     cols_to_keep = ['label', 'value']
     return df_pathway[cols_to_keep]
 
@@ -240,39 +243,6 @@ def calculate_treatment_times_each_lsoa_scenarios(
     return df_lsoa_units_times
 
 
-def draw_timeline(df_pathway_steps):
-    # ----- Timeline -----
-    # Load emoji and labels:
-    timeline_display_dict = timeline.get_timeline_display_dict()
-    # Create timelines:
-    time_dicts = timeline.build_time_dicts_optimist(
-        df_pathway_steps['value'].to_dict()
-    )
-    time_offsets, tmax = timeline.build_time_dicts_for_plot_optimist(
-        time_dicts, gap_between_chunks=45)
-
-    # Make subsets of the dictionaries to be displayed:
-    time_keys_standard = [
-        'prehosp_usual_care', 'prehosp_prehospdiag',
-        'ivt_only_unit', 'mt_transfer_unit', 'ivt_mt_unit'
-        ]
-    time_dicts_standard, time_offsets_standard = (
-        timeline.subset_time_dicts(
-            time_dicts, time_offsets, time_keys_standard
-            )
-        )
-
-    # Draw the timelines:
-    timeline.plot_timeline(
-        time_dicts_standard,
-        timeline_display_dict,
-        y_vals=[0, 2, 1.5, 1.5, 0.5],  # timeline fragment centres
-        time_offsets=time_offsets_standard,
-        tmax=tmax,
-        tmin=-10.0
-        )
-
-
 def show_treatment_time_summary(treatment_times_without_travel):
     # ----- Treatment times summary -----
     df_treatment_times = (
@@ -287,3 +257,23 @@ def show_treatment_time_summary(treatment_times_without_travel):
     st.markdown('Summary of treatment times:')
     st.table(df_treatment_times)
     st.markdown(times_explanation_usual_str)
+
+
+def draw_timeline(df_pathway_steps):
+    # ----- Timeline -----
+    # Calculate some extra keys:
+    df_pathway_steps.loc['onset'] = 0
+    df_pathway_steps.loc['arrival_ivt_only'] = 0
+    df_pathway_steps.loc['arrival_ivt_mt'] = 0
+    df_pathway_steps.loc['needle_to_door_out'] = (
+        df_pathway_steps.loc['transfer_time_delay', 'value'] -
+        df_pathway_steps.loc['process_time_arrival_to_needle', 'value']
+    )
+    df_pathway_steps.loc['needle_to_puncture'] = (
+        df_pathway_steps.loc['process_time_arrival_to_puncture', 'value'] -
+        df_pathway_steps.loc['process_time_arrival_to_needle', 'value']
+    )
+    df_pathway_steps.loc['ambo_arrival_to_prehospdiag'] = (
+        df_pathway_steps.loc['process_ambulance_on_scene_duration', 'value']
+    )
+    timeline.draw_timeline(df_pathway_steps)

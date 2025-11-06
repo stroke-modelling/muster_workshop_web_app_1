@@ -790,7 +790,7 @@ def plot_basic_travel_options():
     t_max = t*np.cos(45*np.pi/180.0)
     coords_dict = {
         'patient': [0, 0],
-        'csc': [t, 0],
+        'csc': [t*1.2, 0],
         'psc': [t*0.5, t_max]
     }
     arrow_kwargs = dict(
