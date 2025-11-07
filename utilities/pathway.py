@@ -252,7 +252,7 @@ def show_treatment_time_summary(treatment_times_without_travel):
     st.table(df_treatment_times)
 
 
-def draw_timeline(df_pathway_steps):
+def draw_timeline(df_pathway_steps, series_treatment_times_without_travel):
     # ----- Timeline -----
     # Calculate some extra keys:
     df_pathway_steps.loc['onset'] = 0
@@ -269,4 +269,11 @@ def draw_timeline(df_pathway_steps):
     df_pathway_steps.loc['ambo_arrival_to_prehospdiag'] = (
         df_pathway_steps.loc['process_ambulance_on_scene_duration', 'value']
     )
-    timeline.draw_timeline(df_pathway_steps)
+    # Convert minutes to hour-minute strings:
+    df_treats = pd.read_csv('./data/timeline_treatment_time_lookup.csv')
+    for i in df_treats.index:
+        s = df_treats.loc[i, 'source_time']
+        t = series_treatment_times_without_travel[s]
+        df_treats.loc[i, 'min'] = t
+        df_treats.loc[i, 'hr_min'] = timeline.make_formatted_time_str(t)
+    timeline.draw_timeline(df_pathway_steps, df_treats)

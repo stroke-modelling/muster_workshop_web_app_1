@@ -72,8 +72,7 @@ def set_up_page_layout():
             c['units_df'] = st.container()
 
     with c['pathway']:
-        c['pathway_top'] = st.container()
-        c['pathway_summary'], c['pathway_text'] = st.columns(2)
+        c['pathway_text'] = st.container()
         c['pathway_fig'] = st.container()
         c['pathway_drop'] = st.expander('Edit pathway timings')
         with c['pathway_drop']:
@@ -118,8 +117,6 @@ def set_up_page_layout():
     with c['full_results']:
         c['full_results_setup'] = st.container()
 
-
-
     # ----- Log -----
     c['log'] = st.expander('Log of calculations', width=500)
     log_keys_labels = {
@@ -163,21 +160,15 @@ With redirection, patients who would normally travel to the IVT unit first (:gre
 For most patients this means faster access to MT because of the reduced travel time and delays for hospital transfer.
 It also means slower access to IVT because of the increased travel time to the MT unit compared with the IVT unit.
 ''')
-with containers['pathway_top']:
-    st.markdown('''
-The time to treatment depends on the travel times and whether redirection was considered.
-''')
 with containers['pathway_text']:
     st.markdown('''
+The time to treatment depends on the travel times and whether redirection was considered.
+
 Assumptions:
 1. When redirection is considered, the ambulance spends more time on-scene to do the pre-hospital diagnostic.
 2. All stroke units share the same time from arrival to delivery of IVT.
 3. The time for delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
 4. All other pathway timings are the same in every scenario.
-
-Times to MT:  
-+ The "fast" time to MT is when the first stroke unit provides MT.
-+ The "slow" time to MT is when a transfer to the MT unit is needed.
 ''')
 with containers['onion_text']:
     st.markdown('''
@@ -298,11 +289,9 @@ series_treatment_times_without_travel = (
         _log_loc=containers['log_pathway']
         )
     )
-with containers['pathway_summary']:
-    pathway.show_treatment_time_summary(
-        series_treatment_times_without_travel)
 with containers['pathway_fig']:
-    pathway.draw_timeline(df_pathway_steps)
+    pathway.draw_timeline(df_pathway_steps,
+                          series_treatment_times_without_travel)
 
 unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
     series_treatment_times_without_travel,

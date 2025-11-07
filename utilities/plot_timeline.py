@@ -280,40 +280,36 @@ def set_up_fig_chunks(df_times, t_travel=20, gap=20):
     t_max_second = df_times[cols_second].max().max()
 
     # Set up figure-wide chunk locations:
-    df_chunk_coords = pd.DataFrame(
-        [['prehosp', 'travel_to_first', 'first_unit', 'travel_transfer', 'second_unit'],
-         ['Pre-hospital', 'Travel to<br>first unit', 'First unit', 'Transfer to<br>second unit', 'Transfer unit']],
-        index=['chunk', 'label'],
-    ).T.set_index('chunk')
+    tups = (
+        ('prehosp', 'Pre-hospital'),
+        ('travel_to_first', 'Travel to<br>first unit'),
+        ('first_unit', 'First unit'),
+        ('travel_transfer', 'Transfer to<br>second unit'),
+        ('second_unit', 'Transfer unit'),
+        ('treat_times', 'Treatment times<br>without travel'),
+    )
+    df_chunk_coords = (
+        pd.DataFrame(tups, columns=['chunk', 'label']).set_index('chunk'))
     # Size of each chunk:
     df_chunk_coords.loc['prehosp', 'width'] = t_max_prehosp
     df_chunk_coords.loc['travel_to_first', 'width'] = t_travel
     df_chunk_coords.loc['first_unit', 'width'] = t_max_first
     df_chunk_coords.loc['travel_transfer', 'width'] = t_travel
     df_chunk_coords.loc['second_unit', 'width'] = t_max_second
+    df_chunk_coords.loc['treat_times', 'width'] = t_travel * 2.0
 
     # Start time of each chunk:
-    df_chunk_coords.loc['prehosp', 'offset'] = 0
-    df_chunk_coords.loc['travel_to_first', 'offset'] = (
-        df_chunk_coords.loc['prehosp', 'offset'] +
-        df_chunk_coords.loc['prehosp', 'width'] +
-        gap
-    )
-    df_chunk_coords.loc['first_unit', 'offset'] = (
-        df_chunk_coords.loc['travel_to_first', 'offset'] +
-        df_chunk_coords.loc['travel_to_first', 'width'] +
-        gap
-    )
-    df_chunk_coords.loc['travel_transfer', 'offset'] = (
-        df_chunk_coords.loc['first_unit', 'offset'] +
-        df_chunk_coords.loc['first_unit', 'width'] +
-        gap
-    )
-    df_chunk_coords.loc['second_unit', 'offset'] = (
-        df_chunk_coords.loc['travel_transfer', 'offset'] +
-        df_chunk_coords.loc['travel_transfer', 'width'] +
-        gap
-    )
+    chunk_order = df_chunk_coords.index
+    for i, chunk in enumerate(chunk_order):
+        if i == 0:
+            df_chunk_coords.loc[chunk, 'offset'] = 0
+        else:
+            last_chunk = chunk_order[i-1]
+            df_chunk_coords.loc[chunk, 'offset'] = (
+                df_chunk_coords.loc[last_chunk, 'offset'] +
+                df_chunk_coords.loc[last_chunk, 'width'] +
+                gap
+            )
 
     # Spans of background grouping rectangles:
     df_chunk_coords['min'] = df_chunk_coords['offset'].copy()
@@ -326,7 +322,7 @@ def set_up_fig_chunks(df_times, t_travel=20, gap=20):
     return df_chunk_coords
 
 
-def draw_timeline(df_pathway_steps):
+def draw_timeline(df_pathway_steps, df_treats):
     """Optimist."""
     # Load emoji and labels:
     df_times = load_timeline_setup('optimist')
@@ -450,10 +446,13 @@ def draw_timeline(df_pathway_steps):
     # Draw background rectangle for each chunk and label them.
     for chunk in df_chunk_coords.index:
         s = df_chunk_coords.loc[chunk]
-        fig.add_vrect(
-            x0=s['min'], x1=s['max'],
-            line_width=0, fillcolor='silver', opacity=0.2
-            )
+        if 'treat' in chunk:
+            pass
+        else:
+            fig.add_vrect(
+                x0=s['min'], x1=s['max'],
+                line_width=0, fillcolor='silver', opacity=0.2
+                )
         fig.add_annotation(
             y=1.0,
             x=0.5 * (s['min'] + s['max']),
@@ -537,11 +536,27 @@ def draw_timeline(df_pathway_steps):
             draw_unit(x_travel_transfer[1], marker_mt_unit_kwargs,
                       'Depends', 'Arrive at MT-only unit')
 
+        # Treatment times:
+        m = df_treats['scenario'] == scenario
+        m_ivt = m & (df_treats['treatment'] == 'ivt')
+        m_mt = m & (df_treats['treatment'] == 'mt')
+        time_ivt = df_treats.loc[m_ivt, 'hr_min'].values[0]
+        time_mt = df_treats.loc[m_mt, 'hr_min'].values[0]
+        s = f'💉 IVT: {time_ivt}<br>🔧 MT: {time_mt}'
+        x = np.mean([df_chunk_coords.loc['treat_times', 'min'],
+                     df_chunk_coords.loc['treat_times', 'max']])
+        fig.add_annotation(
+            y=axis_ticklabel,
+            x=x,
+            text=s,
+            showarrow=False,
+        )
+
     # Axis ranges:
     fig.update_layout(xaxis_range=[
-        df_chunk_coords.loc['prehosp', 'min'] - 2,
-        df_chunk_coords.loc['second_unit', 'max'] + 2]
-        )
+        df_chunk_coords['min'].min() - 2,
+        df_chunk_coords['max'].max() + 2
+        ])
     fig.update_layout(xaxis=dict(tickmode='array', tickvals=[]))
     fig.update_yaxes(autorange="reversed")  # Flip veritcally
 
