@@ -589,7 +589,7 @@ def display_region_summary(series_u, series_r, k='mrs_0-2'):
     st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
 
 
-def plot_mrs_bars(
+def plot_mrs_bars_plus_cumulative(
         mrs_lists_dict, title_text='', return_fig=False, key=None
         ):
     # fig = go.Figure()
@@ -645,12 +645,9 @@ def plot_mrs_bars(
     fig.update_yaxes(title_text='Cumulative probability', row=2, col=1)
 
     # Figure setup.
-    # Give enough of a top margin that the main title doesn't
-    # clash with the top subplot title.
     fig.update_layout(
         # width=1200,
         height=700,
-        margin_t=150,
         )
     fig = update_plotly_font_sizes(fig)
 
@@ -682,6 +679,77 @@ def plot_mrs_bars(
             config=plotly_config,
             key=key
             )
+
+
+def plot_mrs_bars(
+        mrs_lists_dict, key=None
+        ):
+    fig = go.Figure()
+
+    for label, mrs_dict in mrs_lists_dict.items():
+        fig.add_trace(go.Bar(
+            x=[*range(7)],
+            y=100.0*mrs_dict['noncum'],
+            error_y=dict(
+                type='data',
+                array=100.0*mrs_dict['std'],
+                visible=True),
+            name=mrs_dict['label'],
+            marker_color=mrs_dict['colour'],
+            ))
+
+    fig.update_layout(barmode='group')
+
+    fig.update_layout(xaxis_showticklabels=True)
+    fig.update_xaxes(
+        title_text='Discharge disability (mRS)',
+        # Ensure that all mRS ticks are shown:
+        tickmode='linear',
+        tick0=0,
+        dtick=1,
+        )
+    fig.update_yaxes(title_text='Probability (%)')
+    fig.update_layout(legend=dict(
+        yanchor='top',
+        y=-0.3,
+        yref='paper',
+        xanchor='center',
+        x=0.5,
+        orientation='h'
+    ))
+    # Figure setup.
+    fig.update_layout(height=350, margin_t=0)
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title='')
+    # Turn off legend click events
+    # (default is click on legend item, remove that item from the plot)
+    fig.update_layout(legend_itemclick=False)
+
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(
+        fig,
+        config=plotly_config,
+        key=key
+        )
 
 
 def select_full_data_type():

@@ -575,7 +575,7 @@ def plot_outcome_maps(
     # Figure setup.
     fig.update_layout(
         # width=1200,
-        height=700,
+        height=600,
         margin_t=40,
         margin_b=0,
         )
