@@ -906,3 +906,106 @@ def plot_basic_travel_options():
         width='content',
         config=plotly_config
         )
+
+
+def gather_travel_times_highlighted_regions(
+        dict_unique_times,
+        highlighted_region_types,
+        df_highlight,
+        _log=True, _log_loc=None,
+        ):
+    """
+    """
+    dict_gathered = {}
+    for lsoa_subset, dict_admissions in dict_unique_times.items():
+        dict_gathered[lsoa_subset] = {}
+        list_ivt_unit = []
+        list_ivt_then_mt_unit = []
+        list_mt_unit = []
+        for region_type in highlighted_region_types:
+            # Limit to only the highlighted teams:
+            mask = (df_highlight['region_type'] == region_type)
+            teams_here = df_highlight.loc[mask, 'highlighted_region']
+            # Pick out data:
+            dict_times = dict_admissions[region_type]
+            df_ivt_unit = dict_times['usual_care_ivt'][teams_here]
+            df_ivt_then_mt_unit = dict_times['usual_care_mt'][teams_here]
+            df_mt_unit = dict_times['redirection_mt'][teams_here]
+            # Store:
+            list_ivt_unit.append(df_ivt_unit)
+            list_ivt_then_mt_unit.append(df_ivt_then_mt_unit)
+            list_mt_unit.append(df_mt_unit)
+        # Combine dataframes:
+        df_ivt_unit = pd.concat(list_ivt_unit, axis='columns')
+        df_ivt_then_mt_unit = pd.concat(list_ivt_then_mt_unit, axis='columns')
+        df_mt_unit = pd.concat(list_mt_unit, axis='columns')
+        # Store:
+        dict_gathered[lsoa_subset]['travel_to_ivt'] = df_ivt_unit
+        dict_gathered[lsoa_subset]['travel_to_ivt_then_mt'] = df_ivt_then_mt_unit
+        dict_gathered[lsoa_subset]['travel_to_mt'] = df_mt_unit
+
+    if _log:
+        p = 'Gathered travel times for highlighted regions.'
+        print_progress_loc(p, _log_loc)
+    return dict_gathered
+
+
+def gather_this_region_travel_times(dict_highlighted_region_travel_times, lsoa_subset, region):
+    time_bins = np.arange(0, 185, 5)
+    admissions_times = []
+    for t in ['travel_to_ivt', 'travel_to_ivt_then_mt', 'travel_to_mt']:
+        times = dict_highlighted_region_travel_times[lsoa_subset][t][region].dropna()
+        a_times, _ = np.histogram(times.index, bins=time_bins, weights=times.values)
+        a_times /= a_times.sum()
+        admissions_times.append(a_times)
+    return time_bins, admissions_times
+
+
+def plot_travel_times(
+        times,
+        admissions_lists,
+        ):
+    subplot_titles = [
+        'To nearest unit',
+        'To nearest then MT unit',
+        'To MT unit directly'
+        ]
+    fig = make_subplots(rows=3, cols=1, subplot_titles=subplot_titles)
+                        # shared_xaxes=True)
+    for i, admissions in enumerate(admissions_lists):
+        fig.add_trace(go.Bar(
+            x=times,
+            y=100.0*admissions,
+            name=subplot_titles[i],
+            marker_color='#0072b2',
+            showlegend=False
+        ), row=i+1, col=1)
+    fig.update_yaxes(title_text='% patients', row=2, col=1)
+    fig.update_xaxes(title_text='Travel time (minutes)', row=3, col=1)
+    ticks = np.arange(0, 185, 30)
+    fig.update_layout(xaxis=dict(tickmode='array', tickvals=ticks))
+    fig.update_layout(xaxis2=dict(tickmode='array', tickvals=ticks))
+    fig.update_layout(xaxis3=dict(tickmode='array', tickvals=ticks))
+    fig.update_layout(width=200, height=400, margin_t=20)
+    fig.update_layout(dragmode=False)  # change from default zoombox
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, width='content', config=plotly_config)

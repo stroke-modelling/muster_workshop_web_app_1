@@ -167,7 +167,7 @@ The time to treatment depends on the travel times and whether redirection was co
 Assumptions:
 1. When redirection is considered, the ambulance spends more time on-scene to do the pre-hospital diagnostic.
 2. All stroke units share the same time from arrival to delivery of IVT.
-3. The time for delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
+3. The time from arrival to delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
 4. All other pathway timings are the same in every scenario.
 ''')
 with containers['onion_text']:
@@ -392,9 +392,10 @@ df_pop_usual_care, df_pop_redir, df_pop_redir_accepted_only = (
         ))
 
 with containers['pop_plots']:
-    cols = st.columns(2)
+    n_cols = 2
+    cols = st.columns(n_cols)
     for i, s in enumerate(df_subgroups.index):
-        with cols[i % 2]:
+        with cols[i % n_cols]:
             c = st.container(border=True)
         with c:
             pop.plot_population_props(
@@ -455,6 +456,12 @@ dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
     df_highlighted_regions,
     _log_loc=containers['log_regions']
     )
+dict_highlighted_region_travel_times = reg.gather_travel_times_highlighted_regions(
+    dict_region_admissions_unique_times,
+    highlighted_region_types,
+    df_highlighted_regions,
+    _log_loc=containers['log_regions']
+)
 
 # Display chosen results:
 with containers['region_select']:
@@ -478,9 +485,14 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     else:
         region_label = region
     with containers['highlighted_regions']:
-        ch = st.container(border=True)
+        ch = st.container(border=True, width=500)
     with ch:
         st.subheader(region_label)
+        # Travel times
+        time_bins, admissions_times = reg.gather_this_region_travel_times(
+            dict_highlighted_region_travel_times, lsoa_subset, region)
+        reg.plot_travel_times(time_bins, admissions_times)
+        # Outcomes:
         for s, subgroup in enumerate(df_subgroups.index):
             df_u = dict_highlighted_region_outcomes[subgroup][
                 'usual_care'][lsoa_subset].loc[region]
