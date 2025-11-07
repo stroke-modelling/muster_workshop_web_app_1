@@ -678,7 +678,6 @@ def plot_mrs_bars(
             }
         st.plotly_chart(
             fig,
-            use_container_width=True,
             config=plotly_config,
             key=key
             )

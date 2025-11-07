@@ -49,7 +49,6 @@ def set_up_page_layout():
     """
     Set up container placement and return as dict.
     """
-    log_kwargs = dict(border=True, width=500)
     c = {}
     st.title('Benefit in outcomes from redirection')
 
@@ -71,7 +70,6 @@ def set_up_page_layout():
             c['units_map'] = st.container()
         with st.expander('Edit unit services'):
             c['units_df'] = st.container()
-        c['log_units'] = st.container(**log_kwargs)
 
     with c['pathway']:
         c['pathway_top'] = st.container()
@@ -86,7 +84,6 @@ def set_up_page_layout():
             with cols[1]:
                 st.markdown('After arrival:')
                 c['pathway_inputs_units'] = st.container(border=True, horizontal=True)
-        c['log_pathway'] = st.container(**log_kwargs)
 
     with c['onion']:
         cols = st.columns([1, 1])
@@ -96,11 +93,9 @@ def set_up_page_layout():
             c['onion_text'] = st.container()
         c['onion_text2'] = st.container()
         c['onion_setup'] = st.expander('Edit population proportions')
-        c['log_onion'] = st.container(**log_kwargs)
 
     with c['onion_subgroups']:
         c['pop_plots'] = st.container()
-        c['log_subgroups'] = st.container(**log_kwargs)
 
     # ----- Results -----
     c['run_results'] = st.container()
@@ -114,22 +109,34 @@ def set_up_page_layout():
     with c['region_summaries']:
         c['region_select'] = st.container()
         c['highlighted_regions'] = st.container(horizontal=True)
-        c['log_regions'] = st.container(**log_kwargs)
 
     with c['maps']:
         c['map_fig'] = st.container()
-        c['log_maps'] = st.container(**log_kwargs)
 
     with st.sidebar:
         c['map_setup'] = st.container()
     with c['full_results']:
         c['full_results_setup'] = st.container()
-        c['log_full_results'] = st.container(**log_kwargs)
 
-    logs = [k for k in c.keys() if k.startswith('log_')]
-    for k in logs:
-        with c[k]:
-            st.markdown(':green[_Calculations:_]')
+
+
+    # ----- Log -----
+    c['log'] = st.expander('Log of calculations', width=500)
+    log_keys_labels = {
+        'log_units': 'Stroke units',
+        'log_pathway': 'Treatment pathway',
+        'log_onion': 'Population onion',
+        'log_subgroups': 'Subgroups',
+        'log_regions': 'Region summaries',
+        'log_maps': 'England maps',
+        'log_full_results': 'Full results tables',
+    }
+    with c['log']:
+        for key, label in log_keys_labels.items():
+            c[key] = st.container()
+            with c[key]:
+                st.markdown(f':green[{label}]')
+
     return c
 
 
@@ -169,8 +176,8 @@ Assumptions:
 4. All other pathway timings are the same in every scenario.
 
 Times to MT:  
-+ The "fastest" time to MT is when the first stroke unit provides MT.
-+ The "slowest" time to MT is when a transfer to the MT unit is needed.
++ The "fast" time to MT is when the first stroke unit provides MT.
++ The "slow" time to MT is when a transfer to the MT unit is needed.
 ''')
 with containers['onion_text']:
     st.markdown('''

@@ -743,6 +743,5 @@ def plot_onion():
         }
     st.plotly_chart(
         fig,
-        use_container_width=True,
         config=plotly_config
         )

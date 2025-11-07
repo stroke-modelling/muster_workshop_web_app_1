@@ -12,17 +12,14 @@ import pandas as pd
 from utilities.utils import update_plotly_font_sizes, update_plotly_font_sizes
 
 
-def make_formatted_time_str_list(times):
-    new_times = []
-    for t in times:
-        try:
-            t_new = (f'{int(60*(t/60)//60):2d}hr ' +
-                     f'{int(60*(t/60)%60):2d}min')
-        except ValueError:
-            # t is NaN.
-            t_new = '~'
-        new_times.append(t_new)
-    return new_times
+def make_formatted_time_str(t):
+    try:
+        t_new = (f'{int(60*(t/60)//60):d}hr ' +
+                 f'{int(60*(t/60)%60):02d}min')
+    except ValueError:
+        # t is NaN.
+        t_new = '~'
+    return t_new
 
 
 def build_time_dicts_muster(pathway_dict):
@@ -145,58 +142,70 @@ def make_treatment_time_df_msu(treatment_times_without_travel):
 
 
 def make_treatment_time_df_optimist(treatment_times_without_travel):
-    # Add strings to show travel times:
-    usual_care_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}  ',
-        '\n\+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_mt_no_transfer"]}  ',
-        '\n\+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_mt_transfer"]}  ',
-        '\n\+ 🚑 travel to nearest unit  ',
-        '\n\+ 🚑 travel between units'
-        ])
+    t_near = '\n\+ 🚑 travel to nearest unit'
+    t_mt = '\n\+ 🚑 travel to MT unit'
+    t_trans = '\+ 🚑 travel between units'
 
-    prehospdiag_rej_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}  ',
-        '\n\+ 🚑 travel to nearest unit'
-        ])
-    prehospdiag_rej_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
-        '\n\+ 🚑 travel to nearest unit'
-        ])
-    prehospdiag_rej_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_transfer"]}  ',
-        '\n\+ 🚑 travel to nearest unit  ',
-        '\n\+ 🚑 travel between units'
-        ])
+    t_dict = {
+        'usual_care_time_to_ivt': {
+            'tre': 'usual_care_time_to_ivt',
+            'trav': [t_near],
+        },
+        'usual_care_mt_no_transfer': {
+            'tre': 'usual_care_time_to_mt_no_transfer',
+            'trav': [t_near],
+        },
+        'usual_care_mt_transfer': {
+            'tre': 'usual_care_time_to_mt_transfer',
+            'trav': [t_near, t_trans],
+        },
+        'prehospdiag_rej_time_to_ivt': {
+            'tre': 'prehospdiag_time_to_ivt',
+            'trav': [t_near],
+        },
+        'prehospdiag_rej_mt_no_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_near],
+        },
+        'prehospdiag_rej_mt_transfer': {
+            'tre': 'prehospdiag_time_to_mt_transfer',
+            'trav': [t_near, t_trans],
+        },
+        'prehospdiag_app_time_to_ivt': {
+            'tre': 'prehospdiag_time_to_ivt',
+            'trav': [t_mt],
+        },
+        'prehospdiag_app_mt_no_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_mt],
+        },
+        'prehospdiag_app_mt_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_mt],
+        },
+    }
+    s_dict = {}
+    for key, t_dict in t_dict.items():
+        t = treatment_times_without_travel[t_dict['tre']]
+        s = make_formatted_time_str(t)
+        s = f"__{s.replace(' ', '__ __')}__"
+        s_dict[key] = '  '.join([s] + t_dict['trav'])
 
-    prehospdiag_app_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}  ',
-        '\n\+ 🚑 travel to MT unit'
-        ])
-    prehospdiag_app_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
-        '\n\+ 🚑 travel to MT unit'
-        ])
-    prehospdiag_app_mt_transfer_str = '\-'
-    # ' '.join([
-    #     f'{treatment_times_without_travel["prehospdiag_time_to_mt_no_transfer"]}  ',
-    #     '\n\+ 🚑 travel to MT unit',
-    #     ])
+    # Manually update the last one:
+    s_dict['prehospdiag_app_mt_transfer'] = '\-'
 
     # Place these into a dataframe:
-    r1 = [usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str,
-          prehospdiag_app_time_to_ivt_str]
-    r2 = [usual_care_mt_no_transfer_str, prehospdiag_rej_mt_no_transfer_str,
-          prehospdiag_app_mt_no_transfer_str]
-    r3 = [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str,
-          prehospdiag_app_mt_transfer_str]
+    r1 = [s_dict['usual_care_time_to_ivt'],
+          s_dict['prehospdiag_rej_time_to_ivt'],
+          s_dict['prehospdiag_app_time_to_ivt']]
+    r2 = [s_dict['usual_care_mt_no_transfer'],
+          s_dict['prehospdiag_rej_mt_no_transfer'],
+          s_dict['prehospdiag_app_mt_no_transfer']]
+    r3 = [s_dict['usual_care_mt_transfer'],
+          s_dict['prehospdiag_rej_mt_transfer'],
+          s_dict['prehospdiag_app_mt_transfer']]
     cols = ['Usual care', 'Redirection rejected', 'Redirection approved']
-    ind = ['Time to IVT 💉  \n(minutes)', 'Time to MT 🔧  \n(fastest, minutes)', 'Time to MT 🔧  \n(slowest, minutes)']
+    ind = ['Time to IVT 💉', 'Time to MT 🔧  \n(fast)', 'Time to MT 🔧  \n(slow)']
     df_treatment_times = pd.DataFrame([r1, r2, r3], columns=cols, index=ind)
     return df_treatment_times
 
@@ -355,9 +364,9 @@ def draw_timeline(df_pathway_steps):
     hovertemplate = (
         '%{customdata[1]}'          # Name of this checkpoint
         '<br>' +                    # (line break)
-        'Time since last step: %{customdata[0]}' +  # Formatted time string
+        'Time since last step: %{customdata[0]}min' +  # Formatted time string
         '<br>' +
-        'Time in this section: %{customdata[2]}' +
+        'Time in this section: %{customdata[2]}min' +
         '<extra></extra>'           # Remove secondary box.
         )
     # Hover labels for travel time bits
@@ -417,7 +426,7 @@ def draw_timeline(df_pathway_steps):
             showlegend=False,
             textfont=dict(size=24),
             customdata=np.stack((
-                [0],
+                ['0min'],
                 ['Leave starting location'],
             ), axis=-1),
             hovertemplate=hovertemplate_travel,
@@ -523,7 +532,7 @@ def draw_timeline(df_pathway_steps):
             draw_arrow(x_travel_transfer, arrow_colour)
             # First unit:
             draw_unit(x_travel_transfer[0], marker_ivt_unit_kwargs,
-                      0, 'Leave IVT-only unit')
+                      '0min', 'Leave IVT-only unit')
             # MT unit:
             draw_unit(x_travel_transfer[1], marker_mt_unit_kwargs,
                       'Depends', 'Arrive at MT-only unit')
@@ -538,7 +547,7 @@ def draw_timeline(df_pathway_steps):
 
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title_text='Treatment pathways')
-    fig.update_layout(width=2000, height=500, margin_b=0, margin_t=75)
+    fig.update_layout(width=2000, height=400, margin_b=0, margin_t=75)
     fig.update_layout(dragmode=False)
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)

@@ -6,7 +6,7 @@ import plotly.graph_objs as go
 
 
 def print_progress(text):
-    st.write(f':green-background[🪵:heavy_check_mark: {text}]')
+    st.write(f':green-background[:heavy_check_mark: {text}]')
 
 
 def print_progress_loc(p, log_loc):
