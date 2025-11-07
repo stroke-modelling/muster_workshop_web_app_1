@@ -5,7 +5,6 @@ Geography.
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 
 from statsmodels.stats.weightstats import DescrStatsW  # for mRS dist stats
 import plotly.graph_objects as go
@@ -299,7 +298,8 @@ def find_region_admissions_by_unique_travel_times(
                         mask_label][region_type][time_label] = df
 
         if _log:
-            p = 'Found total admissions with each unique travel time per region.'
+            p = '''Found total admissions with each unique travel
+            time per region.'''
             print_progress_loc(p, _log_loc)
     else:
         # Unique treatment time combinations.
@@ -331,7 +331,8 @@ def find_region_admissions_by_unique_travel_times(
                     mask_label][region_type] = df
 
         if _log:
-            p = 'Found total admissions with each set of unique treatment times per region.'
+            p = '''Found total admissions with each set of unique
+            treatment times per region.'''
             print_progress_loc(p, _log_loc)
     return dict_region_unique_times
 
@@ -708,79 +709,6 @@ def select_full_data_type():
     return full_data_type
 
 
-def load_or_calculate_region_outlines(
-        outline_name,
-        df_lsoa,
-        col_lhs='nearest_ivt_unit_name',
-        col_rhs='nearest_mt_unit_name',
-        ):
-    """
-    Don't replace these outlines with stroke-maps!
-    These versions match the simplified LSOA shapes.
-    """
-    # Load in another gdf:
-
-    if outline_name == 'ISDN':
-        load_gdf_catchment = True
-        outline_file = './data/outline_isdns.geojson'
-        outline_names_col = 'isdn'
-    elif outline_name == 'ICB':
-        load_gdf_catchment = True
-        outline_file = './data/outline_icbs.geojson'
-        outline_names_col = 'icb'  # to display
-    elif outline_name == 'Ambulance service':
-        load_gdf_catchment = True
-        outline_file = './data/outline_ambo22s.geojson'
-        outline_names_col = 'ambo22'  # to display
-    elif outline_name == 'Nearest service':
-        load_gdf_catchment = False
-        outline_names_col = 'Nearest service'
-
-        # Make catchment area polygons:
-        gdf_catchment_lhs = dissolve_polygons_by_value(
-            df_lsoa.copy().reset_index()[['lsoa', col_lhs]],
-            col=col_lhs,
-            load_msoa=True
-            )
-        gdf_catchment_lhs = gdf_catchment_lhs.rename(
-            columns={col_lhs: 'Nearest service'})
-
-        gdf_catchment_rhs = dissolve_polygons_by_value(
-            df_lsoa.copy().reset_index()[['lsoa', col_rhs]],
-            col=col_rhs,
-            load_msoa=True
-            )
-        gdf_catchment_rhs = gdf_catchment_rhs.rename(
-            columns={col_rhs: 'Nearest service'})
-
-    if load_gdf_catchment:
-        gdf_catchment_lhs = geopandas.read_file(outline_file)
-        # Convert to British National Grid:
-        gdf_catchment_lhs = gdf_catchment_lhs.to_crs('EPSG:27700')
-        # st.write(gdf_catchment['geometry'])
-        # # Make geometry valid:
-        # gdf_catchment['geometry'] = [
-        #     make_valid(g) if g is not None else g
-        #     for g in gdf_catchment['geometry'].values
-        #     ]
-        gdf_catchment_rhs = gdf_catchment_lhs.copy()
-
-    # Make colour transparent:
-    gdf_catchment_lhs['colour'] = 'rgba(0, 0, 0, 0)'
-    gdf_catchment_rhs['colour'] = 'rgba(0, 0, 0, 0)'
-    # Make a dummy column for the legend entry:
-    gdf_catchment_lhs['outline_type'] = outline_name
-    gdf_catchment_rhs['outline_type'] = outline_name
-
-    gdf_catchment_pop = gdf_catchment_lhs.copy()
-    return (
-        outline_names_col,
-        gdf_catchment_lhs,
-        gdf_catchment_rhs,
-        gdf_catchment_pop
-    )
-
-
 def plot_basic_travel_options():
     fig = go.Figure()
 
@@ -794,14 +722,17 @@ def plot_basic_travel_options():
     }
     arrow_kwargs = dict(
         mode='lines+markers',
-        marker=dict(size=20, symbol='arrow-up', angleref='previous', standoff=16),
+        marker=dict(size=20, symbol='arrow-up', angleref='previous',
+                    standoff=16),
         showlegend=False,
         hoverinfo='skip',
     )
 
     fig.add_trace(go.Scatter(
-        x=[coords_dict['patient'][0], coords_dict['psc'][0], coords_dict['csc'][0],],
-        y=[coords_dict['patient'][1], coords_dict['psc'][1], coords_dict['csc'][1],],
+        x=[coords_dict['patient'][0], coords_dict['psc'][0],
+           coords_dict['csc'][0],],
+        y=[coords_dict['patient'][1], coords_dict['psc'][1],
+           coords_dict['csc'][1],],
         **arrow_kwargs,
         line=dict(color='grey', width=10),
     ))
@@ -825,7 +756,8 @@ def plot_basic_travel_options():
         x=[coords_dict['psc'][0]],
         y=[coords_dict['psc'][1]],
         mode='markers',
-        marker=dict(size=20, symbol='circle', color='white', line={'color': 'black', 'width': 1},),
+        marker=dict(size=20, symbol='circle', color='white',
+                    line={'color': 'black', 'width': 1},),
         name='IVT unit',
         hoverinfo='skip',
         showlegend=False,
@@ -834,7 +766,8 @@ def plot_basic_travel_options():
         x=[coords_dict['csc'][0]],
         y=[coords_dict['csc'][1]],
         mode='markers',
-        marker=dict(size=26, symbol='star', color='white', line={'color': 'black', 'width': 1},),
+        marker=dict(size=26, symbol='star', color='white',
+                    line={'color': 'black', 'width': 1},),
         name='MT unit',
         hoverinfo='skip',
         showlegend=False,
@@ -941,21 +874,28 @@ def gather_travel_times_highlighted_regions(
         df_mt_unit = pd.concat(list_mt_unit, axis='columns')
         # Store:
         dict_gathered[lsoa_subset]['travel_to_ivt'] = df_ivt_unit
-        dict_gathered[lsoa_subset]['travel_to_ivt_then_mt'] = df_ivt_then_mt_unit
+        dict_gathered[lsoa_subset]['travel_to_ivt_then_mt'] = (
+            df_ivt_then_mt_unit)
         dict_gathered[lsoa_subset]['travel_to_mt'] = df_mt_unit
 
     if _log:
-        p = 'Gathered travel times for highlighted regions.'
+        p = 'Gathered travel times summary for highlighted regions.'
         print_progress_loc(p, _log_loc)
     return dict_gathered
 
 
-def gather_this_region_travel_times(dict_highlighted_region_travel_times, lsoa_subset, region):
+def gather_this_region_travel_times(
+        dict_highlighted_region_travel_times,
+        lsoa_subset,
+        region
+        ):
     time_bins = np.arange(0, 185, 5)
     admissions_times = []
     for t in ['travel_to_ivt', 'travel_to_ivt_then_mt', 'travel_to_mt']:
-        times = dict_highlighted_region_travel_times[lsoa_subset][t][region].dropna()
-        a_times, _ = np.histogram(times.index, bins=time_bins, weights=times.values)
+        times = dict_highlighted_region_travel_times[
+            lsoa_subset][t][region].dropna()
+        a_times, _ = np.histogram(
+            times.index, bins=time_bins, weights=times.values)
         a_times /= a_times.sum()
         admissions_times.append(a_times)
     return time_bins, admissions_times
@@ -971,7 +911,6 @@ def plot_travel_times(
         'To MT unit directly'
         ]
     fig = make_subplots(rows=3, cols=1, subplot_titles=subplot_titles)
-                        # shared_xaxes=True)
     for i, admissions in enumerate(admissions_lists):
         fig.add_trace(go.Bar(
             x=times,
@@ -986,7 +925,7 @@ def plot_travel_times(
     fig.update_layout(xaxis=dict(tickmode='array', tickvals=ticks))
     fig.update_layout(xaxis2=dict(tickmode='array', tickvals=ticks))
     fig.update_layout(xaxis3=dict(tickmode='array', tickvals=ticks))
-    fig.update_layout(width=200, height=400, margin_t=20)
+    fig.update_layout(width=210, height=400, margin_t=20)
     fig.update_layout(dragmode=False)  # change from default zoombox
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
@@ -1009,3 +948,42 @@ def plot_travel_times(
         'toImageButtonOptions': {'height': None, 'width': None},
         }
     st.plotly_chart(fig, width='content', config=plotly_config)
+
+
+def gather_admissions_highlighted_regions(
+        dict_unique_times,
+        highlighted_region_types,
+        df_highlight,
+        _log=True, _log_loc=None,
+        ):
+    """
+    Compare the numbers in the "all patients" and "only patients
+    whose nearest unit does not have MT" subsets.
+    """
+    dfs = []
+    for region_type in highlighted_region_types:
+        # Limit to only the highlighted teams:
+        mask = (df_highlight['region_type'] == region_type)
+        teams_here = df_highlight.loc[mask, 'highlighted_region']
+        # Pick out data:
+        df_all = dict_unique_times['all_patients'][region_type][
+            'usual_care_ivt'][teams_here]
+        df_sub = dict_unique_times['nearest_unit_no_mt'][region_type][
+            'usual_care_ivt'][teams_here]
+        # Count admissions:
+        ad_all = df_all.sum()
+        ad_sub = df_sub.sum()
+        prop_sub = ad_sub / ad_all
+        # Gather into one dataframe:
+        ad_all.name = 'admissions_all'
+        ad_sub.name = 'admissions_nearest_unit_no_mt'
+        prop_sub.name = 'prop_nearest_unit_no_mt'
+        df = pd.concat((ad_all, ad_sub, prop_sub), axis='columns')
+        dfs.append(df)
+    # Gather results for different region types:
+    df = pd.concat(dfs, axis='rows').transpose()
+
+    if _log:
+        p = 'Gathered admissions summary for highlighted regions.'
+        print_progress_loc(p, _log_loc)
+    return df

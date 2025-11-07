@@ -79,10 +79,12 @@ def set_up_page_layout():
             cols = st.columns(2)
             with cols[0]:
                 st.markdown('Pre-hospital:')
-                c['pathway_inputs_prehosp'] = st.container(border=True, horizontal=True)
+                c['pathway_inputs_prehosp'] = st.container(
+                    border=True, horizontal=True)
             with cols[1]:
                 st.markdown('After arrival:')
-                c['pathway_inputs_units'] = st.container(border=True, horizontal=True)
+                c['pathway_inputs_units'] = st.container(
+                    border=True, horizontal=True)
 
     with c['onion']:
         cols = st.columns([1, 1])
@@ -157,7 +159,7 @@ With redirection, patients who would normally travel to the IVT unit first (:gre
         reg.plot_basic_travel_options()
     st.markdown('''
 
-For most patients this means faster access to MT because of the reduced travel time and delays for hospital transfer.
+For most patients, redirection means faster access to MT because of the reduced travel time and delays for hospital transfer.
 It also means slower access to IVT because of the increased travel time to the MT unit compared with the IVT unit.
 ''')
 with containers['pathway_text']:
@@ -431,7 +433,6 @@ else:
     pass
 
 
-
 #MARK: Results
 # ###################
 # ##### RESULTS #####
@@ -456,7 +457,15 @@ dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
     df_highlighted_regions,
     _log_loc=containers['log_regions']
     )
-dict_highlighted_region_travel_times = reg.gather_travel_times_highlighted_regions(
+dict_highlighted_region_travel_times = (
+    reg.gather_travel_times_highlighted_regions(
+        dict_region_admissions_unique_times,
+        highlighted_region_types,
+        df_highlighted_regions,
+        _log_loc=containers['log_regions']
+    )
+)
+df_highlighted_region_admissions = reg.gather_admissions_highlighted_regions(
     dict_region_admissions_unique_times,
     highlighted_region_types,
     df_highlighted_regions,
@@ -488,10 +497,20 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         ch = st.container(border=True, width=500)
     with ch:
         st.subheader(region_label)
-        # Travel times
-        time_bins, admissions_times = reg.gather_this_region_travel_times(
-            dict_highlighted_region_travel_times, lsoa_subset, region)
-        reg.plot_travel_times(time_bins, admissions_times)
+        cols = st.columns(2)
+        with cols[0]:
+            # Travel times
+            time_bins, admissions_times = reg.gather_this_region_travel_times(
+                dict_highlighted_region_travel_times, lsoa_subset, region)
+            reg.plot_travel_times(time_bins, admissions_times)
+        with cols[1]:
+            # Admissions
+            s_admissions = df_highlighted_region_admissions[region]
+            st.metric('Annual stroke admissions',
+                      f"{s_admissions['admissions_all']:.1f}")
+            n = 'Proportion of patients whose  \nnearest unit offers MT'
+            p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
+            st.metric(n, f"{p:.1f}%")
         # Outcomes:
         for s, subgroup in enumerate(df_subgroups.index):
             df_u = dict_highlighted_region_outcomes[subgroup][
@@ -531,7 +550,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'label': 'Redirection available'
                         },
                     }
-                    reg.plot_mrs_bars(mrs_lists_dict, key='_'.join([region, subgroup]))
+                    reg.plot_mrs_bars(mrs_lists_dict,
+                                      key='_'.join([region, subgroup]))
 
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
@@ -540,7 +560,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 with containers['map_fig']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
     use_full_redir = st.toggle(
-        'In middle map, include "reject redirection" and "usual care" patients.',
+        '''In middle map, include "reject redirection" and
+        "usual care" patients.''',
         value=False,
         key='full_redir_subset'
         )
