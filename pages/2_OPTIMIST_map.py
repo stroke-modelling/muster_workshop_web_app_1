@@ -113,9 +113,8 @@ def set_up_page_layout():
 
     with c['maps']:
         c['map_fig'] = st.container()
-
-    with st.sidebar:
-        c['map_setup'] = st.container()
+        with st.expander('Accessibility & advanced map setup'):
+            c['map_setup'] = st.container()
     with c['full_results']:
         c['full_results_setup'] = st.container()
 
@@ -201,13 +200,6 @@ We calculate six base outcomes. These can be combined in different proportions t
 # ##### SETUP #####
 # #################
 
-# ----- Outcome choice -----
-with containers['map_setup']:
-    map_outcome = outcomes.select_outcome_type()
-    cmap_name = colour_setup.select_colour_maps()
-    dicts_colours = colour_setup.select_colour_limits(map_outcome, cmap_name)
-
-
 # ----- Unit services -----
 # Show the map of England with the stroke units and so introduce
 # the idea that some geographical areas are nearest a CSC (MT)
@@ -232,8 +224,7 @@ with containers['log_units']:  # for log_loc
         df_unit_services, _log_loc=containers['log_units'])
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
-map_traces = plot_maps.make_constant_map_traces(
-    df_raster, transform_dict, dicts_colours['pop'])
+map_traces = plot_maps.make_constant_map_traces()
 map_traces = (
     plot_maps.make_shared_map_traces(
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
@@ -555,8 +546,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
-# LSOA-level data.
-
+# LSOA-level data. Then reshape into the raster array.
+with containers['map_setup']:
+    map_outcome = outcomes.select_outcome_type()
+# Gather data for maps:
 with containers['map_fig']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
     use_full_redir = st.toggle(
@@ -567,8 +560,7 @@ with containers['map_fig']:
         )
     redir_subset = ('redir_allowed' if use_full_redir
                     else 'redir_accepted_only')
-
-map_arrs_dict = maps.gather_map_arrays(
+map_arrs_dict, vlim_dict = maps.gather_map_arrays(
     dict_outcomes[subgroup_map]['usual_care'],
     dict_outcomes[subgroup_map][redir_subset],
     df_lsoa_units_times,
@@ -577,10 +569,23 @@ map_arrs_dict = maps.gather_map_arrays(
     col_map=map_outcome,
     _log_loc=containers['log_maps']
     )
+map_arrs_dict['pop'], vlim_dict_pop = maps.gather_pop_map(
+    df_raster, transform_dict)
+vlim_dict = vlim_dict | vlim_dict_pop
+
+# Set up colour limits:
+with containers['map_setup']:
+    dicts_colours = colour_setup.select_colour_limits(map_outcome, vlim_dict)
+
+# Make colour maps and traces:
+with containers['map_setup']:
+    default_cmap_name = colour_setup.select_colour_maps()
+for p, dp in dicts_colours.items():
+    dicts_colours[p]['cmap'] = colour_setup.make_colour_list(
+        default_cmap_name, vmin=dp['vmin'], vmax=dp['vmax'])
 for col, arr in map_arrs_dict.items():
     map_traces[col] = plot_maps.make_trace_heatmap(
         arr, transform_dict, dicts_colours[col], name=col)
-
 
 with containers['map_fig']:
     plot_maps.plot_outcome_maps(

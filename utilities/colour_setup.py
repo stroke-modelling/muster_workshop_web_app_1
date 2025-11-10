@@ -206,13 +206,14 @@ def select_colour_maps():
         cmap_names,
         captions=cmap_displays,
         index=cmap_ind,
-        key='cmap_diff_name'
+        key='cmap_diff_name',
+        horizontal=True
     )
 
     return cmap_name
 
 
-def select_colour_limits(map_outcome, cmap_name):
+def select_colour_limits(map_outcome, vlim_dict):
 
     outcome_label_dict = {
         'utility_shift': 'Utility shift',
@@ -241,16 +242,29 @@ def select_colour_limits(map_outcome, cmap_name):
     d['pop']['vmin'] = 0.0
     d['pop']['vmax'] = 100.0
 
-    # User-selected colour limits:
-    for p in list(d.keys()):
-        d[p]['vmin'], d[p]['vmax'] = (
-            select_map_colour_limits(
-                d[p]['vmin'], d[p]['vmax'], d[p]['title'])
-                )
+    # Copy over data min/max values:
+    for c in d.keys():
+        d[c] = d[c] | vlim_dict[c]
 
-    for p, dp in d.items():
-        # Create colours:
-        d[p]['cmap'] = make_colour_list(
-            cmap_name, vmin=dp['vmin'], vmax=dp['vmax'])
+    # Set up display:
+    st.markdown('__Edit the limits of the colour scales:__')
+    i = 0
+    cols = st.columns(3)
+    for c, c_dict in d.items():
+        arr = np.array([
+            [c_dict['data_min'], c_dict['vmin']],
+            [c_dict['data_max'], c_dict['vmax']]
+            ])
+        df = pd.DataFrame(arr, columns=['Map data', 'Colour scale'],
+                          index=['Minimum', 'Maximum'])
+        with cols[i]:
+            st.markdown(c_dict['title'])
+            df = st.data_editor(
+                df, disabled=['Map data'],
+                key=f'{c}_colour_setup',
+                )
+        d[c]['vmin'] = df.loc['Minimum', 'Colour scale']
+        d[c]['vmax'] = df.loc['Maximum', 'Colour scale']
+        i += 1
 
     return d

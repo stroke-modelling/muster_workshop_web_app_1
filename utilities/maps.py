@@ -154,8 +154,35 @@ def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
         f'{col_map}_usual_care',
         f'{col_map}_redir_minus_usual_care',
         ]
+    cols_out = [c.replace(f'{col_map}_', '') for c in cols]
+
     arrs = gather_map_data(
         df_raster, transform_dict, df_maps, cols, _log_loc=_log_loc
         )
-    cols = [c.replace(f'{col_map}_', '') for c in cols]
-    return dict(zip(cols, arrs))
+    arr_dict = dict(zip(cols_out, arrs))
+
+    # Store a copy of the min and max values in the data:
+    vlim_dict = {}
+    for i, c in enumerate(cols):
+        vlim_dict[cols_out[i]] = {}
+        vlim_dict[cols_out[i]]['data_max'] = df_maps[c].max()
+        vlim_dict[cols_out[i]]['data_min'] = df_maps[c].min()
+    return arr_dict, vlim_dict
+
+
+def gather_pop_map(df_raster, transform_dict):
+    # For population map. Load in LSOA-level demographic data:
+    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
+    # Store data limits:
+    vlim_dict = {'pop': {}}
+    vlim_dict['pop']['data_max'] = df_demog['population_density'].max()
+    vlim_dict['pop']['data_min'] = df_demog['population_density'].min()
+    # Gather the array to plot:
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df_demog,
+        ['population_density'],
+        _log=False
+        )
+    return arrs[0], vlim_dict

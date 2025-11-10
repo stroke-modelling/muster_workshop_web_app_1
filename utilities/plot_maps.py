@@ -172,11 +172,7 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
 # #########################
 # ##### CREATE TRACES #####
 # #########################
-def make_constant_map_traces(
-        df_raster,
-        transform_dict,
-        dict_colours_pop
-        ):
+def make_constant_map_traces():
     """
     Make dict of plotly traces for constant map data.
 
@@ -260,18 +256,6 @@ def make_constant_map_traces(
         # Store result:
         map_traces[reg_dict['trace_dict_name']] = trace_region
 
-    # ----- Population density -----
-    # For population map. Load in LSOA-level demographic data:
-    df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
-    arrs = gather_map_data(
-        df_raster,
-        transform_dict,
-        df_demog,
-        ['population_density'],
-        _log=False
-        )
-    map_traces['pop'] = make_trace_heatmap(
-        arrs[0], transform_dict, dict_colours_pop, name='pop')
     return map_traces
 
 
