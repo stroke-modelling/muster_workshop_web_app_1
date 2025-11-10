@@ -187,8 +187,8 @@ def select_colour_maps():
     cmap_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
     # Add the reverse option after each entry. Remove any double reverse
     # reverse _r_r. Result is flat list.
-    cmap_names = sum([[c, (c + '_r').replace('_r_r', '')]
-                    for c in cmap_names], [])
+    cmap_names = sum(
+        [[c, (c + '_r').replace('_r_r', '')] for c in cmap_names], [])
 
     cmap_displays = [
         make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
@@ -201,7 +201,7 @@ def select_colour_maps():
         cmap_name = cmap_names[0]
     cmap_ind = cmap_names.index(cmap_name)
 
-    cmap_name = st.radio(
+    cmap_selected = st.radio(
         'Default colour display for maps',
         cmap_names,
         captions=cmap_displays,
@@ -210,7 +210,7 @@ def select_colour_maps():
         horizontal=True
     )
 
-    return cmap_name
+    return cmap_selected, cmap_names
 
 
 def select_colour_limits(map_outcome, vlim_dict):

@@ -542,7 +542,7 @@ def draw_timeline(df_pathway_steps, df_treats):
         m_mt = m & (df_treats['treatment'] == 'mt')
         time_ivt = df_treats.loc[m_ivt, 'hr_min'].values[0]
         time_mt = df_treats.loc[m_mt, 'hr_min'].values[0]
-        s = f'💉 IVT: {time_ivt}<br>🔧 MT: {time_mt}'
+        s = f'💉 <b>IVT</b>: {time_ivt}<br>🔧 <b>MT</b>: {time_mt}'
         x = np.mean([df_chunk_coords.loc['treat_times', 'min'],
                      df_chunk_coords.loc['treat_times', 'max']])
         fig.add_annotation(

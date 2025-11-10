@@ -11,6 +11,7 @@ import stroke_maps.load_data
 
 from utilities.maps import gather_map_data
 from utilities.utils import update_plotly_font_sizes
+from utilities.colour_setup import make_colour_list_for_plotly_button
 
 
 #MARK: Load geodata
@@ -475,6 +476,76 @@ def england_map_setup(fig):
     return fig
 
 
+def draw_cmap_buttons(fig, colour_dicts, cmaps):
+    # BUTTONS TEST - https://plotly.com/python/custom-buttons/
+
+    if len(cmaps) > 0:
+        pass
+    else:
+        # Set up some colour options now.
+        cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
+        # Add the reverse option after each entry. Remove any double reverse
+        # reverse _r_r. Result is flat list.
+        cmaps = sum(
+            [[c, (c + '_r').replace('_r_r', '')] for c in cmaps], [])
+    # Colour scales dict:
+    keys = list(colour_dicts.keys())
+    dicts_colourscales = dict([(k, {}) for k in keys])
+    for i, c in enumerate(cmaps):
+        for k in keys:
+            dicts_colourscales[k][c] = (
+                make_colour_list_for_plotly_button(
+                    c,
+                    vmin=colour_dicts[k]['vmin'],
+                    vmax=colour_dicts[k]['vmax']
+                    ))
+
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                buttons=list([
+                    dict(
+                        args=[{'colorscale': [
+                                dicts_colourscales[keys[0]][c],
+                                dicts_colourscales[keys[1]][c],
+                                dicts_colourscales[keys[2]][c]
+                                ]},
+                              {'traces': ['lhs', 'rhs', 'pop']}],
+                        label=c,
+                        method='restyle'
+                    )
+                    for c in cmaps
+                ]),
+                type='buttons',
+                direction='right',
+                pad={'r': 10, 't': 10},
+                showactive=False,
+                x=0.2,
+                xanchor='left',
+                y=-0.25,
+                yanchor='top'
+            ),
+        ]
+    )
+
+    # Add annotations in this unusual way to prevent
+    # overwriting the subplot titles.
+    annotations = (
+        dict(
+            text='Colour scale:',
+            x=0.1,
+            xref='paper',
+            y=-0.28,
+            yref='paper',
+            align='left',
+            yanchor='top',
+            showarrow=False
+            ),  # keep this comma
+    )
+    fig['layout']['annotations'] += annotations
+    return fig
+
+
 #MARK: Plot figures
 # ########################
 # ##### PLOT FIGURES #####
@@ -518,7 +589,7 @@ def draw_units_map(map_traces, outline_name='none'):
 
 def plot_outcome_maps(
         map_traces, map_order, colour_dicts,
-        outline_name='none',
+        all_cmaps, outline_name='none'
         ):
     """"""
     # Map labels:
@@ -563,6 +634,7 @@ def plot_outcome_maps(
         margin_t=40,
         margin_b=0,
         )
+    fig = draw_cmap_buttons(fig, colour_dicts, all_cmaps)
     for i in range(len(map_order)):
         # Equivalent to pyplot set_aspect='equal':
         x = 'x' if i == 0 else f'x{i+1}'

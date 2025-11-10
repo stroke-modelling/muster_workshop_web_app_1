@@ -579,7 +579,7 @@ with containers['map_setup']:
 
 # Make colour maps and traces:
 with containers['map_setup']:
-    default_cmap_name = colour_setup.select_colour_maps()
+    default_cmap_name, all_cmaps = colour_setup.select_colour_maps()
 for p, dp in dicts_colours.items():
     dicts_colours[p]['cmap'] = colour_setup.make_colour_list(
         default_cmap_name, vmin=dp['vmin'], vmax=dp['vmax'])
@@ -592,6 +592,7 @@ with containers['map_fig']:
         map_traces,
         ['usual_care', 'redir_minus_usual_care', 'pop'],
         dicts_colours,
+        all_cmaps,
         outline_name,
         )
 
