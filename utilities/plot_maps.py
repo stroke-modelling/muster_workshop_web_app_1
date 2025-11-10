@@ -587,6 +587,61 @@ def draw_units_map(map_traces, outline_name='none'):
         )
 
 
+def draw_units_msu_map(map_traces, outline_name='none'):
+    fig = make_subplots(
+        rows=1, cols=2,
+        horizontal_spacing=0.0,
+        subplot_titles=['Usual care', 'MSU available'],
+        )
+
+    fig.add_trace(map_traces['raster_nearest_csc']['trace'], row='all', col='all')
+    fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'], row='all', col='all')
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'], row='all', col='all')
+    else:
+        for t in map_traces[f'{outline_name}_outlines']:
+            fig.add_trace(t, row='all', col='all')
+    for r in map_traces['roads']:
+        fig.add_trace(r, row='all', col='all')
+    fig.add_trace(map_traces['units']['ivt'], row='all', col=1)
+    fig.add_trace(map_traces['units']['mt'], row='all', col='all')
+    fig.add_trace(map_traces['units']['msu'], row='all', col=2)
+
+    fig = england_map_setup(fig)
+    # Figure setup.
+    fig.update_layout(
+        width=500,
+        height=600,
+        margin_t=25,
+        margin_b=0
+        )
+
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, scaleanchor='x', scaleratio=1)
+
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="top",
+        y=0.0,
+        xanchor="center",
+        x=0.5,
+    ))
+    plotly_config = get_map_config()
+
+    st.plotly_chart(
+        fig,
+        width='stretch',
+        config=plotly_config
+        )
+
+
 def plot_outcome_maps(
         map_traces, map_order, colour_dicts,
         all_cmaps, outline_name='none'

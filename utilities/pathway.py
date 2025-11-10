@@ -29,7 +29,12 @@ def select_pathway_timings(use_col, containers):
 
     # Draw each widget separately:
     for key in df_pathway.index:
-        c = containers[0] if 'ambulance' in key else containers[1]
+        if 'ambulance' in key:
+            c = containers[0]
+        elif ('msu' in key) & ('arrival' not in key):
+            c = containers[2]
+        else:
+            c = containers[1]
 
         d = df_pathway.loc[key]
         # Convert types to match step to make sure that numeric
@@ -252,7 +257,8 @@ def show_treatment_time_summary(treatment_times_without_travel):
     st.table(df_treatment_times)
 
 
-def draw_timeline(df_pathway_steps, series_treatment_times_without_travel):
+def draw_timeline(df_pathway_steps, series_treatment_times_without_travel,
+                  use_msu=False):
     # ----- Timeline -----
     # Calculate some extra keys:
     df_pathway_steps.loc['onset'] = 0
@@ -266,14 +272,34 @@ def draw_timeline(df_pathway_steps, series_treatment_times_without_travel):
         df_pathway_steps.loc['process_time_arrival_to_puncture', 'value'] -
         df_pathway_steps.loc['process_time_arrival_to_needle', 'value']
     )
-    df_pathway_steps.loc['ambo_arrival_to_prehospdiag'] = (
-        df_pathway_steps.loc['process_ambulance_on_scene_duration', 'value']
-    )
-    # Convert minutes to hour-minute strings:
+    if use_msu:
+        # Times for MUSTER:
+        df_pathway_steps.loc['arrival_ambo'] = 0
+        df_pathway_steps.loc['arrival_msu'] = 0
+    else:
+        # Times for OPTIMIST:
+        df_pathway_steps.loc['ambo_arrival_to_prehospdiag'] = (
+            df_pathway_steps.loc['process_ambulance_on_scene_duration', 'value']
+        )
+
     df_treats = pd.read_csv('./data/timeline_treatment_time_lookup.csv')
+    # Only keep the rows we need:
+    if use_msu:
+        df_treats = df_treats.loc[df_treats['muster'] == 1]
+    else:
+        df_treats = df_treats.loc[df_treats['optimist'] == 1]
+    df_treats = df_treats.drop(['optimist', 'muster'], axis='columns')
+
+    # Format the times more nicely for display:
     for i in df_treats.index:
         s = df_treats.loc[i, 'source_time']
-        t = series_treatment_times_without_travel[s]
-        df_treats.loc[i, 'min'] = t
-        df_treats.loc[i, 'hr_min'] = timeline.make_formatted_time_str(t)
-    timeline.draw_timeline(df_pathway_steps, df_treats)
+        if s != 'none':
+            t = series_treatment_times_without_travel[s]
+            # Convert minutes to hour-minute strings:
+            df_treats.loc[i, 'min'] = t
+            df_treats.loc[i, 'hr_min'] = timeline.make_formatted_time_str(t)
+        else:
+            df_treats.loc[i, 'min'] = np.NaN
+            df_treats.loc[i, 'hr_min'] = '-'
+
+    timeline.draw_timeline(df_pathway_steps, df_treats, use_msu=use_msu)

@@ -266,21 +266,35 @@ def load_timeline_chunks(use_col):
     # Limit to the keys we need:
     df_chunks = df_chunks[df_chunks[use_col] == 1]
     df_chunks = df_chunks.drop(['optimist', 'muster'], axis='columns')
+    # Limit to the columns we need:
+    if use_col == 'optimist':
+        cols_drop = ['preambo', 'onscene']
+    else:
+        cols_drop = ['prehosp']
+    df_chunks = df_chunks.drop(cols_drop, axis='columns')
     return df_chunks
 
 
-def set_up_fig_chunks(df_times, t_travel=20, gap=20):
+def set_up_fig_chunks(df_times, chunks_to_keep, t_travel=20, gap=20):
     # Set up chunk widths and spacing:
+    cols_preambo = [c for c in df_times if c.startswith('times_preambo')]
+    cols_onscene = [c for c in df_times if c.startswith('times_onscene')]
     cols_prehosp = [c for c in df_times if c.startswith('times_prehospital')]
     cols_first = [c for c in df_times if
                   (c.startswith('times_ivt') | c.startswith('times_mt_unit'))]
     cols_second = ['times_mt_unit_transfer']
+
+    t_max_preambo = df_times[cols_preambo].max().max()
+    t_max_onscene = df_times[cols_onscene].max().max()
     t_max_prehosp = df_times[cols_prehosp].max().max()
     t_max_first = df_times[cols_first].max().max()
     t_max_second = df_times[cols_second].max().max()
 
     # Set up figure-wide chunk locations:
     tups = (
+        ('preambo', 'Before ambulance dispatch'),
+        ('travel_to_scene', 'Travel to<br>patient'),
+        ('onscene', 'On scene'),
         ('prehosp', 'Pre-hospital'),
         ('travel_to_first', 'Travel to<br>first unit'),
         ('first_unit', 'First unit'),
@@ -291,12 +305,19 @@ def set_up_fig_chunks(df_times, t_travel=20, gap=20):
     df_chunk_coords = (
         pd.DataFrame(tups, columns=['chunk', 'label']).set_index('chunk'))
     # Size of each chunk:
+    df_chunk_coords.loc['preambo', 'width'] = t_max_preambo
+    df_chunk_coords.loc['travel_to_scene', 'width'] = t_travel
+    df_chunk_coords.loc['onscene', 'width'] = t_max_onscene
     df_chunk_coords.loc['prehosp', 'width'] = t_max_prehosp
     df_chunk_coords.loc['travel_to_first', 'width'] = t_travel
     df_chunk_coords.loc['first_unit', 'width'] = t_max_first
     df_chunk_coords.loc['travel_transfer', 'width'] = t_travel
     df_chunk_coords.loc['second_unit', 'width'] = t_max_second
     df_chunk_coords.loc['treat_times', 'width'] = t_travel * 2.0
+
+    # Limit to the chunks we need for OPTIMIST or MUSTER:
+    mask = df_chunk_coords.index.isin(chunks_to_keep)
+    df_chunk_coords = df_chunk_coords[mask].copy()
 
     # Start time of each chunk:
     chunk_order = df_chunk_coords.index
@@ -322,16 +343,40 @@ def set_up_fig_chunks(df_times, t_travel=20, gap=20):
     return df_chunk_coords
 
 
-def draw_timeline(df_pathway_steps, df_treats):
+def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
     """Optimist."""
     # Load emoji and labels:
-    df_times = load_timeline_setup('optimist')
+    if use_msu:
+        project = 'muster'
+        order_cols = [
+            # Usual care:
+            'order_preambo_usual_care', 'order_onscene_usual_care',
+            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_mt_unit_transfer',
+            # MSU:
+            'order_preambo_msu', 'order_onscene_msu_ivt',
+            'order_onscene_msu_no_ivt', 'order_mt_unit_msu'
+        ]
+        chunks_to_keep = ['preambo', 'travel_to_scene', 'onscene',
+                          'travel_to_first', 'first_unit', 'travel_transfer',
+                          'second_unit', 'treat_times']
+        t_travel = 30
+    else:
+        project = 'optimist'
+        order_cols = [
+            'order_prehospital_usual_care', 'order_prehospital_prehospdiag',
+            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_mt_unit_transfer'
+        ]
+        chunks_to_keep = ['prehosp',
+                          'travel_to_first', 'first_unit', 'travel_transfer',
+                          'second_unit', 'treat_times']
+        t_travel = 20
+    df_times = load_timeline_setup(project)
     df_times = pd.merge(df_times, df_pathway_steps,
                         left_index=True, right_index=True, how='left')
 
     # Calculate cumulative times for each chunk:
-    order_cols = [c for c in df_times.columns if
-                  (c.startswith('order_') & ('msu' not in c))]
     for col in order_cols:
         df = df_times[[col, 'value']]
         df = df[df[col].notna()].sort_values(col)
@@ -342,9 +387,10 @@ def draw_timeline(df_pathway_steps, df_treats):
     # Chunk setup for each scenario.
     # Use these to work out which chunk is used in each scenario,
     # e.g. whether first unit is the IVT unit or the MT unit:
-    df_chunks = load_timeline_chunks('optimist')
+    df_chunks = load_timeline_chunks(project)
     # Use these to make coordinates for plotting:
-    df_chunk_coords = set_up_fig_chunks(df_times, t_travel=20, gap=20)
+    df_chunk_coords = set_up_fig_chunks(
+        df_times, chunks_to_keep, t_travel=t_travel, gap=20)
 
     # Use this to pick out the right times for each scenario:
     def get_times(df_times, col):
@@ -413,7 +459,7 @@ def draw_timeline(df_pathway_steps, df_treats):
             hovertemplate=hovertemplate_travel,
         ))
 
-    def draw_start_location(x):
+    def draw_start_location(x, time='0min', label='Leave starting location'):
         fig.add_trace(go.Scatter(
             x=[x],
             y=[axis_ticklabel],
@@ -422,8 +468,23 @@ def draw_timeline(df_pathway_steps, df_treats):
             showlegend=False,
             textfont=dict(size=24),
             customdata=np.stack((
-                ['0min'],
-                ['Leave starting location'],
+                [time],
+                [label],
+            ), axis=-1),
+            hovertemplate=hovertemplate_travel,
+        ))
+
+    def draw_ambo(x, time='0min', label='Ambulance dispatch'):
+        fig.add_trace(go.Scatter(
+            x=[x],
+            y=[axis_ticklabel],
+            mode='text',
+            text=['🚑'],
+            showlegend=False,
+            textfont=dict(size=24),
+            customdata=np.stack((
+                [time],
+                [label],
             ), axis=-1),
             hovertemplate=hovertemplate_travel,
         ))
@@ -461,80 +522,108 @@ def draw_timeline(df_pathway_steps, df_treats):
             yref='paper',
             yanchor='bottom'
         )
-
+    step_chunks = [c for c in df_chunks.columns if c != 'label']
     # Draw the scatter data.
     for i, scenario in enumerate(df_chunks.index):
         s = df_chunks.loc[scenario]
-        # Pick out info for each chunk:
-        axis_ticklabel = s['label']
-        col_prehosp = f'times_prehospital_{s["prehosp"]}'
-        col_first = f'times_{s["first_unit"]}'
-        col_second = f'times_{s["second_unit"]}'
-
-        df_prehosp = get_times(df_times, col_prehosp)
-        df_first_unit = get_times(df_times, col_first)
         if isinstance(s['second_unit'], str):
             use_second_unit = True
-            df_second_unit = get_times(df_times, col_second)
         else:
             use_second_unit = False
+        # Pick out info for each chunk:
+        axis_ticklabel = s['label']
+        for sc in step_chunks:
+            if isinstance(s[sc], str):
+                if sc == 'prehosp':
+                    col = f'times_prehospital_{s[sc]}'
+                elif sc == 'preambo':
+                    col = f'times_preambo_{s[sc]}'
+                elif sc == 'onscene':
+                    col = f'times_onscene_{s[sc]}'
+                else:
+                    col = f'times_{s[sc]}'
+                df_here = get_times(df_times, col)
+                plot_chunk_emoji(
+                    df_here,
+                    df_chunk_coords.loc[sc, 'offset'],
+                    hovertemplate
+                    )
 
-        # Pre-hospital chunk:
-        plot_chunk_emoji(
-            df_prehosp,
-            df_chunk_coords.loc['prehosp', 'offset'],
-            hovertemplate
-            )
-        plot_chunk_emoji(
-            df_first_unit,
-            df_chunk_coords.loc['first_unit', 'offset'],
-            hovertemplate
-            )
-        if use_second_unit:
-            plot_chunk_emoji(
-                df_second_unit,
-                df_chunk_coords.loc['second_unit', 'offset'],
-                hovertemplate
-                )
         # Draw travel times:
-        x_travel_first = [
-            df_chunk_coords.loc['travel_to_first', 'offset'],
-            df_chunk_coords.loc['travel_to_first', ['offset', 'width']].sum()
-            ]
-        # Is the first unit the MT unit?
-        if use_second_unit:
-            # The first unit is the IVT-only unit.
-            marker_unit_kwargs = marker_ivt_unit_kwargs
-            arrow_colour = 'grey'
-            unit_label = 'Arrive at IVT-only unit'
-        else:
-            marker_unit_kwargs = marker_mt_unit_kwargs
-            arrow_colour = '#ff4b4b'
-            unit_label = 'Arrive at MT unit'
-        # Connecting arrow:
-        draw_arrow(x_travel_first, arrow_colour)
+        travel_chunks_dict = {
+            'travel_to_scene': {
+                'start': {'type': 'ambo', 'time': '0min', 'label':'Ambulance dispatch'},
+                'end': {'type': 'patient', 'time': 'Depends', 'label':'Arrive at patient'},
+            },
+            'travel_to_first': {
+                'start': {'type': 'patient', 'time': '0min', 'label':'Ambulance leaves scene'},
+                'end': {'type': 'first', 'time': 'Depends', 'label':''},
+            },
+            'travel_transfer': {
+                'start': {'type': 'first', 'time': '0min', 'label':'Ambulance leaves IVT-only unit'},
+                'end': {'type': 'mt', 'time': 'Depends', 'label':'Arrive at MT unit'},
+            },
+            }
 
-        # Start location:
-        draw_start_location(x_travel_first[0])
-        # First unit:
-        draw_unit(x_travel_first[1], marker_unit_kwargs, 'Depends',
-                  unit_label)
+        for travel_chunk, t_dict in travel_chunks_dict.items():
+            draw_travel = True
+            if ('transfer' in travel_chunk) & (not use_second_unit):
+                draw_travel = False
+            else:
+                try:
+                    x_travel = [
+                        df_chunk_coords.loc[travel_chunk, 'offset'],
+                        df_chunk_coords.loc[travel_chunk, ['offset', 'width']].sum()
+                        ]
+                except KeyError:
+                    # This chunk doesn't exist in this project.
+                    draw_travel = False
+            if draw_travel:
+                # Check where we're going from and to.
 
-        if use_second_unit:
-            x_travel_transfer = [
-                df_chunk_coords.loc['travel_transfer', 'offset'],
-                df_chunk_coords.loc['travel_transfer',
-                                    ['offset', 'width']].sum()
-                ]
-            # Same for transfer unit.
-            # Connecting arrow:
-            draw_arrow(x_travel_transfer, arrow_colour)
-            # First unit:
-            draw_unit(x_travel_transfer[0], marker_ivt_unit_kwargs,
-                      '0min', 'Leave IVT-only unit')
-            # MT unit:
-            draw_unit(x_travel_transfer[1], marker_mt_unit_kwargs,
-                      'Depends', 'Arrive at MT-only unit')
+                # Is the first unit the MT unit?
+                if ('first' in travel_chunk) & (not use_second_unit):
+                    marker_unit_kwargs = marker_mt_unit_kwargs
+                    arrow_colour = '#ff4b4b'
+                    unit_label = 'Arrive at MT unit'
+                else:
+                    # The first unit is the IVT-only unit.
+                    marker_unit_kwargs = marker_ivt_unit_kwargs
+                    arrow_colour = 'grey'
+                    unit_label = 'Arrive at IVT-only unit'
+
+                # Connecting arrow:
+                draw_arrow(x_travel, arrow_colour)
+                i = 0
+                for start_or_end, t_kwargs in t_dict.items():
+                    t = t_kwargs['type']
+                    if t == 'patient':
+                        if i == 1:
+                            if 'msu' in scenario:
+                                label = 'Depends'
+                            else:
+                                p = 'process_time_ambulance_response'
+                                label = df_times.loc[p, 'value']
+                                label = f'{label:.0f}min'
+                        else:
+                            label = t_kwargs['time']
+                        draw_start_location(x_travel[i], time=label, label=t_kwargs['label'])
+                    elif t == 'ambo':
+                        if 'msu' in scenario:
+                            label = 'MSU dispatch'
+                        else:
+                            label = t_kwargs['label']
+                        draw_ambo(x_travel[i], label=label)
+                    elif t == 'first':
+                        time = '0min' if i == 0 else 'Depends'
+                        unit_label = ('Leave IVT-only unit' if i == 0
+                                      else unit_label)
+                        draw_unit(x_travel[i], marker_unit_kwargs,
+                                  unit_time=time, unit_label=unit_label)
+                    else:
+                        draw_unit(x_travel[i], marker_mt_unit_kwargs, 'Depends',
+                                  'Arrive at MT unit')
+                    i += 1
 
         # Treatment times:
         m = df_treats['scenario'] == scenario
