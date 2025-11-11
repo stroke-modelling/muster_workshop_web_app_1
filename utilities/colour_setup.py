@@ -213,7 +213,8 @@ def select_colour_maps():
     return cmap_selected, cmap_names
 
 
-def select_colour_limits(map_outcome, vlim_dict):
+def select_colour_limits(map_outcome, vlim_dict,
+                         scenario_name='redir', scenario_label='redirection'):
 
     outcome_label_dict = {
         'utility_shift': 'Utility shift',
@@ -225,9 +226,10 @@ def select_colour_limits(map_outcome, vlim_dict):
     d['usual_care'] = {
         'title': f'Usual care: {map_outcome_label}',
         }
-    d['redir_minus_usual_care'] = {
+    diff_name = f'{scenario_name}_minus_usual_care'
+    d[diff_name] = {
         'title': (
-            f'Benefit of redirection over usual care: {map_outcome_label}'),
+            f'Benefit of {scenario_label} over usual care: {map_outcome_label}'),
         }
     d['pop'] = {
         'title': 'Population density (people per square kilometre)',
@@ -237,8 +239,8 @@ def select_colour_limits(map_outcome, vlim_dict):
     dict_colours, dict_colours_diff = load_colour_limits(map_outcome)
     d['usual_care']['vmin'] = dict_colours['vmin']
     d['usual_care']['vmax'] = dict_colours['vmax']
-    d['redir_minus_usual_care']['vmin'] = dict_colours_diff['vmin']
-    d['redir_minus_usual_care']['vmax'] = dict_colours_diff['vmax']
+    d[diff_name]['vmin'] = dict_colours_diff['vmin']
+    d[diff_name]['vmax'] = dict_colours_diff['vmax']
     d['pop']['vmin'] = 0.0
     d['pop']['vmax'] = 100.0
 

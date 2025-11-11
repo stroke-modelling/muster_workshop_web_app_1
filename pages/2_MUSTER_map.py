@@ -233,14 +233,49 @@ with containers['units_text']:
         )
 with containers['units_map']:
     plot_maps.draw_units_msu_map(map_traces, outline_name)
+
+
+# Need the pathway inputs now because
+# the ambulance response time is needed
+# to calculate unique travel times.
+df_pathway_steps = pathway.select_pathway_timings(
+    'muster', [containers['pathway_inputs_prehosp'],
+               containers['pathway_inputs_units'],
+               containers['pathway_inputs_msu']]
+    )
+df_lsoa_units_times = reg.calculate_extra_muster_travel_times(
+    df_lsoa_units_times, df_pathway_steps
+)
+
 with containers['log_units']:  # for log_loc
     unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
-        reg.find_unique_travel_times(df_lsoa_units_times,
-                                     _log_loc=containers['log_units'])
+        reg.find_unique_travel_times(
+            df_lsoa_units_times,
+            cols_ivt=[
+                'msu_response_time',                    # MSU
+                'ambo_response_then_nearest_ivt_time',  # usual care
+                ],
+            cols_mt=[
+                'msu_response_then_mt_time',                    # MSU
+                'ambo_response_then_nearest_ivt_then_mt_time',  # usual care
+                ],
+            cols_pairs={
+                'usual_care': (
+                    'ambo_response_then_nearest_ivt_time',
+                    'ambo_response_then_nearest_ivt_then_mt_time'
+                    ),
+                'msu': (
+                    'msu_response_time',
+                    'msu_response_then_mt_time'
+                    ),
+            },
+            cols_pairs_labels=['travel_for_ivt', 'travel_for_mt'],
+            _log_loc=containers['log_units'])
         )
     dict_region_admissions_unique_times = (
         reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, _log_loc=containers['log_units'])
+            df_lsoa_units_times, project='muster',
+            _log_loc=containers['log_units'])
         )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
@@ -256,18 +291,12 @@ with containers['log_units']:  # for log_loc
 #   in each scenario.
 # + Find unique treatment times and pairs of treatment times.
 
-df_pathway_steps = pathway.select_pathway_timings(
-    'muster', [containers['pathway_inputs_prehosp'],
-               containers['pathway_inputs_units'],
-               containers['pathway_inputs_msu']]
-    )
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
         df_pathway_steps, ['usual_care', 'msu'],
         _log_loc=containers['log_pathway']
         )
     )
-st.write(series_treatment_times_without_travel)
 with containers['pathway_fig']:
     pathway.draw_timeline(df_pathway_steps,
                           series_treatment_times_without_travel,
@@ -284,15 +313,19 @@ unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
     _log=True, _log_loc=containers['log_pathway'],
 )
 # LSOA-level treatment times:
-df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
-    df_lsoa_units_times,
-    series_treatment_times_without_travel,
-    _log_loc=containers['log_pathway']
-    )
+df_lsoa_units_times = (
+    pathway.calculate_treatment_times_each_lsoa_scenarios_muster(
+        df_lsoa_units_times,
+        series_treatment_times_without_travel,
+        _log_loc=containers['log_pathway']
+        )
+)
 # Find the unique sets of treatment times:
-scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
+scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
 treats = ['ivt', 'mt']
 cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+cols_treat_scen = [c for c in cols_treat_scen
+                   if c in df_lsoa_units_times.columns]
 df_treat_times_sets_unique = (
     df_lsoa_units_times[cols_treat_scen].drop_duplicates())
 # Update index to normal range:
@@ -305,7 +338,7 @@ df_treat_times_sets_unique = (
 with containers['log_pathway']:  # for log_loc
     dict_region_admissions_unique_treatment_times = (
         reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, unique_travel=False,
+            df_lsoa_units_times, unique_travel=False, project='muster',
             _log_loc=containers['log_pathway'])
         )
 
@@ -353,19 +386,17 @@ dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
 #   and for "redirection considered" groups.
 
 with containers['onion_setup']:
-    df_onion_pops = pop.set_up_onion_parameters()
-with containers['onion_text']:
-    dict_onion = pop.select_onion_population(df_onion_pops)
-dict_onion = pop.calculate_population_subgroups(
-    dict_onion, _log_loc=containers['log_onion'])
-
+    df_onion_pops = pop.set_up_onion_parameters('muster', use_debug=True)
+dict_onion = df_onion_pops.loc[
+    # df_onion_pops['population'] == 'muster'].squeeze()
+    df_onion_pops['population'] == 'debug'].squeeze()
 
 # ----- Subgroups (this onion layer) -----
 with containers['pop_plots']:
     df_subgroups = pop.select_subgroups_for_results()
 
-df_pop_usual_care, df_pop_redir, df_pop_redir_accepted_only = (
-    pop.calculate_population_subgroup_grid(
+df_pop_usual_care, df_pop_msu = (
+    pop.calculate_population_subgroup_grid_muster(
         dict_onion, df_subgroups, _log_loc=containers['log_subgroups']
         ))
 
@@ -378,20 +409,19 @@ with containers['pop_plots']:
         with c:
             pop.plot_population_props(
                 df_pop_usual_care[['scenario'] + [s]],
-                df_pop_redir[['scenario'] + [s]],
+                df_pop_msu[['scenario'] + [s]],
                 s,
-                df_subgroups.loc[s]
+                df_subgroups.loc[s],
+                titles=['<b>Usual care</b>', '<b>MSU available</b>']
                 )
-
 
 # ----- Outcomes -----
 dict_outcomes = {}
 for s in df_subgroups.index:
     dict_outcomes[s] = pop.calculate_unique_outcomes_onion(
         dict_base_outcomes,
-        df_pop_usual_care,
-        df_pop_redir,
-        df_pop_redir_accepted_only,
+        {'usual_care': df_pop_usual_care,
+         'msu': df_pop_msu},
         df_subgroups.loc[s],
         df_treat_times_sets_unique,
         s,
@@ -438,6 +468,11 @@ dict_highlighted_region_travel_times = (
         dict_region_admissions_unique_times,
         highlighted_region_types,
         df_highlighted_regions,
+        gather_dict={
+            'travel_to_ivt': 'usual_care_ivt',
+            'travel_to_ivt_then_mt': 'usual_care_mt',
+            'travel_from_msu_base': 'msu_ivt_ivt',
+        },
         _log_loc=containers['log_regions']
     )
 )
@@ -476,9 +511,15 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         cols = st.columns(2)
         with cols[0]:
             # Travel times
+            time_cols = ['travel_to_ivt', 'travel_to_ivt_then_mt',
+                         'travel_from_msu_base']
             time_bins, admissions_times = reg.gather_this_region_travel_times(
-                dict_highlighted_region_travel_times, lsoa_subset, region)
-            reg.plot_travel_times(time_bins, admissions_times)
+                dict_highlighted_region_travel_times, lsoa_subset, region,
+                time_cols)
+            subplot_titles = ['To nearest unit', 'To nearest then MT unit',
+                              'From MSU base']
+            reg.plot_travel_times(time_bins, admissions_times,
+                                  subplot_titles)
         with cols[1]:
             # Admissions
             s_admissions = df_highlighted_region_admissions[region]
@@ -492,7 +533,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             df_u = dict_highlighted_region_outcomes[subgroup][
                 'usual_care'][lsoa_subset].loc[region]
             df_r = dict_highlighted_region_outcomes[subgroup][
-                'redir_allowed'][lsoa_subset].loc[region]
+                'msu'][lsoa_subset].loc[region]
             cs = st.expander(df_subgroups.loc[subgroup, 'label'],
                              expanded=(True if s == 0 else False))
             with cs:
@@ -517,13 +558,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'linestyle': 'solid',
                             'label': 'Usual care',
                         },
-                        'redir_allowed': {
+                        'msu': {
                             'noncum': df_r[cols_mrs_noncum],
                             'cum': df_r[cols_mrs],
                             'std': df_r[cols_mrs_std],
                             'colour': '#56b4e9',
                             'linestyle': 'dash',
-                            'label': 'Redirection available'
+                            'label': 'MSU'
                         },
                     }
                     reg.plot_mrs_bars(mrs_lists_dict,
@@ -537,21 +578,23 @@ with containers['map_setup']:
 # Gather data for maps:
 with containers['map_fig']:
     subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
-    use_full_redir = st.toggle(
-        '''In middle map, include "reject redirection" and
-        "usual care" patients.''',
-        value=False,
-        key='full_redir_subset'
-        )
-    redir_subset = ('redir_allowed' if use_full_redir
-                    else 'redir_accepted_only')
+    # use_full_redir = st.toggle(
+    #     '''In middle map, include "reject redirection" and
+    #     "usual care" patients.''',
+    #     value=False,
+    #     key='full_redir_subset'
+    #     )
+    # redir_subset = ('redir_allowed' if use_full_redir
+    #                 else 'redir_accepted_only')
 map_arrs_dict, vlim_dict = maps.gather_map_arrays(
     dict_outcomes[subgroup_map]['usual_care'],
-    dict_outcomes[subgroup_map][redir_subset],
+    dict_outcomes[subgroup_map]['msu'],
     df_lsoa_units_times,
     df_raster,
     transform_dict,
     col_map=map_outcome,
+    map_labels=['usual_care', 'msu'],
+    scenarios=['usual_care', 'msu_ivt', 'msu_no_ivt'],
     _log_loc=containers['log_maps']
     )
 map_arrs_dict['pop'], vlim_dict_pop = maps.gather_pop_map(
@@ -560,7 +603,8 @@ vlim_dict = vlim_dict | vlim_dict_pop
 
 # Set up colour limits:
 with containers['map_setup']:
-    dicts_colours = colour_setup.select_colour_limits(map_outcome, vlim_dict)
+    dicts_colours = colour_setup.select_colour_limits(map_outcome, vlim_dict,
+                                                      'msu', 'MSU')
 
 # Make colour maps and traces:
 with containers['map_setup']:
@@ -575,10 +619,11 @@ for col, arr in map_arrs_dict.items():
 with containers['map_fig']:
     plot_maps.plot_outcome_maps(
         map_traces,
-        ['usual_care', 'redir_minus_usual_care', 'pop'],
+        ['usual_care', 'msu_minus_usual_care', 'pop'],
         dicts_colours,
         all_cmaps,
         outline_name,
+        show_msu_bases=True,
         )
 
 
@@ -591,9 +636,14 @@ if generate_full_data:
         full_results_type = reg.select_full_data_type()
     if full_results_type == 'lsoa':
         # Calculate LSOA-level results.
+        redir_scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
+        treats = ['ivt', 'mt']
+        cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
+        cols_times.remove('msu_no_ivt_ivt')
         dict_full_outcomes = pop.gather_lsoa_level_outcomes(
             dict_outcomes,
             df_lsoa_units_times,
+            cols_times,
             _log_loc=containers['log_full_results']
             )
     else:
@@ -627,7 +677,7 @@ if generate_full_data:
                                 else 'all_patients')
             for subgroup, dict_full in dict_full_outcomes.items():
                 dfs = []
-                for scen in ['usual_care', 'redir_allowed']:
+                for scen in ['usual_care', 'msu']:
                     df = dict_full[scen][lsoa_subset_full][full_results_type]
                     df = df.rename(columns=dict(
                         [(c, f'{c}_{scen}') for c in df.columns]))

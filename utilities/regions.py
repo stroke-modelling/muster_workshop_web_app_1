@@ -176,6 +176,31 @@ def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
     return df_geo
 
 
+def calculate_extra_muster_travel_times(
+        df_lsoa_units_times,
+        df_pathway_steps
+        ):
+    # Make more travel times.
+    # MSU:
+    s = df_pathway_steps.loc['scale_msu_travel_times', 'value']
+    df_lsoa_units_times['msu_response_time'] = (
+        s * df_lsoa_units_times['nearest_msu_time'])
+    df_lsoa_units_times['msu_response_then_mt_time'] = (
+        df_lsoa_units_times['msu_response_time'] + (
+            s * df_lsoa_units_times['nearest_mt_time']
+        )
+    )
+    # Usual care:
+    a = df_pathway_steps.loc['process_time_ambulance_response', 'value']
+    df_lsoa_units_times['ambo_response_then_nearest_ivt_time'] = (
+        a + df_lsoa_units_times['nearest_ivt_time'])
+    df_lsoa_units_times['ambo_response_then_nearest_mt_time'] = (
+        a + df_lsoa_units_times['nearest_mt_time'])
+    df_lsoa_units_times['ambo_response_then_nearest_ivt_then_mt_time'] = (
+        a + df_lsoa_units_times['nearest_ivt_then_mt_time'])
+    return df_lsoa_units_times
+
+
 @st.cache_data
 def find_unique_travel_times(
         df_times,
@@ -185,27 +210,35 @@ def find_unique_travel_times(
             'transfer': ('nearest_ivt_time', 'nearest_ivt_then_mt_time'),
             'no_transfer': ('nearest_mt_time', 'nearest_mt_time')
         },
+        cols_pairs_labels=['travel_for_ivt', 'travel_for_mt'],
         _log=True,
         _log_loc=None
         ):
     """
-
+    Initial ambulance travel time is the time from the
+    MSU base (MUSTER) or the fixed ambulance response time
+    (usual care). In OPTIMIST, the fixed time is already
+    included in the "treatment times without travel".
     """
+    # In usual care,
     # IVT can either be at the nearest unit or at the MT unit if
     # redirected. MT is always at the MT unit, either travelling
     # there directly or going via the IVT-only unit.
+    # With an MSU, IVT is either given in the MSU or not at all.
     times_to_ivt = sorted(list(set(df_times[cols_ivt].values.flatten())))
     times_to_mt = sorted(list(set(df_times[cols_mt].values.flatten())))
 
     # Find all pairs of times.
-    # Combinations are: IVT at nearest unit, then MT after transfer;
-    #                   IVT and MT at nearest MT unit.
+    # For usual care, combinations are:
+    #     IVT at nearest unit, then MT after transfer;
+    #     IVT and MT at nearest MT unit.
+    # For MSU, also have: IVT in the MSU, then MT at nearest MT unit.
     all_pairs = {}
     for label, pair in cols_pairs.items():
         pairs_here = df_times[list(pair)].drop_duplicates()
         # Don't use rename dictionary because can have duplicate
         # column names in pair.
-        pairs_here.columns = ['travel_for_ivt', 'travel_for_mt']
+        pairs_here.columns = cols_pairs_labels
         all_pairs[label] = pairs_here
 
     if _log:
@@ -217,6 +250,7 @@ def find_unique_travel_times(
 @st.cache_data
 def find_region_admissions_by_unique_travel_times(
         df_lsoa_units_times, keep_only_england=True, unique_travel=True,
+        project='optimist',
         _log=True, _log_loc=None
         ):
     """
@@ -244,13 +278,43 @@ def find_region_admissions_by_unique_travel_times(
     cols_to_merge = ['LSOA', 'Admissions', 'transfer_required',
                      'nearest_ivt_unit']
     if unique_travel:
-        cols_to_merge += ['nearest_ivt_time', 'nearest_mt_time',
-                          'nearest_ivt_then_mt_time']
+        if project == 'optimist':
+            cols_to_merge += ['nearest_ivt_time', 'nearest_mt_time',
+                              'nearest_ivt_then_mt_time']
+            time_cols_dict = {
+                'usual_care_ivt': ['nearest_ivt_time'],
+                'usual_care_mt': ['nearest_ivt_then_mt_time'],
+                'redirection_ivt': ['nearest_mt_time'],
+                'redirection_mt': ['nearest_mt_time']
+                }
+        else:
+            cols_to_merge += [
+                'ambo_response_then_nearest_ivt_time',
+                'ambo_response_then_nearest_ivt_then_mt_time',
+                'msu_response_time',
+                'msu_response_then_mt_time',
+                ]
+            time_cols_dict = {
+                'usual_care_ivt': ['ambo_response_then_nearest_ivt_time'],
+                'usual_care_mt': [
+                    'ambo_response_then_nearest_ivt_then_mt_time'],
+                'msu_ivt_ivt': ['msu_response_time'],
+                'msu_ivt_mt': ['msu_response_then_mt_time'],
+                'msu_no_ivt_ivt': ['msu_response_time'],
+                'msu_no_ivt_mt': ['msu_response_then_mt_time'],
+                }
     else:
-        scens = ['usual_care', 'redirection_approved',
-                 'redirection_rejected']
+        if project == 'optimist':
+            scens = ['usual_care', 'redirection_approved',
+                     'redirection_rejected']
+        else:
+            scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
         treats = ['ivt', 'mt']
         cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+        if 'msu_no_ivt' in scens:
+            cols_treat_scen.remove('msu_no_ivt_ivt')
+        # cols_treat_scen = [c for c in cols_treat_scen
+        #                    if c in df_lsoa_units_times.columns]
         cols_to_merge += cols_treat_scen
 
     df_lsoa_regions = pd.merge(
@@ -269,12 +333,6 @@ def find_region_admissions_by_unique_travel_times(
         # ivt unit plus transfer time" (for no transfer, time is
         # zero). Under redirection, all IVT and all MT is at
         # "nearest MT unit".
-        time_cols_dict = {
-            'usual_care_ivt': ['nearest_ivt_time'],
-            'usual_care_mt': ['nearest_ivt_then_mt_time'],
-            'redirection_ivt': ['nearest_mt_time'],
-            'redirection_mt': ['nearest_mt_time']
-            }
         for mask_label, mask in masks.items():
             dict_region_unique_times[mask_label] = {}
             df_here = df_lsoa_regions.loc[mask]
@@ -1143,6 +1201,11 @@ def gather_travel_times_highlighted_regions(
         dict_unique_times,
         highlighted_region_types,
         df_highlight,
+        gather_dict={
+            'travel_to_ivt': 'usual_care_ivt',
+            'travel_to_ivt_then_mt': 'usual_care_mt',
+            'travel_to_mt': 'redirection_mt',
+        },
         _log=True, _log_loc=None,
         ):
     """
@@ -1150,32 +1213,21 @@ def gather_travel_times_highlighted_regions(
     dict_gathered = {}
     for lsoa_subset, dict_admissions in dict_unique_times.items():
         dict_gathered[lsoa_subset] = {}
-        list_ivt_unit = []
-        list_ivt_then_mt_unit = []
-        list_mt_unit = []
+        dict_df_lists = {}
+        for label, lookup in gather_dict.items():
+            dict_df_lists[label] = []
         for region_type in highlighted_region_types:
             # Limit to only the highlighted teams:
             mask = (df_highlight['region_type'] == region_type)
             teams_here = df_highlight.loc[mask, 'highlighted_region']
             # Pick out data:
             dict_times = dict_admissions[region_type]
-            df_ivt_unit = dict_times['usual_care_ivt'][teams_here]
-            df_ivt_then_mt_unit = dict_times['usual_care_mt'][teams_here]
-            df_mt_unit = dict_times['redirection_mt'][teams_here]
-            # Store:
-            list_ivt_unit.append(df_ivt_unit)
-            list_ivt_then_mt_unit.append(df_ivt_then_mt_unit)
-            list_mt_unit.append(df_mt_unit)
+            for label, lookup in gather_dict.items():
+                dict_df_lists[label].append(dict_times[lookup][teams_here])
         # Combine dataframes:
-        df_ivt_unit = pd.concat(list_ivt_unit, axis='columns')
-        df_ivt_then_mt_unit = pd.concat(list_ivt_then_mt_unit, axis='columns')
-        df_mt_unit = pd.concat(list_mt_unit, axis='columns')
-        # Store:
-        dict_gathered[lsoa_subset]['travel_to_ivt'] = df_ivt_unit
-        dict_gathered[lsoa_subset]['travel_to_ivt_then_mt'] = (
-            df_ivt_then_mt_unit)
-        dict_gathered[lsoa_subset]['travel_to_mt'] = df_mt_unit
-
+        for label, lists in dict_df_lists.items():
+            dict_gathered[lsoa_subset][label] = (
+                pd.concat(lists, axis='columns'))
     if _log:
         p = 'Gathered travel times summary for highlighted regions.'
         print_progress_loc(p, _log_loc)
@@ -1185,11 +1237,12 @@ def gather_travel_times_highlighted_regions(
 def gather_this_region_travel_times(
         dict_highlighted_region_travel_times,
         lsoa_subset,
-        region
+        region,
+        time_cols=['travel_to_ivt', 'travel_to_ivt_then_mt', 'travel_to_mt'],
         ):
     time_bins = np.arange(0, 185, 5)
     admissions_times = []
-    for t in ['travel_to_ivt', 'travel_to_ivt_then_mt', 'travel_to_mt']:
+    for t in time_cols:
         times = dict_highlighted_region_travel_times[
             lsoa_subset][t][region].dropna()
         a_times, _ = np.histogram(
@@ -1202,12 +1255,12 @@ def gather_this_region_travel_times(
 def plot_travel_times(
         times,
         admissions_lists,
+        subplot_titles=[
+            'To nearest unit',
+            'To nearest then MT unit',
+            'To MT unit directly'
+            ]
         ):
-    subplot_titles = [
-        'To nearest unit',
-        'To nearest then MT unit',
-        'To MT unit directly'
-        ]
     fig = make_subplots(rows=3, cols=1, subplot_titles=subplot_titles)
     for i, admissions in enumerate(admissions_lists):
         fig.add_trace(go.Bar(

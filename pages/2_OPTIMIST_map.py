@@ -398,15 +398,14 @@ with containers['pop_plots']:
                 df_subgroups.loc[s]
                 )
 
-
 # ----- Outcomes -----
 dict_outcomes = {}
 for s in df_subgroups.index:
     dict_outcomes[s] = pop.calculate_unique_outcomes_onion(
         dict_base_outcomes,
-        df_pop_usual_care,
-        df_pop_redir,
-        df_pop_redir_accepted_only,
+        {'usual_care': df_pop_usual_care,
+         'redir_allowed': df_pop_redir,
+         'redir_accepted_only': df_pop_redir_accepted_only},
         df_subgroups.loc[s],
         df_treat_times_sets_unique,
         s,
@@ -606,9 +605,14 @@ if generate_full_data:
         full_results_type = reg.select_full_data_type()
     if full_results_type == 'lsoa':
         # Calculate LSOA-level results.
+        redir_scens = ['usual_care', 'redirection_approved',
+                       'redirection_rejected']
+        treats = ['ivt', 'mt']
+        cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
         dict_full_outcomes = pop.gather_lsoa_level_outcomes(
             dict_outcomes,
             df_lsoa_units_times,
+            cols_times,
             _log_loc=containers['log_full_results']
             )
     else:

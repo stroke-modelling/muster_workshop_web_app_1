@@ -77,7 +77,9 @@ def gather_map_df(
         df_usual,
         df_redir,
         df_lsoa_units_times,
+        cols_time,
         cols_map=['utility_shift'],
+        map_labels=['usual_care', 'redir'],
         _log=True, _log_loc=None,
         ):
     """
@@ -85,9 +87,6 @@ def gather_map_df(
 
     df_redir is mix of usual care, redirection approved, redir rejected.
     """
-    scenarios = ['usual_care', 'redirection_approved', 'redirection_rejected']
-    treats = ['ivt', 'mt']
-    cols_time = [f'{s}_{t}' for s in scenarios for t in treats]
     # Gather the LSOA names and treatment times:
     cols_to_keep = ['LSOA']
     df_results = df_lsoa_units_times[cols_to_keep + cols_time].copy()
@@ -95,12 +94,12 @@ def gather_map_df(
     # Merge in results for usual care...
     df_results = pd.merge(df_results, df_usual[cols_map], left_index=True,
                           right_index=True, how='left')
-    rename_dict = dict([(c, f'{c}_usual_care') for c in cols_map])
+    rename_dict = dict([(c, f'{c}_{map_labels[0]}') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
     # ... and redirection (mix of usual care, approved, rejected):
     df_results = pd.merge(df_results, df_redir[cols_map], left_index=True,
                           right_index=True, how='left')
-    rename_dict = dict([(c, f'{c}_redir') for c in cols_map])
+    rename_dict = dict([(c, f'{c}_{map_labels[1]}') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
     # Only keep LSOA names and outcomes:
     df_results = df_results.reset_index()
@@ -108,9 +107,9 @@ def gather_map_df(
     df_results = df_results.set_index('LSOA')
     # Calculate difference between redir scenario and usual care:
     for col in cols_map:
-        df_results[f'{col}_redir_minus_usual_care'] = (
-            df_results[f'{col}_redir'] -
-            df_results[f'{col}_usual_care']
+        df_results[f'{col}_{map_labels[1]}_minus_{map_labels[0]}'] = (
+            df_results[f'{col}_{map_labels[1]}'] -
+            df_results[f'{col}_{map_labels[0]}']
         )
 
     if _log:
@@ -140,19 +139,29 @@ def gather_map_data(
 
 def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
                       df_raster, transform_dict,
+                      map_labels=['usual_care', 'redir'],
+                      scenarios=['usual_care', 'redirection_approved', 'redirection_rejected'],
                       col_map='utility_shift', _log_loc=None):
     """Wrapper for gather map into df then reshape to arrays."""
+    treats = ['ivt', 'mt']
+    cols_time = [f'{s}_{t}' for s in scenarios for t in treats]
+    # Special case for muster:
+    if 'msu_no_ivt' in scenarios:
+        cols_time.remove('msu_no_ivt_ivt')
+
     df_maps = gather_map_df(
         df_usual,
         df_redir,
         df_lsoa_units_times,
+        cols_time,
         cols_map=[col_map],
+        map_labels=map_labels,
         _log_loc=_log_loc
         )
 
     cols = [
-        f'{col_map}_usual_care',
-        f'{col_map}_redir_minus_usual_care',
+        f'{col_map}_{map_labels[0]}',
+        f'{col_map}_{map_labels[1]}_minus_{map_labels[0]}',
         ]
     cols_out = [c.replace(f'{col_map}_', '') for c in cols]
 

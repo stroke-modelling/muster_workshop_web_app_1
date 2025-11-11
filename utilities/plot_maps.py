@@ -644,7 +644,7 @@ def draw_units_msu_map(map_traces, outline_name='none'):
 
 def plot_outcome_maps(
         map_traces, map_order, colour_dicts,
-        all_cmaps, outline_name='none'
+        all_cmaps, outline_name='none', show_msu_bases=False
         ):
     """"""
     # Map labels:
@@ -678,6 +678,8 @@ def plot_outcome_maps(
             fig.add_trace(t, row='all', col='all')
     for r in map_traces['roads']:
         fig.add_trace(r, row='all', col='all')
+    if show_msu_bases:
+        fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col='all')
     fig.add_trace(map_traces['units']['mt'], row='all', col='all')
 

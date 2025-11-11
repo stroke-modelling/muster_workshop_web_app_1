@@ -59,19 +59,30 @@ def calculate_treatment_times_without_travel(
         ):
     """
     df_pathway: index is variable name, columns are label and value.
+
+    Check whether to include ambulance response. Want to use this
+    fixed value in OPTIMIST but not in MUSTER.
     """
     # Turn into a series:
     d = df_pathway['value']
     r = pd.Series()
+
+    # Check whether to include travel time of ambulance
+    # before it reaches the patient.
+    use_ambo_response = not any(['msu' in s for s in scenarios])
 
     for s in scenarios:
         if ('usual_care' in s) | ('prehospdiag' in s):
             # All "usual care" scenarios share these initial timings:
             t_ambo = [
                 'process_time_call_ambulance',
-                'process_time_ambulance_response',
                 'process_ambulance_on_scene_duration',
             ]
+            if use_ambo_response:
+                t_ambo.append('process_time_ambulance_response')
+            if 'prehospdiag' in s:
+                p = 'process_ambulance_on_scene_diagnostic_duration'
+                t_ambo.append(p)
             # Differences in times between treatment types and transfers:
             t_ivt = t_ambo + [
                 'process_time_arrival_to_needle'
@@ -83,11 +94,6 @@ def calculate_treatment_times_without_travel(
             t_mt_no_transfer = t_ambo + [
                 'process_time_arrival_to_puncture',
             ]
-            if 'prehospdiag' in s:
-                p = 'process_ambulance_on_scene_diagnostic_duration'
-                t_ivt.append(p)
-                t_mt_transfer.append(p)
-                t_mt_no_transfer.append(p)
             # Sum all the pathway steps:
             r[f'{s}_time_to_ivt'] = d[t_ivt].sum()
             r[f'{s}_time_to_mt_transfer'] = d[t_mt_transfer].sum()
@@ -171,9 +177,15 @@ def find_unique_treatment_time_pairs(
                 t_mt = series_treatment_times_without_travel[mt_time]
                 df_times['time_to_ivt'] = df_times['travel_for_ivt'] + t_ivt
                 df_times['time_to_mt'] = df_times['travel_for_mt'] + t_mt
+                if 'travel_ambo_response' in df_times.columns:
+                    # For MUSTER. Separate ambulance response time
+                    # depending on whether usual care or MSU.
+                    df_times['time_to_ivt'] += df_times['travel_ambo_response']
+                    df_times['time_to_mt'] += df_times['travel_ambo_response']
                 list_dfs.append(df_times[['time_to_ivt', 'time_to_mt']].copy())
     # Find unique pairs of treatment times:
-    df_treat = (pd.concat(list_dfs, axis='rows').drop_duplicates()
+    df_treat = (pd.concat(list_dfs, axis='rows', ignore_index=True)
+                .drop_duplicates()
                 .sort_values(['time_to_ivt', 'time_to_mt']))
 
     if _log:
@@ -239,6 +251,70 @@ def calculate_treatment_times_each_lsoa_scenarios(
         scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
         treats = ['ivt', 'mt']
         cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+        cols_treat_scen = [c for c in cols_treat_scen
+                           if c in df_lsoa_units_times.columns]
+        st.write(len(
+            df_lsoa_units_times[cols_treat_scen].drop_duplicates()))
+
+    if _log:
+        p = 'Found treatment times by LSOA for base scenarios.'
+        print_progress_loc(p, _log_loc)
+    return df_lsoa_units_times
+
+
+def calculate_treatment_times_each_lsoa_scenarios_muster(
+        df_lsoa_units_times,
+        series_treatment_times,
+        _log=True, _log_loc=None, test=False
+        ):
+    """
+    series_treatment_times is without travel.
+    """
+    # LSOA-level scenario timings.
+    mask = df_lsoa_units_times['transfer_required']
+    # Usual care:
+    s = 'usual_care'
+    df_lsoa_units_times[f'{s}_ivt'] = (
+        df_lsoa_units_times['ambo_response_then_nearest_ivt_time'] +
+        series_treatment_times[f'{s}_time_to_ivt']
+    )
+    df_lsoa_units_times.loc[mask, f'{s}_mt'] = (
+        df_lsoa_units_times['ambo_response_then_nearest_ivt_then_mt_time'] +
+        series_treatment_times[f'{s}_time_to_mt_transfer']
+    )
+    df_lsoa_units_times.loc[~mask, f'{s}_mt'] = (
+        df_lsoa_units_times['ambo_response_then_nearest_mt_time'] +
+        series_treatment_times[f'{s}_time_to_mt_no_transfer']
+    )
+    # MSU (IVT):
+    s = 'msu_ivt'
+    df_lsoa_units_times[f'{s}_ivt'] = (
+        df_lsoa_units_times['msu_response_time'] +
+        series_treatment_times['msu_time_to_ivt']
+    )
+    df_lsoa_units_times[f'{s}_mt'] = (
+        df_lsoa_units_times['msu_response_then_mt_time'] +
+        series_treatment_times['msu_time_to_mt_after_ivt']
+    )
+    # MSU (no IVT):
+    s = 'msu_no_ivt'
+    # df_lsoa_units_times[f'{s}_ivt'] = np.nan
+    df_lsoa_units_times[f'{s}_mt'] = (
+        df_lsoa_units_times['msu_response_then_mt_time'] +
+        series_treatment_times['msu_time_to_mt_no_ivt']
+    )
+
+    if test:
+        # How many unique combinations of these times are there?
+        # Default setup, roughly 33,000 LSOA and 9,000 combos.
+        # Worth calculating for unique combinations of times and
+        # then admissions-weighting.
+        st.write(len(df_lsoa_units_times))
+        scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
+        treats = ['ivt', 'mt']
+        cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+        cols_treat_scen = [c for c in cols_treat_scen
+                           if c in df_lsoa_units_times.columns]
         st.write(len(
             df_lsoa_units_times[cols_treat_scen].drop_duplicates()))
 
