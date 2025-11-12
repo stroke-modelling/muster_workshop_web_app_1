@@ -603,9 +603,9 @@ def draw_units_msu_map(map_traces, outline_name='none'):
             fig.add_trace(t, row='all', col='all')
     for r in map_traces['roads']:
         fig.add_trace(r, row='all', col='all')
+    fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col=1)
     fig.add_trace(map_traces['units']['mt'], row='all', col='all')
-    fig.add_trace(map_traces['units']['msu'], row='all', col=2)
 
     fig = england_map_setup(fig)
     # Figure setup.

@@ -130,6 +130,121 @@ def select_unit_services(use_msu=False):
     return df_unit_services
 
 
+def select_unit_services_muster(
+        use_msu=True,
+        container_dataeditor=None,
+        container_buttons=None
+        ):
+    """
+    """
+        # If this has already been loaded in, keep that version instead
+    # so changes are retained:
+    try:
+        df_unit_services = st.session_state['df_unit_services']
+    except KeyError:
+        # Load stroke unit data from file:
+        df_unit_services = import_stroke_unit_services(
+            use_msu=use_msu,
+            keep_only_ivt_mt=False,
+            keep_only_england=True
+            )
+
+    # Select either:
+    # + MSU at all IVT-only units
+    # + MSU at all MT units
+    # + MSU at all IVT and/or MT units
+    with container_buttons:
+        # n_cols = 6
+        # cols = st.columns(n_cols)
+        # i = 0
+        # with cols[i % n_cols]:
+        add_all_ivt = st.button('Place MSU at all IVT-only units')
+        # i += 1
+        # with cols[i % n_cols]:
+        add_all_mt = st.button('Place MSU at all MT units')
+        # i += 1
+        # with cols[i % n_cols]:
+        add_all = st.button('Place MSU at all units')
+        # i += 1
+        # with cols[i % n_cols]:
+        remove_all_ivt = st.button('Remove MSU from all IVT-only units')
+        # i += 1
+        # with cols[i % n_cols]:
+        remove_all_mt = st.button('Remove MSU from all MT units')
+        # i += 1
+        # with cols[i % n_cols]:
+        remove_all = st.button('Remove MSU from all units')
+
+    # Which units need to be changed in each case:
+    units_ivt_bool = (
+        (df_unit_services['Use_IVT'] == 1) &
+        (df_unit_services['Use_MT'] == 0)
+    )
+    units_mt_bool = (
+        (df_unit_services['Use_MT'] == 1)
+    )
+    # Apply change of the last button pressed.
+    # The button is only True if it was pressed on the last run
+    # of the script.
+    if add_all_ivt:
+        df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 1
+    if add_all_mt:
+        df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 1
+    if add_all:
+        df_unit_services['Use_MSU'] = 1
+    if remove_all_ivt:
+        df_unit_services.loc[units_ivt_bool, 'Use_MSU'] = 0
+    if remove_all_mt:
+        df_unit_services.loc[units_mt_bool, 'Use_MSU'] = 0
+    if remove_all:
+        df_unit_services['Use_MSU'] = 0
+
+    # Manually apply the edits from data_editor.
+    try:
+        units_data_editor = st.session_state['units_data_editor']
+        # Update each of the changes listed in this dict:
+        for ind in list(units_data_editor['edited_rows'].keys()):
+            for col in list(units_data_editor['edited_rows'][ind].keys()):
+                # Which row in the dataframe is this?
+                ind_name = df_unit_services.iloc[[ind]].index
+                # Is the value True or False?
+                val = units_data_editor['edited_rows'][ind][col]
+                val = 1 if val is True else 0
+                # Update this value in the dataframe:
+                df_unit_services.loc[ind_name, col] = val
+        # Delete the changelog:
+        del st.session_state['units_data_editor']
+        # ^ otherwise the same edits would be applied again
+        # as soon as the data_editor widget is rendered.
+    except KeyError:
+        # The edit dict doesn't exist yet.
+        # This is the first run of the script.
+        pass
+
+    # Store a copy of the dataframe with our edits:
+    st.session_state['df_unit_services'] = df_unit_services.copy()
+
+    # Display data_editor to collect changes from the user:
+    with container_dataeditor:
+        df_edited = st.data_editor(
+            df_unit_services,
+            disabled=['postcode', 'ssnap_name', 'isdn'],
+            # height=180  # limit height to show fewer rows
+            # Make columns display as checkboxes instead of 0/1 ints:
+            column_config={
+                'Use_IVT': st.column_config.CheckboxColumn(),
+                'Use_MT': st.column_config.CheckboxColumn(),
+                'Use_MSU': st.column_config.CheckboxColumn(),
+            },
+            key='units_data_editor',
+            )
+    # Do not keep a copy of the returned edited dataframe.
+    # We'll update it ourselves when the script reruns.
+    # The script reruns immediately after the dataframe is edited
+    # or a button is pressed.
+    return df_unit_services
+
+
 @st.cache_data
 def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
     """

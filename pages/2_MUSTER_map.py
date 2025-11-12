@@ -69,6 +69,7 @@ def set_up_page_layout():
         with cols[1]:
             c['units_map'] = st.container()
         with st.expander('Edit unit services'):
+            c['units_buttons'] = st.container(horizontal=True)
             c['units_df'] = st.container()
 
     with c['pathway']:
@@ -201,8 +202,15 @@ We calculate six base outcomes. These can be combined in different proportions t
 # + Convert list of all LSOA in a region to a list of number of
 #   admissions per unique treatment time.
 
+df_unit_services = reg.select_unit_services_muster(
+    use_msu=True,
+    container_buttons=containers['units_buttons'],
+    container_dataeditor=containers['units_df'],
+    )
 with containers['units_df']:
-    df_unit_services = reg.select_unit_services(use_msu=True)
+    if all(df_unit_services['Use_MSU'] == 0):
+        st.error('There must be at least one MSU.', icon='❗')
+        st.stop()
 with containers['log_units']:  # for log_loc
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
         df_unit_services, _log_loc=containers['log_units'])
