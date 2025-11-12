@@ -44,6 +44,18 @@ st.set_page_config(
     layout='wide'
     )
 
+try:
+    page_last_run = st.session_state['page_last_run']
+    if page_last_run != 'MUSTER':
+        # Clear the OPTIMIST results.
+        keys_to_del = list(st.session_state.keys())
+        for key in keys_to_del:
+            del st.session_state[key]
+except KeyError:
+    # No page has been run yet.
+    pass
+st.session_state['page_last_run'] = 'MUSTER'
+
 
 def set_up_page_layout():
     """
@@ -213,7 +225,7 @@ with containers['units_df']:
         st.stop()
 with containers['log_units']:  # for log_loc
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
-        df_unit_services, _log_loc=containers['log_units'])
+        df_unit_services, use_msu=True, _log_loc=containers['log_units'])
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
 map_traces = plot_maps.make_constant_map_traces()

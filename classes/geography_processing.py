@@ -89,7 +89,8 @@ class Geoprocessing(object):
         """
         self.find_nearest_ivt_unit()
         self.find_nearest_mt_unit()
-        self.find_nearest_msu_unit()
+        if self.use_msu:
+            self.find_nearest_msu_unit()
         self.find_nearest_transfer_mt_unit()
         self.collate_data()
         # self.save_processed_data()
@@ -106,8 +107,9 @@ class Geoprocessing(object):
         self.combined_data['nearest_mt_time'] = self.nearest_mt_unit['time']
         self.combined_data = self.combined_data.merge(
             self.transfer_mt_unit, how='left', left_on='nearest_ivt_unit', right_index=True)
-        self.combined_data['nearest_msu_unit'] = self.nearest_msu_unit['unit']
-        self.combined_data['nearest_msu_time'] = self.nearest_msu_unit['time']
+        if self.use_msu:
+            self.combined_data['nearest_msu_unit'] = self.nearest_msu_unit['unit']
+            self.combined_data['nearest_msu_time'] = self.nearest_msu_unit['time']
         self.combined_data = self.combined_data.merge(
             self.admissions, how='left', left_index=True, right_index=True)
 

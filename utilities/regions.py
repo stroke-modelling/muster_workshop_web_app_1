@@ -246,7 +246,7 @@ def select_unit_services_muster(
 
 
 @st.cache_data
-def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
+def find_nearest_units_each_lsoa(df_unit_services, use_msu=False, _log=True, _log_loc=None):
     """
 
     Result
@@ -263,7 +263,8 @@ def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
         # Process and save geographic data
         # (only needed when hospital data changes)
         geo = Geoprocessing(
-            limit_to_england=True
+            limit_to_england=True,
+            use_msu=use_msu
             )
     # Update units:
     geo.df_unit_services = df_unit_services
@@ -274,8 +275,9 @@ def find_nearest_units_each_lsoa(df_unit_services, _log=True, _log_loc=None):
     df_geo = geo.get_combined_data().copy(deep=True).reset_index()
     # Round travel times to nearest minute.
     # +1e-5 to make all 0.5 times round up to next minute.
-    cols_times = ['nearest_ivt_time', 'nearest_mt_time', 'transfer_time',
-                  'nearest_msu_time']
+    cols_times = ['nearest_ivt_time', 'nearest_mt_time', 'transfer_time']
+    if use_msu:
+        cols_times.append('nearest_msu_time')
     df_geo[cols_times] = np.round(df_geo[cols_times] + 1e-5, 0)
     # Separate column for separate travel time including transfer:
     df_geo['nearest_ivt_then_mt_time'] = (
