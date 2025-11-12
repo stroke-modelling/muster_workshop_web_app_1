@@ -425,14 +425,13 @@ for s in df_subgroups.index:
     )
 
 with containers['run_results']:
-    run_results = st.button('Calculate results - currently this button does nothing', type='primary')
+    run_results = st.button('Calculate results', type='primary')
 if run_results:
     pass
 else:
-    # TO DO - make it so that the results don't recalculate entirely
-    # while you're still setting up. Also perhaps cache the old results
+    # TO DO - perhaps cache the old results
     # and show them while setting up?
-    pass
+    st.stop()
 
 
 #MARK: Results

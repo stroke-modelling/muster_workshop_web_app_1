@@ -406,10 +406,10 @@ dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
 #   and for "redirection considered" groups.
 
 with containers['onion_setup']:
-    df_onion_pops = pop.set_up_onion_parameters('muster', use_debug=True)
+    df_onion_pops = pop.set_up_onion_parameters('muster', use_debug=False)
 dict_onion = df_onion_pops.loc[
-    # df_onion_pops['population'] == 'muster'].squeeze()
-    df_onion_pops['population'] == 'debug'].squeeze()
+    df_onion_pops['population'] == 'muster'].squeeze()
+    # df_onion_pops['population'] == 'debug'].squeeze()
 
 # ----- Subgroups (this onion layer) -----
 with containers['pop_plots']:
@@ -449,14 +449,13 @@ for s in df_subgroups.index:
     )
 
 with containers['run_results']:
-    run_results = st.button('Calculate results - currently this button does nothing', type='primary')
+    run_results = st.button('Calculate results', type='primary')
 if run_results:
     pass
 else:
-    # TO DO - make it so that the results don't recalculate entirely
-    # while you're still setting up. Also perhaps cache the old results
+    # TO DO - perhaps cache the old results
     # and show them while setting up?
-    pass
+    st.stop()
 
 
 #MARK: Results
