@@ -20,6 +20,16 @@ def print_progress_loc(p, log_loc):
         print_progress(p)
 
 
+def make_formatted_time_str(t):
+    try:
+        t_new = (f'{int(60*(t/60)//60):d}hr ' +
+                 f'{int(60*(t/60)%60):02d}min')
+    except ValueError:
+        # t is NaN.
+        t_new = '~'
+    return t_new
+
+
 def update_plotly_font_sizes(fig):
     s = 16
     fig.update_layout(

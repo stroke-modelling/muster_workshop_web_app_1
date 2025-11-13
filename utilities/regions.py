@@ -14,7 +14,8 @@ import stroke_maps.load_data
 
 from classes.geography_processing import Geoprocessing
 from utilities.utils import print_progress_loc, update_plotly_font_sizes, \
-    set_inputs_changed, set_rerun_full_results, set_rerun_region_summaries
+    set_inputs_changed, set_rerun_full_results, set_rerun_region_summaries, \
+    make_formatted_time_str
 
 
 # ----- Functions -----
@@ -373,9 +374,12 @@ def find_unique_travel_times(
     return times_to_ivt, times_to_mt, all_pairs
 
 
-@st.cache_data
 def find_region_admissions_by_unique_travel_times(
-        df_lsoa_units_times, keep_only_england=True, unique_travel=True,
+        df_lsoa_units_times,
+        region_types,
+        df_highlighted_regions=None,
+        keep_only_england=True,
+        unique_travel=True,
         project='optimist',
         _log=True, _log_loc=None
         ):
@@ -390,6 +394,8 @@ def find_region_admissions_by_unique_travel_times(
         + usual_care_mt
         + redirection_ivt
         + redirection_mt
+
+    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']
     """
     # Load in LSOA-region lookup:
     df_lsoa_regions = load_lsoa_region_lookups()
@@ -448,7 +454,6 @@ def find_region_admissions_by_unique_travel_times(
         left_on='lsoa', right_on='LSOA', how='right'
         )
     # Calculate this separately for each region type.
-    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']  # 'region
     dict_region_unique_times = {}
     masks = {'all_patients': slice(None),
              'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
@@ -462,16 +467,27 @@ def find_region_admissions_by_unique_travel_times(
         for mask_label, mask in masks.items():
             dict_region_unique_times[mask_label] = {}
             df_here = df_lsoa_regions.loc[mask]
-            for region_type in region_types:
-                dict_region_unique_times[mask_label][region_type] = {}
-                for time_label, time_cols in time_cols_dict.items():
+            for time_label, time_cols in time_cols_dict.items():
+                dfs_to_concat = []
+                for region_type in region_types:
+                    # dict_region_unique_times[mask_label][region_type] = {}
                     if region_type == 'national':
                         cols = ['Admissions'] + time_cols
                         df = df_here[cols].groupby(time_cols).sum()
                         df = df.rename(columns={'Admissions': 'National'})
                     else:
+                        if isinstance(df_highlighted_regions, pd.DataFrame):
+                            # Limit to only the highlighted regions:
+                            mask = (df_highlighted_regions['region_type']
+                                    == region_type)
+                            regions_here = df_highlighted_regions.loc[
+                                mask, 'highlighted_region']
+                            mask = df_here[region_type].isin(regions_here)
+                        else:
+                            # Include all regions:
+                            mask = slice(None)
                         cols = [region_type, 'Admissions'] + time_cols
-                        df = df_here[cols].groupby(
+                        df = df_here.loc[mask, cols].groupby(
                             [region_type, *time_cols]).sum()
                         # df has columns for region, time, and admissions.
                         # Change to index of time, one column per region,
@@ -480,8 +496,11 @@ def find_region_admissions_by_unique_travel_times(
                               .reset_index().set_index(time_cols)
                               .drop('level_0', axis='columns')
                               )
-                    dict_region_unique_times[
-                        mask_label][region_type][time_label] = df
+                    # dict_region_unique_times[
+                    #     mask_label][region_type][time_label] = df
+                    dfs_to_concat.append(df)
+                df = pd.concat(dfs_to_concat, axis='columns')
+                dict_region_unique_times[mask_label][time_label] = df
 
         if _log:
             p = '''Found total admissions with each unique travel
@@ -495,16 +514,27 @@ def find_region_admissions_by_unique_travel_times(
         # zero). Under redirection, all IVT and all MT is at
         # "nearest MT unit".
         for mask_label, mask in masks.items():
-            dict_region_unique_times[mask_label] = {}
+            # dict_region_unique_times[mask_label] = {}
             df_here = df_lsoa_regions.loc[mask]
+            dfs_to_concat = []
             for region_type in region_types:
                 if region_type == 'national':
                     cols = ['Admissions'] + cols_treat_scen
                     df = df_here[cols].groupby(cols_treat_scen).sum()
                     df = df.rename(columns={'Admissions': 'National'})
                 else:
+                    if isinstance(df_highlighted_regions, pd.DataFrame):
+                        # Limit to only the highlighted regions:
+                        mask = (df_highlighted_regions['region_type']
+                                == region_type)
+                        regions_here = df_highlighted_regions.loc[
+                            mask, 'highlighted_region']
+                        mask = df_here[region_type].isin(regions_here)
+                    else:
+                        # Include all regions:
+                        mask = slice(None)
                     cols = [region_type, 'Admissions'] + cols_treat_scen
-                    df = df_here[cols].groupby(
+                    df = df_here.loc[mask, cols].groupby(
                         [region_type, *cols_treat_scen]).sum()
                     # df has columns for region, time, and admissions.
                     # Change to index of time, one column per region,
@@ -513,8 +543,10 @@ def find_region_admissions_by_unique_travel_times(
                           .reset_index().set_index(cols_treat_scen)
                           .drop('level_0', axis='columns')
                           )
-                dict_region_unique_times[
-                    mask_label][region_type] = df
+                dfs_to_concat.append(df)
+            df = pd.concat(dfs_to_concat, axis='columns')
+            dict_region_unique_times[mask_label] = df
+            # dict_region_unique_times[mask_label][region_type] = df
 
         if _log:
             p = '''Found total admissions with each set of unique
@@ -659,7 +691,6 @@ def load_region_lists(df_unit_services_full):
 def calculate_nested_average_outcomes(
         dict_outcomes,
         dict_region_admissions_unique,
-        region_types,
         df_highlight=None,
         _log=True, _log_loc=None,
         ):
@@ -676,62 +707,17 @@ def calculate_nested_average_outcomes(
         d[subgroup] = {}
         for scenario, df_subgroup_outcomes in dict_subgroup_outcomes.items():
             d[subgroup][scenario] = {}
-            for lsoa_subset, region_dicts in (
+            for lsoa_subset, admissions_df in (
                     dict_region_admissions_unique.items()
                     ):
-                if df_highlight is not None:
-                    # Gather dataframes for different regions types
-                    # in here:
-                    list_df_h = []
-                else:
-                    d[subgroup][scenario][lsoa_subset] = {}
-                for region_type in region_types:
-                    admissions_df = region_dicts[region_type]
-                    if df_highlight is not None:
-                        # Limit to only the highlighted teams:
-                        mask = (df_highlight['region_type'] ==
-                                region_type)
-                        teams_here = df_highlight.loc[
-                            mask, 'highlighted_region']
-                        sc = ((region_type == 'nearest_ivt_unit') &
-                              (lsoa_subset == 'nearest_unit_no_mt'))
-                        if sc:
-                            # Special case: expect that CSCs will be missing
-                            # for the lsoa subset of only areas whose nearest
-                            # unit does not provide MT. So drop CSCs here.
-                            teams_removed = list(
-                                set(teams_here) -
-                                set(list(admissions_df.columns))
-                                )
-                            teams_here = [t for t in teams_here if t in
-                                          admissions_df.columns]
-                        else:
-                            pass
-                        admissions_df = admissions_df[teams_here]
-                    else:
-                        sc = False
-                    # Gather weighted outcomes for these teams:
-                    df = calculate_region_outcomes(
-                        admissions_df,
-                        df_subgroup_outcomes,
-                        _log=False
-                        )
-                    if sc:
-                        # Placeholder data for CSCs.
-                        for t in teams_removed:
-                            df.loc[t] = pd.NA
-                    else:
-                        pass
-                    if df_highlight is not None:
-                        list_df_h.append(df)
-                    else:
-                        # Store full df for each region type in here:
-                        d[subgroup][scenario][lsoa_subset][region_type] = df
-
-                if df_highlight is not None:
-                    # Combine all region types into one dataframe:
-                    df_h = pd.concat(list_df_h, axis='rows')
-                    d[subgroup][scenario][lsoa_subset] = df_h
+                # Gather weighted outcomes for these teams:
+                df = calculate_region_outcomes(
+                    admissions_df,
+                    df_subgroup_outcomes,
+                    _log=False
+                )
+                # Store full df for each region type in here:
+                d[subgroup][scenario][lsoa_subset] = df
     if _log:
         if df_highlight is not None:
             p = 'Found average outcomes for each highlighted region.'
@@ -874,13 +860,18 @@ def plot_mrs_bars(
     fig = go.Figure()
 
     for label, mrs_dict in mrs_lists_dict.items():
+        if 'std' in mrs_dict.keys():
+            error_y = dict(
+                type='data',
+                array=100.0*mrs_dict['std'],
+                visible=True
+                )
+        else:
+            error_y = None
         fig.add_trace(go.Bar(
             x=[*range(7)],
             y=100.0*mrs_dict['noncum'],
-            error_y=dict(
-                type='data',
-                array=100.0*mrs_dict['std'],
-                visible=True),
+            error_y=error_y,
             name=mrs_dict['label'],
             marker_color=mrs_dict['colour'],
             ))
@@ -898,14 +889,14 @@ def plot_mrs_bars(
     fig.update_yaxes(title_text='Probability (%)')
     fig.update_layout(legend=dict(
         yanchor='top',
-        y=-0.3,
+        y=-0.4,
         yref='paper',
         xanchor='center',
         x=0.5,
         orientation='h'
     ))
     # Figure setup.
-    fig.update_layout(height=350, margin_t=0)
+    fig.update_layout(height=250, margin_t=0)
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title='')
     # Turn off legend click events
@@ -1325,48 +1316,11 @@ def plot_basic_travel_options_msu():
         )
 
 
-def gather_travel_times_highlighted_regions(
-        dict_unique_times,
-        highlighted_region_types,
-        df_highlight,
-        gather_dict={
-            'travel_to_ivt': 'usual_care_ivt',
-            'travel_to_ivt_then_mt': 'usual_care_mt',
-            'travel_to_mt': 'redirection_mt',
-        },
-        _log=True, _log_loc=None,
-        ):
-    """
-    """
-    dict_gathered = {}
-    for lsoa_subset, dict_admissions in dict_unique_times.items():
-        dict_gathered[lsoa_subset] = {}
-        dict_df_lists = {}
-        for label, lookup in gather_dict.items():
-            dict_df_lists[label] = []
-        for region_type in highlighted_region_types:
-            # Limit to only the highlighted teams:
-            mask = (df_highlight['region_type'] == region_type)
-            teams_here = df_highlight.loc[mask, 'highlighted_region']
-            # Pick out data:
-            dict_times = dict_admissions[region_type]
-            for label, lookup in gather_dict.items():
-                dict_df_lists[label].append(dict_times[lookup][teams_here])
-        # Combine dataframes:
-        for label, lists in dict_df_lists.items():
-            dict_gathered[lsoa_subset][label] = (
-                pd.concat(lists, axis='columns'))
-    if _log:
-        p = 'Gathered travel times summary for highlighted regions.'
-        print_progress_loc(p, _log_loc)
-    return dict_gathered
-
-
 def gather_this_region_travel_times(
         dict_highlighted_region_travel_times,
         lsoa_subset,
         region,
-        time_cols=['travel_to_ivt', 'travel_to_ivt_then_mt', 'travel_to_mt'],
+        time_cols=['usual_care_ivt', 'usual_care_mt', 'redirection_mt'],
         ):
     time_bins = np.arange(0, 185, 5)
     admissions_times = []
@@ -1429,40 +1383,206 @@ def plot_travel_times(
     st.plotly_chart(fig, width='content', config=plotly_config)
 
 
-def gather_admissions_highlighted_regions(
-        dict_unique_times,
-        highlighted_region_types,
-        df_highlight,
+# def calculate_average_treatment_times_highlighted_regions(
+#         dict_region_admissions_unique,
+#         region_types,
+#         df_highlight,
+#         _log=True, _log_loc=None,
+#         ):
+#     """
+#     dict_region_admissions_unique_treatment_times
+
+#     If highlighted teams are given, calculate only the data for
+#     those teams and store the mixed region types in a single dataframe.
+#     """
+#     d = {}
+#     for lsoa_subset, region_dicts in (
+#             dict_region_admissions_unique.items()
+#             ):
+#         list_df_h = []
+#         for region_type in region_types:
+#             admissions_df = region_dicts[region_type]
+#             # Limit to only the highlighted teams:
+#             mask = (df_highlight['region_type'] == region_type)
+#             teams_here = df_highlight.loc[mask, 'highlighted_region']
+#             sc = ((region_type == 'nearest_ivt_unit') &
+#                   (lsoa_subset == 'nearest_unit_no_mt'))
+#             if sc:
+#                 # Special case: expect that CSCs will be missing
+#                 # for the lsoa subset of only areas whose nearest
+#                 # unit does not provide MT. So drop CSCs here.
+#                 teams_removed = list(
+#                     set(teams_here) -
+#                     set(list(admissions_df.columns))
+#                     )
+#                 teams_here = [t for t in teams_here if t in
+#                               admissions_df.columns]
+#             else:
+#                 pass
+#             admissions_df = admissions_df[teams_here]
+
+#             # Gather weighted treatment times for these teams:
+#             df = calculate_average_treatment_times(admissions_df, _log=False)
+#             if sc:
+#                 # Placeholder data for CSCs.
+#                 for t in teams_removed:
+#                     df.loc[t] = pd.NA
+#             else:
+#                 pass
+#             list_df_h.append(df)
+
+#         # Combine all region types into one dataframe:
+#         df_h = pd.concat(list_df_h, axis='rows')
+#         d[lsoa_subset] = df_h
+#     if _log:
+#         p = 'Found average treatment times for each highlighted region.'
+#         print_progress_loc(p, _log_loc)
+#     return d
+
+
+def calculate_average_treatment_times_highlighted_regions(
+        dict_region_admissions_unique,
         _log=True, _log_loc=None,
         ):
     """
-    Compare the numbers in the "all patients" and "only patients
-    whose nearest unit does not have MT" subsets.
+    dict_region_admissions_unique_treatment_times
+
+    If highlighted teams are given, calculate only the data for
+    those teams and store the mixed region types in a single dataframe.
     """
-    dfs = []
-    for region_type in highlighted_region_types:
-        # Limit to only the highlighted teams:
-        mask = (df_highlight['region_type'] == region_type)
-        teams_here = df_highlight.loc[mask, 'highlighted_region']
-        # Pick out data:
-        df_all = dict_unique_times['all_patients'][region_type][
-            'usual_care_ivt'][teams_here]
-        df_sub = dict_unique_times['nearest_unit_no_mt'][region_type][
-            'usual_care_ivt'][teams_here]
-        # Count admissions:
-        ad_all = df_all.sum()
-        ad_sub = df_sub.sum()
-        prop_sub = ad_sub / ad_all
-        # Gather into one dataframe:
-        ad_all.name = 'admissions_all'
-        ad_sub.name = 'admissions_nearest_unit_no_mt'
-        prop_sub.name = 'prop_nearest_unit_no_mt'
-        df = pd.concat((ad_all, ad_sub, prop_sub), axis='columns')
-        dfs.append(df)
-    # Gather results for different region types:
-    df = pd.concat(dfs, axis='rows').transpose()
+    d = {}
+    for lsoa_subset, admissions_df in dict_region_admissions_unique.items():
+        # Gather weighted treatment times for these teams:
+        df = calculate_average_treatment_times(admissions_df, _log=False)
+        d[lsoa_subset] = df
+    if _log:
+        p = 'Found average treatment times for each highlighted region.'
+        print_progress_loc(p, _log_loc)
+    return d
+
+
+def calculate_average_treatment_times(
+        df_in,
+        _log=True,
+        _log_loc=None
+        ):
+    """
+    df_regions contains admission numbers for unique treatment times.
+    """
+    time_cols = list(df_in.index.names)
+    regions = list(df_in.columns)
+    df_in = df_in.reset_index()
+
+    cols_out = time_cols
+    cols_std = [f'{c}_std' for c in cols_out]
+    df_out = pd.DataFrame(columns=cols_out+cols_std)
+    for region in regions:
+        mask = df_in[region].notna()
+        # Take admissions-weighted average of outcomes.
+        vals = df_in.loc[mask, time_cols]
+        weights = df_in.loc[mask, region]
+        # Create stats from these data:
+        weighted_stats = DescrStatsW(vals, weights=weights, ddof=0)
+        # Means (one value per outcome, mRS band):
+        means = weighted_stats.mean
+        # Standard deviations (one value per outcome, mRS band):
+        stds = weighted_stats.std
+        # Round these values:
+        means = np.round(means, 3)
+        stds = np.round(stds, 3)
+        # Store result:
+        s = pd.Series(list(means) + list(stds), index=df_out.columns)
+        df_out.loc[region] = s
 
     if _log:
-        p = 'Gathered admissions summary for highlighted regions.'
+        p = 'Found average outcomes for each region.'
         print_progress_loc(p, _log_loc)
-    return df
+    return df_out
+
+
+def make_average_treatment_time_df(s_treats):
+    scens_all_labels = {
+        'usual_care': 'Usual care',
+        'redirection_approved': 'Redirection approved',
+        'redirection_rejected': 'Redirection rejected',
+        }
+    treats_labels = {
+        'ivt': 'IVT',
+        'mt': 'MT'
+        }
+    scens_to_use = [s for s in scens_all_labels.keys()
+                    if any([v.startswith(s) for v in s_treats.keys()])]
+    scens_labels = dict([(k, scens_all_labels[k]) for k in scens_to_use])
+    arr_treats = []
+    for scen in scens_labels.keys():
+        scen_treats = []
+        for treat in treats_labels.keys():
+            t_mean = s_treats[f'{scen}_{treat}']
+            t_mean = make_formatted_time_str(t_mean)
+            t_std = s_treats[f'{scen}_{treat}_std']
+            if t_std >= 60.0:
+                t_std = make_formatted_time_str(t_std)
+            else:
+                t_std = f'{t_std:02.0f}min'
+            t_str = (f"{t_mean}" + r' $\pm$ ' + f"{t_std}")
+            scen_treats.append(t_str)
+        arr_treats.append(scen_treats)
+    df_treats = pd.DataFrame(
+        arr_treats,
+        columns=treats_labels.values(),
+        index=scens_labels.values()
+        )
+    return df_treats
+
+
+def calculate_no_treatment_mrs(pops, dict_no_treatment_outcomes):
+    cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
+    cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
+
+    prop_nlvo = (
+        pops[pops.index.str.startswith('nlvo')].sum())
+    df_no_treat = (
+        (prop_nlvo *
+            dict_no_treatment_outcomes['nlvo_no_treatment']) +
+        ((1.0 - prop_nlvo) *
+            dict_no_treatment_outcomes['lvo_no_treatment'])
+    )
+    df_no_treat[cols_mrs_noncum] = np.diff(df_no_treat[cols_mrs], prepend=0.0)
+    # Round values:
+    df_no_treat[cols_mrs_noncum] = np.round(df_no_treat[cols_mrs_noncum], 3)
+    df_no_treat = df_no_treat.squeeze()
+    return df_no_treat
+
+
+def find_unit_admissions_by_region(
+        df_lsoa_units_times,
+        keep_only_england=True,
+        _log=True,
+        _log_loc=None
+        ):
+    # Load in LSOA-region lookup:
+    df_lsoa_regions = load_lsoa_region_lookups()
+    # Columns: 'lsoa', 'lsoa_code', 'region', 'region_code',
+    # 'region_type', 'short_code', 'country', 'icb', 'icb_code',
+    # 'isdn', 'ambo22'.
+    if keep_only_england:
+        mask_eng = df_lsoa_regions['region_type'] == 'SICBL'
+        df_lsoa_regions = df_lsoa_regions.loc[mask_eng].copy()
+    cols_to_merge = ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
+                     'transfer_required', 'Admissions', 'LSOA']
+    df_lsoa_regions = pd.merge(
+        df_lsoa_regions, df_lsoa_units_times[cols_to_merge],
+        left_on='lsoa', right_on='LSOA', how='right'
+        )
+    # Calculate this separately for each region type.
+    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']
+    dict_region_unit_admissions = {}
+    masks = {'all_patients': slice(None),
+             'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
+    
+
+
+    if _log:
+        p = 'Calculated number of admissions to each stroke unit by region.'
+        print_progress_loc(p, _log_loc)
+    return dict_region_unit_admissions

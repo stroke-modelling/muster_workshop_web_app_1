@@ -273,10 +273,6 @@ with containers['log_units']:  # for log_loc
         reg.find_unique_travel_times(df_lsoa_units_times,
                                      _log_loc=containers['log_units'])
         )
-    dict_region_admissions_unique_times = (
-        reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, _log_loc=containers['log_units'])
-        )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
 
@@ -332,14 +328,6 @@ df_treat_times_sets_unique['index'] = range(
     len(df_treat_times_sets_unique))
 df_treat_times_sets_unique = (
     df_treat_times_sets_unique.set_index('index'))
-# Find how many admissions per region have each set of
-# unique treatment times:
-with containers['log_pathway']:  # for log_loc
-    dict_region_admissions_unique_treatment_times = (
-        reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, unique_travel=False,
-            _log_loc=containers['log_pathway'])
-        )
 
 
 # ----- Base outcomes -----
@@ -398,10 +386,10 @@ dict_onion = pop.calculate_population_subgroups(
 with containers['pop_plots']:
     df_subgroups = pop.select_subgroups_for_results()
 
-df_pop_usual_care, df_pop_redir, df_pop_redir_accepted_only = (
-    pop.calculate_population_subgroup_grid(
-        dict_onion, df_subgroups, _log_loc=containers['log_subgroups']
-        ))
+dict_pops = pop.calculate_population_subgroup_grid(
+    dict_onion, df_subgroups, _log_loc=containers['log_subgroups']
+    )
+
 
 with containers['pop_plots']:
     n_cols = 2
@@ -411,8 +399,8 @@ with containers['pop_plots']:
             c = st.container(border=True)
         with c:
             pop.plot_population_props(
-                df_pop_usual_care[['scenario'] + [s]],
-                df_pop_redir[['scenario'] + [s]],
+                dict_pops['usual_care'][['scenario'] + [s]],
+                dict_pops['redir_allowed'][['scenario'] + [s]],
                 s,
                 df_subgroups.loc[s]
                 )
@@ -432,9 +420,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
         st.session_state['dict_outcomes'][s] = (
             pop.calculate_unique_outcomes_onion(
                 dict_base_outcomes,
-                {'usual_care': df_pop_usual_care,
-                 'redir_allowed': df_pop_redir,
-                 'redir_accepted_only': df_pop_redir_accepted_only},
+                dict_pops,
                 df_subgroups.loc[s],
                 df_treat_times_sets_unique,
                 s,
@@ -442,6 +428,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
             )
         )
     st.session_state['df_subgroups'] = df_subgroups
+    st.session_state['dict_pops'] = dict_pops
     st.session_state['inputs_changed'] = False
     st.session_state['rerun_region_summaries'] = True
     st.session_state['rerun_maps'] = True
@@ -471,31 +458,44 @@ highlighted_region_types = sorted(list(set(
 # + Calculate admissions-weighted average outcomes.
 
 if st.session_state['rerun_region_summaries']:
+    st.session_state['dict_highlighted_region_travel_times'] = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions'])
+        )
+    # Find how many admissions per region have each set of
+    # unique treatment times:
+    st.session_state['dict_highlighted_region_unique_treatment_times'] = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            unique_travel=False,
+            _log_loc=containers['log_regions'])
+        )
+
+
+    # dict_region_unit_admissions = reg.find_unit_admissions_by_region(
+    #     df_lsoa_units_times, _log_loc=containers['log_regions'])
+    # st.write(df_lsoa_units_times)
+
     # Nest levels: subgroup, scenario, lsoa subset.
     st.session_state['dict_highlighted_region_outcomes'] = (
         reg.calculate_nested_average_outcomes(
             st.session_state['dict_outcomes'],
-            dict_region_admissions_unique_treatment_times,
-            highlighted_region_types,
+            st.session_state[
+                'dict_highlighted_region_unique_treatment_times'],
             df_highlighted_regions,
             _log_loc=containers['log_regions']
             )
     )
-    st.session_state['dict_highlighted_region_travel_times'] = (
-        reg.gather_travel_times_highlighted_regions(
-            dict_region_admissions_unique_times,
-            highlighted_region_types,
-            df_highlighted_regions,
+    st.session_state['dict_highlighted_region_average_treatment_times'] = (
+        reg.calculate_average_treatment_times_highlighted_regions(
+            st.session_state['dict_highlighted_region_unique_treatment_times'],
             _log_loc=containers['log_regions']
-        )
-    )
-    st.session_state['df_highlighted_region_admissions'] = (
-        reg.gather_admissions_highlighted_regions(
-            dict_region_admissions_unique_times,
-            highlighted_region_types,
-            df_highlighted_regions,
-            _log_loc=containers['log_regions']
-        )
+            )
     )
     st.session_state['rerun_region_summaries'] = False
 else:
@@ -537,12 +537,20 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with cols[1]:
             # Admissions
             s_admissions = (
-                st.session_state['df_highlighted_region_admissions'][region])
+                st.session_state['df_highlighted_region_admissions'][region])  # TO DO - find this again
             st.metric('Annual stroke admissions',
                       f"{s_admissions['admissions_all']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             st.metric(n, f"{p:.1f}%")
+        # Average treatment times:
+        s_treats = st.session_state[
+            'dict_highlighted_region_average_treatment_times'][
+                lsoa_subset].loc[region]
+        df_treats = reg.make_average_treatment_time_df(s_treats)
+        st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+        st.table(df_treats)
+
         # Outcomes:
         for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
             df_u = st.session_state['dict_highlighted_region_outcomes'][
@@ -556,14 +564,21 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 if df_u.isna().all() & df_r.isna().all():
                     st.markdown('No data available.')
                 else:
+                    # Calculate "no treatment" data.
+                    # Should have the same total proportions of nLVO
+                    # and LVO in both the usual care and redir groups,
+                    # with only the details of who goes where differing,
+                    # so only calculate one set of no-treatment mRS dists.
+                    pops = (
+                        st.session_state['dict_pops']['usual_care'][subgroup])
+                    df_no_treat = reg.calculate_no_treatment_mrs(
+                        pops, dict_no_treatment_outcomes)
+
                     cc = st.container(horizontal=True)
                     with cc:
                         for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
                             with st.container():
                                 reg.display_region_summary(df_u, df_r, key)
-
-                    # TO DO - generate "no treatment" data for
-                    # this combination of patients, draw bars.
 
                     mrs_lists_dict = {
                         'usual_care': {
@@ -571,7 +586,6 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'cum': df_u[cols_mrs],
                             'std': df_u[cols_mrs_std],
                             'colour': '#0072b2',
-                            'linestyle': 'solid',
                             'label': 'Usual care',
                         },
                         'redir_allowed': {
@@ -579,8 +593,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                             'cum': df_r[cols_mrs],
                             'std': df_r[cols_mrs_std],
                             'colour': '#56b4e9',
-                            'linestyle': 'dash',
                             'label': 'Redirection available'
+                        },
+                        'no_treatment': {
+                            'noncum': df_no_treat[cols_mrs_noncum],
+                            'cum': df_no_treat[cols_mrs],
+                            'colour': 'grey',
+                            'label': 'No treatment'
                         },
                     }
                     reg.plot_mrs_bars(mrs_lists_dict,

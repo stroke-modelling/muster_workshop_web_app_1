@@ -9,17 +9,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from utilities.utils import update_plotly_font_sizes, update_plotly_font_sizes
-
-
-def make_formatted_time_str(t):
-    try:
-        t_new = (f'{int(60*(t/60)//60):d}hr ' +
-                 f'{int(60*(t/60)%60):02d}min')
-    except ValueError:
-        # t is NaN.
-        t_new = '~'
-    return t_new
+from utilities.utils import update_plotly_font_sizes, \
+    update_plotly_font_sizes, make_formatted_time_str
 
 
 def build_time_dicts_muster(pathway_dict):
