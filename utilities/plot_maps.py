@@ -644,7 +644,8 @@ def draw_units_msu_map(map_traces, outline_name='none'):
 
 def plot_outcome_maps(
         map_traces, map_order, colour_dicts,
-        all_cmaps, outline_name='none', show_msu_bases=False
+        all_cmaps, outline_name='none', show_msu_bases=False,
+        title=''
         ):
     """"""
     # Map labels:
@@ -688,7 +689,7 @@ def plot_outcome_maps(
     fig.update_layout(
         # width=1200,
         height=600,
-        margin_t=40,
+        margin_t=80,
         margin_b=0,
         )
     fig = draw_cmap_buttons(fig, colour_dicts, all_cmaps)
@@ -701,11 +702,6 @@ def plot_outcome_maps(
     fig.update_yaxes(matches='y')
 
     fig = update_plotly_font_sizes(fig)
-    fig.update_layout(title_text='')
-    plotly_config = get_map_config()
+    fig.update_layout(title_text=title)
 
-    st.plotly_chart(
-        fig,
-        # width='content',
-        config=plotly_config
-        )
+    return fig

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import os
 
-from utilities.utils import print_progress_loc
+from utilities.utils import print_progress_loc, set_rerun_map
 
 
 def select_map_data(df_subgroups):
@@ -22,6 +22,7 @@ def select_map_data(df_subgroups):
         options=df_subgroups.index,
         format_func=f,
         index=0,
+        on_change=set_rerun_map
         )
     label = df_subgroups.loc[key, 'label']
     return key, label

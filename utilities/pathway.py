@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from utilities.utils import print_progress_loc
+from utilities.utils import print_progress_loc, set_inputs_changed
 import utilities.plot_timeline as timeline
 
 
@@ -48,7 +48,7 @@ def select_pathway_timings(use_col, containers):
                 step=d['step'],
                 format='%0.0f',
                 help=f"Reference value: {d['default']}",
-                # key=key
+                on_change=set_inputs_changed,
                 )
     cols_to_keep = ['label', 'value']
     return df_pathway[cols_to_keep]

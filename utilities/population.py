@@ -9,7 +9,8 @@ from pandas.api.types import is_numeric_dtype
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
-from utilities.utils import print_progress_loc, update_plotly_font_sizes
+from utilities.utils import print_progress_loc, update_plotly_font_sizes, \
+    set_inputs_changed
 
 
 def set_up_onion_parameters(project='optimist', use_debug=False):
@@ -51,6 +52,7 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
         hide_index=True,
         column_config=conf,
         num_rows=num_rows,
+        on_change=set_inputs_changed,
     )
 
     # Convert to proportions:
@@ -93,6 +95,7 @@ def select_onion_population(df_pops):
         options=df_pops['population'],
         format_func=f,
         index=ind_default,
+        on_change=set_inputs_changed,
         )
     # Pick out variables for this layer:
     series_chosen_pops = df_pops.loc[df_pops['population'] == layer_key].squeeze()
@@ -185,7 +188,8 @@ def select_subgroups_for_results():
         'Subgroups to calculate outcomes for',
         dict_labels.keys(),
         format_func=f,
-        default='nlvo_lvo_ivt_mt_ivt_mt'
+        default='nlvo_lvo_ivt_mt_ivt_mt',
+        on_change=set_inputs_changed
     )
     df_subgroups = df_subgroups.loc[list_selected_subgroups]
 

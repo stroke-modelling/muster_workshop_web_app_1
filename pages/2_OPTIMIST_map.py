@@ -22,6 +22,7 @@ import utilities.pathway as pathway
 import utilities.outcomes as outcomes
 import utilities.population as pop
 import utilities.colour_setup as colour_setup
+from utilities.utils import set_rerun_map, set_rerun_full_results
 
 
 #MARK: Functions
@@ -55,6 +56,12 @@ except KeyError:
     # No page has been run yet.
     pass
 st.session_state['page_last_run'] = 'OPTIMIST'
+# Set these so that all results run on first go of script:
+if 'inputs_changed' not in st.session_state.keys():
+    st.session_state['inputs_changed'] = True
+    st.session_state['rerun_region_summaries'] = True
+    st.session_state['rerun_maps'] = True
+    st.session_state['rerun_full_results'] = True
 
 
 def set_up_page_layout():
@@ -411,27 +418,40 @@ with containers['pop_plots']:
                 )
 
 # ----- Outcomes -----
-dict_outcomes = {}
-for s in df_subgroups.index:
-    dict_outcomes[s] = pop.calculate_unique_outcomes_onion(
-        dict_base_outcomes,
-        {'usual_care': df_pop_usual_care,
-         'redir_allowed': df_pop_redir,
-         'redir_accepted_only': df_pop_redir_accepted_only},
-        df_subgroups.loc[s],
-        df_treat_times_sets_unique,
-        s,
-        _log_loc=containers['log_subgroups']
-    )
-
+# Only recalculate results if anything above here has changed.
+# Don't rerun outcomes when selecting options in the Results section.
 with containers['run_results']:
-    run_results = st.button('Calculate results', type='primary')
-if run_results:
-    pass
+    rerun_results = st.button('Recalculate results', type='primary')
+
+# Calculate results if this is the first go through the app
+# or the button has been pressed.
+if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
+    # Re-run results.
+    st.session_state['dict_outcomes'] = {}
+    for s in df_subgroups.index:
+        st.session_state['dict_outcomes'][s] = (
+            pop.calculate_unique_outcomes_onion(
+                dict_base_outcomes,
+                {'usual_care': df_pop_usual_care,
+                 'redir_allowed': df_pop_redir,
+                 'redir_accepted_only': df_pop_redir_accepted_only},
+                df_subgroups.loc[s],
+                df_treat_times_sets_unique,
+                s,
+                _log_loc=containers['log_subgroups']
+            )
+        )
+    st.session_state['df_subgroups'] = df_subgroups
+    st.session_state['inputs_changed'] = False
+    st.session_state['rerun_region_summaries'] = True
+    st.session_state['rerun_maps'] = True
+    st.session_state['rerun_full_results'] = True
+elif st.session_state['inputs_changed']:
+    with containers['run_results']:
+        st.warning('Results are for previous set of inputs.', icon='⚠️')
 else:
-    # TO DO - perhaps cache the old results
-    # and show them while setting up?
-    st.stop()
+    # Don't re-run results.
+    pass
 
 
 #MARK: Results
@@ -450,28 +470,36 @@ highlighted_region_types = sorted(list(set(
 # --- CALCULATIONS:
 # + Calculate admissions-weighted average outcomes.
 
-# Nest levels: subgroup, scenario, lsoa subset.
-dict_highlighted_region_outcomes = reg.calculate_nested_average_outcomes(
-    dict_outcomes,
-    dict_region_admissions_unique_treatment_times,
-    highlighted_region_types,
-    df_highlighted_regions,
-    _log_loc=containers['log_regions']
+if st.session_state['rerun_region_summaries']:
+    # Nest levels: subgroup, scenario, lsoa subset.
+    st.session_state['dict_highlighted_region_outcomes'] = (
+        reg.calculate_nested_average_outcomes(
+            st.session_state['dict_outcomes'],
+            dict_region_admissions_unique_treatment_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions']
+            )
     )
-dict_highlighted_region_travel_times = (
-    reg.gather_travel_times_highlighted_regions(
-        dict_region_admissions_unique_times,
-        highlighted_region_types,
-        df_highlighted_regions,
-        _log_loc=containers['log_regions']
+    st.session_state['dict_highlighted_region_travel_times'] = (
+        reg.gather_travel_times_highlighted_regions(
+            dict_region_admissions_unique_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions']
+        )
     )
-)
-df_highlighted_region_admissions = reg.gather_admissions_highlighted_regions(
-    dict_region_admissions_unique_times,
-    highlighted_region_types,
-    df_highlighted_regions,
-    _log_loc=containers['log_regions']
-)
+    st.session_state['df_highlighted_region_admissions'] = (
+        reg.gather_admissions_highlighted_regions(
+            dict_region_admissions_unique_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions']
+        )
+    )
+    st.session_state['rerun_region_summaries'] = False
+else:
+    pass
 
 # Display chosen results:
 with containers['region_select']:
@@ -502,24 +530,28 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with cols[0]:
             # Travel times
             time_bins, admissions_times = reg.gather_this_region_travel_times(
-                dict_highlighted_region_travel_times, lsoa_subset, region)
+                st.session_state['dict_highlighted_region_travel_times'],
+                lsoa_subset, region
+                )
             reg.plot_travel_times(time_bins, admissions_times)
         with cols[1]:
             # Admissions
-            s_admissions = df_highlighted_region_admissions[region]
+            s_admissions = (
+                st.session_state['df_highlighted_region_admissions'][region])
             st.metric('Annual stroke admissions',
                       f"{s_admissions['admissions_all']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             st.metric(n, f"{p:.1f}%")
         # Outcomes:
-        for s, subgroup in enumerate(df_subgroups.index):
-            df_u = dict_highlighted_region_outcomes[subgroup][
-                'usual_care'][lsoa_subset].loc[region]
-            df_r = dict_highlighted_region_outcomes[subgroup][
-                'redir_allowed'][lsoa_subset].loc[region]
-            cs = st.expander(df_subgroups.loc[subgroup, 'label'],
-                             expanded=(True if s == 0 else False))
+        for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+            df_u = st.session_state['dict_highlighted_region_outcomes'][
+                subgroup]['usual_care'][lsoa_subset].loc[region]
+            df_r = st.session_state['dict_highlighted_region_outcomes'][
+                subgroup]['redir_allowed'][lsoa_subset].loc[region]
+            cs = st.expander(
+                st.session_state['df_subgroups'].loc[subgroup, 'label'],
+                expanded=(True if s == 0 else False))
             with cs:
                 if df_u.isna().all() & df_r.isna().all():
                     st.markdown('No data available.')
@@ -557,86 +589,142 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
 # LSOA-level data. Then reshape into the raster array.
+# Re-run map if the following have changed:
+# "setup" section inputs; colour limits.
 with containers['map_setup']:
     map_outcome = outcomes.select_outcome_type()
 # Gather data for maps:
 with containers['map_fig']:
-    subgroup_map, subgroup_map_label = maps.select_map_data(df_subgroups)
+    subgroup_map, subgroup_map_label = maps.select_map_data(
+        st.session_state['df_subgroups']
+    )
     use_full_redir = st.toggle(
         '''In middle map, include "reject redirection" and
         "usual care" patients.''',
         value=False,
-        key='full_redir_subset'
+        key='full_redir_subset',
+        on_change=set_rerun_map
         )
     redir_subset = ('redir_allowed' if use_full_redir
                     else 'redir_accepted_only')
-map_arrs_dict, vlim_dict = maps.gather_map_arrays(
-    dict_outcomes[subgroup_map]['usual_care'],
-    dict_outcomes[subgroup_map][redir_subset],
-    df_lsoa_units_times,
-    df_raster,
-    transform_dict,
-    col_map=map_outcome,
-    _log_loc=containers['log_maps']
+
+if st.session_state['rerun_maps']:
+    st.session_state['map_arrs_dict'], st.session_state['map_vlim_dict'] = (
+        maps.gather_map_arrays(
+            st.session_state['dict_outcomes'][subgroup_map]['usual_care'],
+            st.session_state['dict_outcomes'][subgroup_map][redir_subset],
+            df_lsoa_units_times,
+            df_raster,
+            transform_dict,
+            col_map=map_outcome,
+            _log_loc=containers['log_maps']
+            )
     )
-map_arrs_dict['pop'], vlim_dict_pop = maps.gather_pop_map(
-    df_raster, transform_dict)
-vlim_dict = vlim_dict | vlim_dict_pop
+    st.session_state['map_arrs_dict']['pop'], vlim_dict_pop = (
+        maps.gather_pop_map(df_raster, transform_dict))
+    st.session_state['map_vlim_dict'] = (
+        st.session_state['map_vlim_dict'] | vlim_dict_pop)
 
 # Set up colour limits:
 with containers['map_setup']:
-    dicts_colours = colour_setup.select_colour_limits(map_outcome, vlim_dict)
+    dicts_colours = colour_setup.select_colour_limits(
+        map_outcome, st.session_state['map_vlim_dict'])
 
-# Make colour maps and traces:
+# Make colour maps:
 with containers['map_setup']:
     default_cmap_name, all_cmaps = colour_setup.select_colour_maps()
 for p, dp in dicts_colours.items():
     dicts_colours[p]['cmap'] = colour_setup.make_colour_list(
         default_cmap_name, vmin=dp['vmin'], vmax=dp['vmax'])
-for col, arr in map_arrs_dict.items():
-    map_traces[col] = plot_maps.make_trace_heatmap(
-        arr, transform_dict, dicts_colours[col], name=col)
 
-with containers['map_fig']:
-    plot_maps.plot_outcome_maps(
+with containers['map_setup']:
+    outline_labels_dict = {
+        'none': 'None',
+        'icb': 'Integrated Care Board',
+        'isdn': 'Integrated Stroke Delivery Network',
+        'ambo22': 'Ambulance service',
+    }
+
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return outline_labels_dict[label]
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        outline_labels_dict.keys(),
+        format_func=f,
+        horizontal=True,
+        on_change=set_rerun_map,
+        key='maps_outcomes_outline'
+        )
+
+if st.session_state['rerun_maps']:
+    # Make traces for maps:
+    for col, arr in st.session_state['map_arrs_dict'].items():
+        map_traces[col] = plot_maps.make_trace_heatmap(
+            arr, transform_dict, dicts_colours[col], name=col)
+    st.session_state['maps_fig'] = plot_maps.plot_outcome_maps(
         map_traces,
         ['usual_care', 'redir_minus_usual_care', 'pop'],
         dicts_colours,
         all_cmaps,
-        outline_name,
+        outline_name=outline_name,
+        title=subgroup_map_label,
+        )
+    st.session_state['rerun_maps'] = False
+
+with containers['map_fig']:
+    plotly_config = plot_maps.get_map_config()
+    st.plotly_chart(
+        st.session_state['maps_fig'],
+        # width='content',
+        config=plotly_config
         )
 
 
 # ----- Full LSOA results -----
 # Generate on request, not by default with each re-run.
 with containers['full_results_setup']:
-    generate_full_data = st.checkbox('Show options to generate full data')
+    generate_full_data = st.checkbox(
+        'Show options to generate full data',
+        on_change=set_rerun_full_results
+        )
 if generate_full_data:
     with containers['full_results_setup']:
         full_results_type = reg.select_full_data_type()
-    if full_results_type == 'lsoa':
-        # Calculate LSOA-level results.
-        redir_scens = ['usual_care', 'redirection_approved',
-                       'redirection_rejected']
-        treats = ['ivt', 'mt']
-        cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
-        dict_full_outcomes = pop.gather_lsoa_level_outcomes(
-            dict_outcomes,
-            df_lsoa_units_times,
-            cols_times,
-            _log_loc=containers['log_full_results']
+    if st.session_state['rerun_full_results']:
+        # Only rerun these if the following have changed:
+        # "setup" section inputs; full results type.
+        if full_results_type == 'lsoa':
+            # Calculate LSOA-level results.
+            redir_scens = ['usual_care', 'redirection_approved',
+                           'redirection_rejected']
+            treats = ['ivt', 'mt']
+            cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
+            st.session_state['dict_full_outcomes'] = (
+                pop.gather_lsoa_level_outcomes(
+                    st.session_state['dict_outcomes'],
+                    df_lsoa_units_times,
+                    cols_times,
+                    _log_loc=containers['log_full_results']
+                    )
             )
+        else:
+            # Calculate the full outcomes for just this selected region type
+            # but for all the nested subsets (subgroup, scenario, LSOA subset):
+            st.session_state['dict_full_outcomes'] = (
+                reg.calculate_nested_average_outcomes(
+                    st.session_state['dict_outcomes'],
+                    dict_region_admissions_unique_treatment_times,
+                    [full_results_type],
+                    _log_loc=containers['log_full_results']
+                    )
+            )
+        st.session_state['rerun_full_results'] = False
     else:
-        # Calculate the full outcomes for just this selected region type
-        # but for all the nested subsets (subgroup, scenario, LSOA subset):
-        dict_full_outcomes = reg.calculate_nested_average_outcomes(
-            dict_outcomes,
-            dict_region_admissions_unique_treatment_times,
-            [full_results_type],
-            _log_loc=containers['log_full_results']
-            )
+        pass
     with containers['full_results_setup']:
         if full_results_type == 'lsoa':
+            # Show several dataframes to prevent repeated data.
             cols = st.columns([1, 4])
             with cols[0]:
                 st.markdown('Unit postcode lookup')
@@ -644,8 +732,9 @@ if generate_full_data:
             with cols[1]:
                 st.markdown('Travel and treatment times:')
                 st.dataframe(df_lsoa_units_times.set_index('LSOA'))
-            for subgroup, df_full in dict_full_outcomes.items():
-                st.subheader(df_subgroups.loc[subgroup, 'label'])
+            for subgroup, df_full in (
+                    st.session_state['dict_full_outcomes'].items()):
+                st.subheader(st.session_state['df_subgroups'].loc[subgroup, 'label'])
                 st.dataframe(df_full)
         else:
             use_lsoa_subset_full = st.toggle(
@@ -655,7 +744,9 @@ if generate_full_data:
                 )
             lsoa_subset_full = ('nearest_unit_no_mt' if use_lsoa_subset_full
                                 else 'all_patients')
-            for subgroup, dict_full in dict_full_outcomes.items():
+            for subgroup, dict_full in (
+                    st.session_state['dict_full_outcomes'].items()):
+                # Put the usual care and redirection data in the same df:
                 dfs = []
                 for scen in ['usual_care', 'redir_allowed']:
                     df = dict_full[scen][lsoa_subset_full][full_results_type]
@@ -670,5 +761,6 @@ if generate_full_data:
                         df_unit_services['ssnap_name'])
                     df_full = df_full.sort_index()
 
-                st.subheader(df_subgroups.loc[subgroup, 'label'])
+                st.subheader(
+                    st.session_state['df_subgroups'].loc[subgroup, 'label'])
                 st.dataframe(df_full)

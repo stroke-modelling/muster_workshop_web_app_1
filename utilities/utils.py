@@ -67,3 +67,19 @@ def page_setup():
         # layout='wide'
         )
     # n.b. this can be set separately for each separate page if you like.
+
+
+def set_inputs_changed():
+    st.session_state['inputs_changed'] = True
+
+
+def set_rerun_region_summaries():
+    st.session_state['rerun_region_summaries'] = True
+
+
+def set_rerun_map():
+    st.session_state['rerun_maps'] = True
+
+
+def set_rerun_full_results():
+    st.session_state['rerun_full_results'] = True

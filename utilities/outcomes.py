@@ -8,7 +8,7 @@ import numpy as np
 import stroke_outcome  # for reference dists
 import classes.model_module as model
 
-from utilities.utils import print_progress_loc
+from utilities.utils import print_progress_loc, set_rerun_map
 
 
 def select_outcome_type():
@@ -28,6 +28,7 @@ def select_outcome_type():
         index=0,  # 'added utility' as default
         format_func=f,
         # horizontal=True
+        on_change=set_rerun_map
     )
     return outcome_type
 

@@ -13,7 +13,8 @@ from plotly.subplots import make_subplots
 import stroke_maps.load_data
 
 from classes.geography_processing import Geoprocessing
-from utilities.utils import print_progress_loc, update_plotly_font_sizes
+from utilities.utils import print_progress_loc, update_plotly_font_sizes, \
+    set_inputs_changed, set_rerun_full_results, set_rerun_region_summaries
 
 
 # ----- Functions -----
@@ -126,6 +127,7 @@ def select_unit_services(use_msu=False):
             'Use_MT': st.column_config.CheckboxColumn(),
             'Use_MSU': st.column_config.CheckboxColumn(),
         },
+        on_change=set_inputs_changed,
         )
     return df_unit_services
 
@@ -158,22 +160,28 @@ def select_unit_services_muster(
         # cols = st.columns(n_cols)
         # i = 0
         # with cols[i % n_cols]:
-        add_all_ivt = st.button('Place MSU at all IVT-only units')
+        add_all_ivt = st.button('Place MSU at all IVT-only units',
+                                on_click=set_inputs_changed)
         # i += 1
         # with cols[i % n_cols]:
-        add_all_mt = st.button('Place MSU at all MT units')
+        add_all_mt = st.button('Place MSU at all MT units',
+                               on_click=set_inputs_changed)
         # i += 1
         # with cols[i % n_cols]:
-        add_all = st.button('Place MSU at all units')
+        add_all = st.button('Place MSU at all units',
+                            on_click=set_inputs_changed)
         # i += 1
         # with cols[i % n_cols]:
-        remove_all_ivt = st.button('Remove MSU from all IVT-only units')
+        remove_all_ivt = st.button('Remove MSU from all IVT-only units',
+                                   on_click=set_inputs_changed)
         # i += 1
         # with cols[i % n_cols]:
-        remove_all_mt = st.button('Remove MSU from all MT units')
+        remove_all_mt = st.button('Remove MSU from all MT units',
+                                  on_click=set_inputs_changed)
         # i += 1
         # with cols[i % n_cols]:
-        remove_all = st.button('Remove MSU from all units')
+        remove_all = st.button('Remove MSU from all units',
+                               on_click=set_inputs_changed)
 
     # Which units need to be changed in each case:
     units_ivt_bool = (
@@ -237,6 +245,7 @@ def select_unit_services_muster(
                 'Use_MSU': st.column_config.CheckboxColumn(),
             },
             key='units_data_editor',
+            on_change=set_inputs_changed
             )
     # Do not keep a copy of the returned edited dataframe.
     # We'll update it ourselves when the script reruns.
@@ -568,8 +577,9 @@ def select_highlighted_regions(df_unit_services):
     for key, region_list in region_options_dict.items():
         bar_options += [f'{key}: {v}' for v in region_list]
 
-    highlighted_options = st.multiselect('Regions to highlight',
-                                         bar_options, default='National')
+    highlighted_options = st.multiselect(
+        'Regions to highlight', bar_options, default='National',
+        on_change=set_rerun_region_summaries)
 
     def pick_out_region_name(bar_option):
         if bar_option.startswith('ISDN: '):
@@ -950,6 +960,7 @@ def select_full_data_type():
         options=region_types,
         format_func=f,
         index=3,
+        on_change=set_rerun_full_results
         )
     return full_data_type
 

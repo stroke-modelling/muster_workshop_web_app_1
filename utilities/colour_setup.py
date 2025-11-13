@@ -8,6 +8,8 @@ import pandas as pd
 from matplotlib.pyplot import get_cmap
 import cmasher as cmr
 
+from utilities.utils import set_rerun_map
+
 
 def load_colour_limits(outcome):
     """
@@ -264,6 +266,7 @@ def select_colour_limits(map_outcome, vlim_dict,
             df = st.data_editor(
                 df, disabled=['Map data'],
                 key=f'{c}_colour_setup',
+                on_change=set_rerun_map
                 )
         d[c]['vmin'] = df.loc['Minimum', 'Colour scale']
         d[c]['vmax'] = df.loc['Maximum', 'Colour scale']
