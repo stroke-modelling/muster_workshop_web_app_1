@@ -427,6 +427,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
                 _log_loc=containers['log_subgroups']
             )
         )
+    st.session_state['df_lsoa_units_times'] = df_lsoa_units_times
     st.session_state['df_subgroups'] = df_subgroups
     st.session_state['dict_pops'] = dict_pops
     st.session_state['inputs_changed'] = False
@@ -476,10 +477,17 @@ if st.session_state['rerun_region_summaries']:
             _log_loc=containers['log_regions'])
         )
 
-
-    # dict_region_unit_admissions = reg.find_unit_admissions_by_region(
-    #     df_lsoa_units_times, _log_loc=containers['log_regions'])
-    # st.write(df_lsoa_units_times)
+    (
+        st.session_state['df_highlighted_region_admissions'],
+        st.session_state['df_region_unit_admissions']
+        ) = (
+        reg.find_unit_admissions_by_region(
+            df_lsoa_units_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions'],
+            )
+    )
 
     # Nest levels: subgroup, scenario, lsoa subset.
     st.session_state['dict_highlighted_region_outcomes'] = (
@@ -504,7 +512,7 @@ else:
 # Display chosen results:
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
-        'Use only patients whose nearest unit does not provide MT.',
+        'Use outcomes for only patients whose nearest unit does not provide MT.',
         value=True,
         )
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
@@ -537,12 +545,81 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with cols[1]:
             # Admissions
             s_admissions = (
-                st.session_state['df_highlighted_region_admissions'][region])  # TO DO - find this again
+                st.session_state['df_highlighted_region_admissions']
+                .loc[region]
+                )
             st.metric('Annual stroke admissions',
-                      f"{s_admissions['admissions_all']:.1f}")
+                      f"{s_admissions['admissions_all_patients']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             st.metric(n, f"{p:.1f}%")
+            # Numbers redirected:
+            dict_pops_u = st.session_state['dict_pops']['usual_care']
+            dict_pops_r = st.session_state['dict_pops']['redir_allowed']
+            prop_mt_usual_care = (
+                dict_pops_u
+                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+                )
+            prop_mt_redir_approved = (
+                dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+                )
+            prop_mt_redir_not_approved = (
+                dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+                )
+            prop_ivt_only_usual_care = (
+                dict_pops_u
+                .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
+                )
+            prop_ivt_only_redir_approved = (
+                dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+                .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
+                )
+            # Number of patients who receive MT:
+            n_mt_usual_care = (
+                prop_mt_usual_care * s_admissions['admissions_all_patients'])
+            # Number of patients who receive MT and need a transfer
+            # in usual care:
+            n_subset_mt_usual_care = (
+                prop_mt_usual_care *
+                s_admissions['admissions_nearest_unit_no_mt']
+                )
+            # Number of patients who receive MT and need a transfer
+            # in redir scenario:
+            n_subset_mt_redir_allowed = (
+                prop_mt_redir_not_approved *
+                s_admissions['admissions_nearest_unit_no_mt']
+                )
+            # Number of patients who receive MT and were redirected:
+            n_subset_mt_redir_approved = (
+                prop_mt_redir_approved *
+                s_admissions['admissions_nearest_unit_no_mt']
+                )
+            st.markdown(
+                f'''
+                Patients who receive thrombectomy: {n_mt_usual_care:.1f},  
+                Patients who receive thrombectomy and need a transfer in usual care: {n_subset_mt_usual_care:.1f},  
+                Patients who receive thrombectomy and need a transfer in redir scenario: {n_subset_mt_redir_allowed:.1f},  
+                Patients who receive thrombectomy and were redirected: {n_subset_mt_redir_approved:.1f}
+                ''')
+
+            # Number of patients who receive IVT only:
+            n_ivt_only_usual_care = (
+                prop_ivt_only_usual_care *
+                s_admissions['admissions_all_patients']
+                )
+            # Number of patients who receive IVT only and were redirected:
+            n_subset_ivt_only_redir_approved = (
+                prop_ivt_only_redir_approved *
+                s_admissions['admissions_nearest_unit_no_mt']
+                )
+            st.markdown(
+                f'''
+                Patients who receive IVT only: {n_ivt_only_usual_care:.1f},  
+                Patients who receive IVT only and were redirected: {n_subset_ivt_only_redir_approved:.1f}
+                ''')
+
         # Average treatment times:
         s_treats = st.session_state[
             'dict_highlighted_region_average_treatment_times'][
@@ -632,7 +709,7 @@ if st.session_state['rerun_maps']:
         maps.gather_map_arrays(
             st.session_state['dict_outcomes'][subgroup_map]['usual_care'],
             st.session_state['dict_outcomes'][subgroup_map][redir_subset],
-            df_lsoa_units_times,
+            st.session_state['df_lsoa_units_times'],
             df_raster,
             transform_dict,
             col_map=map_outcome,
@@ -722,19 +799,27 @@ if generate_full_data:
             st.session_state['dict_full_outcomes'] = (
                 pop.gather_lsoa_level_outcomes(
                     st.session_state['dict_outcomes'],
-                    df_lsoa_units_times,
+                    st.session_state['df_lsoa_units_times'],
                     cols_times,
                     _log_loc=containers['log_full_results']
                     )
             )
         else:
+            # Find how many admissions per region have each set of
+            # unique treatment times:
+            dict_this_region_unique_treatment_times = (
+                reg.find_region_admissions_by_unique_travel_times(
+                    st.session_state['df_lsoa_units_times'],
+                    [full_results_type],
+                    unique_travel=False,
+                    _log_loc=containers['log_regions'])
+                )
             # Calculate the full outcomes for just this selected region type
             # but for all the nested subsets (subgroup, scenario, LSOA subset):
             st.session_state['dict_full_outcomes'] = (
                 reg.calculate_nested_average_outcomes(
                     st.session_state['dict_outcomes'],
-                    dict_region_admissions_unique_treatment_times,
-                    [full_results_type],
+                    dict_this_region_unique_treatment_times,
                     _log_loc=containers['log_full_results']
                     )
             )
@@ -750,10 +835,12 @@ if generate_full_data:
                 st.dataframe(df_unit_services['ssnap_name'].sort_index())
             with cols[1]:
                 st.markdown('Travel and treatment times:')
-                st.dataframe(df_lsoa_units_times.set_index('LSOA'))
+                st.dataframe(st.session_state['df_lsoa_units_times']
+                             .set_index('LSOA'))
             for subgroup, df_full in (
                     st.session_state['dict_full_outcomes'].items()):
-                st.subheader(st.session_state['df_subgroups'].loc[subgroup, 'label'])
+                st.subheader(st.session_state['df_subgroups']
+                             .loc[subgroup, 'label'])
                 st.dataframe(df_full)
         else:
             use_lsoa_subset_full = st.toggle(
@@ -768,7 +855,7 @@ if generate_full_data:
                 # Put the usual care and redirection data in the same df:
                 dfs = []
                 for scen in ['usual_care', 'redir_allowed']:
-                    df = dict_full[scen][lsoa_subset_full][full_results_type]
+                    df = dict_full[scen][lsoa_subset_full]
                     df = df.rename(columns=dict(
                         [(c, f'{c}_{scen}') for c in df.columns]))
                     dfs.append(df)
@@ -783,3 +870,10 @@ if generate_full_data:
                 st.subheader(
                     st.session_state['df_subgroups'].loc[subgroup, 'label'])
                 st.dataframe(df_full)
+else:
+    # Remove stored full data.
+    try:
+        del st.session_state['dict_full_outcomes']
+    except KeyError:
+        pass
+    set_rerun_full_results()

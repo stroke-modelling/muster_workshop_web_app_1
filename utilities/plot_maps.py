@@ -228,7 +228,7 @@ def make_constant_map_traces():
             'trace_dict_name': 'icb_outlines',
         },
         'ambo22': {
-            'display_name': 'Amblance service',
+            'display_name': 'Ambulance service',
             'file':  './data/outline_ambo22s.geojson',
             'trace_dict_name': 'ambo22_outlines',
         },

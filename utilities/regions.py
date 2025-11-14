@@ -1556,10 +1556,15 @@ def calculate_no_treatment_mrs(pops, dict_no_treatment_outcomes):
 
 def find_unit_admissions_by_region(
         df_lsoa_units_times,
+        region_types=[],
+        df_highlight=None,
         keep_only_england=True,
         _log=True,
         _log_loc=None
         ):
+    """
+    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']
+    """
     # Load in LSOA-region lookup:
     df_lsoa_regions = load_lsoa_region_lookups()
     # Columns: 'lsoa', 'lsoa_code', 'region', 'region_code',
@@ -1570,19 +1575,65 @@ def find_unit_admissions_by_region(
         df_lsoa_regions = df_lsoa_regions.loc[mask_eng].copy()
     cols_to_merge = ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit',
                      'transfer_required', 'Admissions', 'LSOA']
+    unit_cols = cols_to_merge[:3]
     df_lsoa_regions = pd.merge(
         df_lsoa_regions, df_lsoa_units_times[cols_to_merge],
         left_on='lsoa', right_on='LSOA', how='right'
         )
     # Calculate this separately for each region type.
-    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']
-    dict_region_unit_admissions = {}
+    # Just total count of admissions:
+    # df_admissions - one column per region,
+    # rows for 'admissions_all', 'prop_nearest_unit_no_mt'.
+    # Total admissions in this region:
+    df_admissions = pd.DataFrame()
+    # Calculate for these subgroups of LSOA:
     masks = {'all_patients': slice(None),
              'nearest_unit_no_mt': df_lsoa_regions['transfer_required']}
-    
+    # Admissions by stroke unit:
+    dfs_to_concat = []
+    for region_type in region_types:
+        # Limit to only the highlighted teams:
+        if isinstance(df_highlight, pd.DataFrame):
+            mask = (df_highlight['region_type'] == region_type)
+            regions_here = df_highlight.loc[mask, 'highlighted_region']
+        else:
+            regions_here = list(set(df_lsoa_regions[region_type]))
 
+        for region in regions_here:
+            if region_type == 'national':
+                mask_reg = slice(None)
+            else:
+                mask_reg = df_lsoa_regions[region_type] == region
+            for mask_label, mask_lsoa in masks.items():
+                # Pick out just these LSOA:
+                if (region_type == 'national') & (mask_label == 'all_patients'):
+                    mask_combo = slice(None)
+                elif (region_type == 'national'):
+                    mask_combo = mask_lsoa
+                elif (mask_label == 'all_patients'):
+                    mask_combo = mask_reg
+                else:
+                    mask_combo = mask_reg & mask_lsoa
+                df_admissions.loc[region, f'admissions_{mask_label}'] = (
+                     df_lsoa_regions.loc[mask_combo, 'Admissions'].sum())
+            # How many people go to each combination of stroke units?
+            # First unit, nearest MT unit, transfer unit combos.
+            df_unit_admissions = df_lsoa_regions.loc[
+                mask_reg, unit_cols + ['Admissions']].groupby(unit_cols).sum()
+            df_unit_admissions = df_unit_admissions.rename(
+                columns={'Admissions': region})
+            dfs_to_concat.append(df_unit_admissions)
+    df_unit_admissions = pd.concat(dfs_to_concat, axis='columns').reset_index()
+    # df_unit_admissions['nearest_unit_no_mt'] = (
+    #     df_unit_admissions['nearest_ivt_unit'] !=
+    #     df_unit_admissions['nearest_mt_unit'])
+
+    df_admissions['prop_nearest_unit_no_mt'] = (
+        df_admissions['admissions_nearest_unit_no_mt'] /
+        df_admissions['admissions_all_patients']
+        )
 
     if _log:
         p = 'Calculated number of admissions to each stroke unit by region.'
         print_progress_loc(p, _log_loc)
-    return dict_region_unit_admissions
+    return df_admissions, df_unit_admissions

@@ -299,11 +299,6 @@ with containers['log_units']:  # for log_loc
             cols_pairs_labels=['travel_for_ivt', 'travel_for_mt'],
             _log_loc=containers['log_units'])
         )
-    dict_region_admissions_unique_times = (
-        reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, project='muster',
-            _log_loc=containers['log_units'])
-        )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
 
@@ -360,15 +355,6 @@ df_treat_times_sets_unique['index'] = range(
     len(df_treat_times_sets_unique))
 df_treat_times_sets_unique = (
     df_treat_times_sets_unique.set_index('index'))
-# Find how many admissions per region have each set of
-# unique treatment times:
-with containers['log_pathway']:  # for log_loc
-    dict_region_admissions_unique_treatment_times = (
-        reg.find_region_admissions_by_unique_travel_times(
-            df_lsoa_units_times, unique_travel=False, project='muster',
-            _log_loc=containers['log_pathway'])
-        )
-
 
 # ----- Base outcomes -----
 # Calculate base outcomes for the given travel times and scenarios.
@@ -465,6 +451,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
                 _log_loc=containers['log_subgroups']
             )
         )
+    st.session_state['df_lsoa_units_times'] = df_lsoa_units_times
     st.session_state['df_subgroups'] = df_subgroups
     st.session_state['inputs_changed'] = False
     st.session_state['rerun_region_summaries'] = True
@@ -495,37 +482,86 @@ highlighted_region_types = sorted(list(set(
 # + Calculate admissions-weighted average outcomes.
 
 if st.session_state['rerun_region_summaries']:
+    st.session_state['dict_highlighted_region_travel_times'] = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times, 
+            highlighted_region_types,
+            df_highlighted_regions,
+            project='muster',
+            _log_loc=containers['log_regions'])
+        )
+    # Find how many admissions per region have each set of
+    # unique treatment times:
+    st.session_state['dict_highlighted_region_unique_treatment_times'] = (
+        reg.find_region_admissions_by_unique_travel_times(
+            df_lsoa_units_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            unique_travel=False,
+            project='muster',
+            _log_loc=containers['log_regions'])
+        )
+
+    (
+        st.session_state['df_highlighted_region_admissions'],
+        st.session_state['df_region_unit_admissions']
+        ) = (
+        reg.find_unit_admissions_by_region(
+            df_lsoa_units_times,
+            highlighted_region_types,
+            df_highlighted_regions,
+            _log_loc=containers['log_regions'],
+            )
+    )
+
     # Nest levels: subgroup, scenario, lsoa subset.
     st.session_state['dict_highlighted_region_outcomes'] = (
         reg.calculate_nested_average_outcomes(
             st.session_state['dict_outcomes'],
-            dict_region_admissions_unique_treatment_times,
-            highlighted_region_types,
+            st.session_state['dict_highlighted_region_unique_treatment_times'],
             df_highlighted_regions,
             _log_loc=containers['log_regions']
             )
     )
-    st.session_state['dict_highlighted_region_travel_times'] = (
-        reg.gather_travel_times_highlighted_regions(
-            dict_region_admissions_unique_times,
-            highlighted_region_types,
+    # st.session_state['dict_highlighted_region_travel_times'] = (
+    #     reg.gather_travel_times_highlighted_regions(
+    #         st.session_state['dict_highlighted_region_travel_times'],
+    #         highlighted_region_types,
+    #         df_highlighted_regions,
+    #         gather_dict={
+    #             'travel_to_ivt': 'usual_care_ivt',
+    #             'travel_to_ivt_then_mt': 'usual_care_mt',
+    #             'travel_from_msu_base': 'msu_ivt_ivt',
+    #         },
+    #         _log_loc=containers['log_regions']
+    #     )
+    # )
+    # st.session_state['df_highlighted_region_admissions'] = (
+    #     reg.gather_admissions_highlighted_regions(
+    #         st.session_state['dict_highlighted_region_travel_times'],
+    #         highlighted_region_types,
+    #         df_highlighted_regions,
+    #         _log_loc=containers['log_regions']
+    #     )
+    # )
+
+    # Nest levels: subgroup, scenario, lsoa subset.
+    st.session_state['dict_highlighted_region_outcomes'] = (
+        reg.calculate_nested_average_outcomes(
+            st.session_state['dict_outcomes'],
+            st.session_state[
+                'dict_highlighted_region_unique_treatment_times'],
             df_highlighted_regions,
-            gather_dict={
-                'travel_to_ivt': 'usual_care_ivt',
-                'travel_to_ivt_then_mt': 'usual_care_mt',
-                'travel_from_msu_base': 'msu_ivt_ivt',
-            },
             _log_loc=containers['log_regions']
-        )
+            )
     )
-    st.session_state['df_highlighted_region_admissions'] = (
-        reg.gather_admissions_highlighted_regions(
-            dict_region_admissions_unique_times,
-            highlighted_region_types,
-            df_highlighted_regions,
+    st.session_state['dict_highlighted_region_average_treatment_times'] = (
+        reg.calculate_average_treatment_times_highlighted_regions(
+            st.session_state['dict_highlighted_region_unique_treatment_times'],
             _log_loc=containers['log_regions']
-        )
+            )
     )
+    st.session_state['rerun_region_summaries'] = False
 else:
     pass
 
@@ -557,8 +593,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         cols = st.columns(2)
         with cols[0]:
             # Travel times
-            time_cols = ['travel_to_ivt', 'travel_to_ivt_then_mt',
-                         'travel_from_msu_base']
+            time_cols = ['usual_care_ivt', 'usual_care_mt',
+                         'msu_ivt_ivt']
             time_bins, admissions_times = reg.gather_this_region_travel_times(
                 st.session_state['dict_highlighted_region_travel_times'],
                 lsoa_subset, region, time_cols)
@@ -569,9 +605,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with cols[1]:
             # Admissions
             s_admissions = (
-                st.session_state['df_highlighted_region_admissions'][region])
+                st.session_state['df_highlighted_region_admissions']
+                .loc[region]
+                )
             st.metric('Annual stroke admissions',
-                      f"{s_admissions['admissions_all']:.1f}")
+                      f"{s_admissions['admissions_all_patients']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             st.metric(n, f"{p:.1f}%")
@@ -737,19 +775,28 @@ if generate_full_data:
             st.session_state['dict_full_outcomes'] = (
                 pop.gather_lsoa_level_outcomes(
                     st.session_state['dict_outcomes'],
-                    df_lsoa_units_times,
+                    st.session_state['df_lsoa_units_times'],
                     cols_times,
                     _log_loc=containers['log_full_results']
                     )
             )
         else:
+            # Find how many admissions per region have each set of
+            # unique treatment times:
+            dict_this_region_unique_treatment_times = (
+                reg.find_region_admissions_by_unique_travel_times(
+                    st.session_state['df_lsoa_units_times'],
+                    [full_results_type],
+                    unique_travel=False,
+                    project='muster',
+                    _log_loc=containers['log_regions'])
+                )
             # Calculate the full outcomes for just this selected region type
             # but for all the nested subsets (subgroup, scenario, LSOA subset):
             st.session_state['dict_full_outcomes'] = (
                 reg.calculate_nested_average_outcomes(
                     st.session_state['dict_outcomes'],
-                    dict_region_admissions_unique_treatment_times,
-                    [full_results_type],
+                    dict_this_region_unique_treatment_times,
                     _log_loc=containers['log_full_results']
                     )
             )
@@ -782,7 +829,7 @@ if generate_full_data:
                     st.session_state['dict_full_outcomes'].items()):
                 dfs = []
                 for scen in ['usual_care', 'msu']:
-                    df = dict_full[scen][lsoa_subset_full][full_results_type]
+                    df = dict_full[scen][lsoa_subset_full]
                     df = df.rename(columns=dict(
                         [(c, f'{c}_{scen}') for c in df.columns]))
                     dfs.append(df)
@@ -797,3 +844,10 @@ if generate_full_data:
                 st.subheader(
                     st.session_state['df_subgroups'].loc[subgroup, 'label'])
                 st.dataframe(df_full)
+else:
+    # Remove stored full data.
+    try:
+        del st.session_state['dict_full_outcomes']
+    except KeyError:
+        pass
+    set_rerun_full_results()
