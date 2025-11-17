@@ -1637,3 +1637,90 @@ def find_unit_admissions_by_region(
         p = 'Calculated number of admissions to each stroke unit by region.'
         print_progress_loc(p, _log_loc)
     return df_admissions, df_unit_admissions
+
+
+def calculate_network_usual_care(df_network, dict_pops_u):
+    prop_mt_usual_care = (
+        dict_pops_u
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    # Usual care:
+    df_net_u = df_network.copy()
+    # Combine columns that share nearest and transfer units:
+    df_net_u = df_net_u.drop('nearest_mt_unit', axis='columns')
+    df_net_u = df_net_u.groupby(['nearest_ivt_unit', 'transfer_unit']
+                                ).sum().reset_index()
+    df_net_u.insert(0, 'nearest_unit', df_net_u['nearest_ivt_unit'])
+    df_net_u = df_net_u.rename(columns={'nearest_ivt_unit': 'first_unit'})
+    df_net_u['admissions_catchment_to_first_unit'] = df_net_u['admissions'].copy()
+    # Only include transfers for patients who receive MT
+    # and who aren't already at an MT unit.
+    df_net_u['admissions_first_unit_to_transfer'] = (
+        df_net_u['admissions'].copy() * prop_mt_usual_care)
+    mask_no_transfer = (df_net_u['first_unit'] == df_net_u['transfer_unit'])
+    df_net_u.loc[mask_no_transfer, 'admissions_first_unit_to_transfer'] = 0.0
+    df_net_u['nearest_unit'] = 'nearest_' + df_net_u['nearest_unit'].astype(str)
+    return df_net_u
+
+
+def calculate_network_redir(df_network, dict_pops_r):
+    prop_no_redir = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        ['full_population'].sum()
+        )
+    prop_mt_redir_approved = (
+        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    prop_mt_redir_not_approved = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    # Redirection scenario:
+    df_net_r = df_network.copy()
+    # No redir, similar to usual care above:
+    df_net_no_redir = df_net_r.copy()
+    df_net_no_redir['admissions'] *= prop_no_redir
+    # Combine columns that share nearest and transfer units:
+    df_net_no_redir = df_net_no_redir.drop('nearest_mt_unit', axis='columns')
+    df_net_no_redir = df_net_no_redir.groupby(
+        ['nearest_ivt_unit', 'transfer_unit']).sum().reset_index()
+    df_net_no_redir.insert(0, 'nearest_unit', df_net_no_redir['nearest_ivt_unit'])
+    df_net_no_redir = df_net_no_redir.rename(
+        columns={'nearest_ivt_unit': 'first_unit'})
+    df_net_no_redir['admissions_catchment_to_first_unit'] = (
+        df_net_no_redir['admissions'].copy())
+    # Only include transfers for patients who receive MT
+    # and who aren't already at an MT unit.
+    df_net_no_redir['admissions_first_unit_to_transfer'] = (
+        df_net_no_redir['admissions'] * prop_mt_redir_not_approved)
+    df_net_no_redir['thrombectomy'] = (
+        df_net_no_redir['admissions_first_unit_to_transfer'])
+    mask_no_transfer = (df_net_no_redir['first_unit'] ==
+                        df_net_no_redir['transfer_unit'])
+    df_net_no_redir.loc[mask_no_transfer,
+                        'admissions_first_unit_to_transfer'] = 0.0
+    df_net_no_redir['redirected'] = 0
+    # Redirected:
+    df_net_redir = df_net_r.copy()
+    df_net_redir['admissions'] *= (1.0 - prop_no_redir)
+    df_net_redir['admissions_catchment_to_first_unit'] = (
+        df_net_redir['admissions'].copy())
+    df_net_redir.insert(0, 'nearest_unit', df_net_redir['nearest_ivt_unit'])
+    df_net_redir = df_net_redir.rename(columns={'nearest_mt_unit': 'first_unit'})
+    df_net_redir = df_net_redir.drop('transfer_unit', axis='columns')
+    df_net_redir = df_net_redir.drop('nearest_ivt_unit', axis='columns')
+    df_net_redir['thrombectomy'] = (
+        df_net_redir['admissions_catchment_to_first_unit'] *
+        prop_mt_redir_approved
+        )
+    df_net_redir['transfer_unit'] = df_net_redir['first_unit']
+    df_net_redir['admissions_first_unit_to_transfer'] = 0.0
+    df_net_redir['redirected'] = 1
+    # Combine redir and no redir:
+    df_net_r = pd.concat((df_net_redir, df_net_no_redir), axis='rows')
+    # Combine data for patients whose nearest unit is MT:
+    df_net_r = df_net_r.groupby(
+        ['nearest_unit', 'first_unit', 'transfer_unit']).sum().reset_index()
+    df_net_r['nearest_unit'] = 'nearest_' + df_net_r['nearest_unit'].astype(str)
+    return df_net_r

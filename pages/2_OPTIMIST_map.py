@@ -682,6 +682,61 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     reg.plot_mrs_bars(mrs_lists_dict,
                                       key='_'.join([region, subgroup]))
 
+# ----- Network graph -----
+cols_units = ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit']
+df_network = (
+    st.session_state['df_region_unit_admissions'][cols_units + [region]])
+df_network = df_network.rename(columns={region: 'admissions'})
+# Only keep units that have admissions from selected region:
+df_network = df_network.dropna(subset=['admissions'])
+# Usual care proportions:
+df_net_u = reg.calculate_network_usual_care(
+    df_network, st.session_state['dict_pops']['usual_care'])
+# Redirection proportions:
+df_net_r = reg.calculate_network_redir(
+    df_network, st.session_state['dict_pops']['redir_allowed'])
+st.write(df_net_u)
+st.write(df_net_r)
+
+# Gather units in the network:
+cols_units = ['first_unit', 'transfer_unit']
+all_units = sorted(list(
+    set(df_net_u[cols_units].values.flatten()) |
+    set(df_net_r[cols_units].values.flatten())
+))
+# Only units whose catchment area is in the selected region:
+nearest_units = sorted(list(
+    set(df_net_u['nearest_unit'].values.flatten()) |
+    set(df_net_r['nearest_unit'].values.flatten())
+))
+gdf_units = plot_maps.generate_node_coordinates(df_unit_services, all_units)
+gdf_region, region_display_name = (
+    plot_maps.load_region_outline_here(region_type, region))
+bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
+    gdf_units, gdf_region)
+gdf_nearest_units = plot_maps.make_coords_nearest_unit_catchment(
+    gdf_units, df_net_u, bounds, nearest_units, x_buffer, y_buffer)
+
+
+colours = [
+    'yellow', 'tomato', 'steelblue', 'yellowgreen',
+    'sandybrown', 'slateblue', 'seagreen', 'palevioletred',
+    'paleturquoise', 'purple'
+    ]
+while len(gdf_nearest_units) > len(colours):
+    colours += colours
+gdf_nearest_units['colour'] = colours[:len(gdf_nearest_units)]
+
+# Plot graph:
+plot_maps.plot_networks(
+    df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
+    gdf_units, bounds, gdf_region, region,
+    subplot_titles=['Catchment map', 'Usual care', 'Redirection available']
+    )
+
+st.stop()
+
+
 # ----- Maps -----
 # For the selected data type to show on the maps, gather the full
 # LSOA-level data. Then reshape into the raster array.
