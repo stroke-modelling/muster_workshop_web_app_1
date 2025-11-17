@@ -33,6 +33,19 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
         df_pops = df_pops[df_pops['population'] != 'debug']
 
     number_cols = [c for c in df_pops.columns if is_numeric_dtype(df_pops[c])]
+    # Labels for number cols:
+    dict_help = {
+        'prop_nlvo': 'Proportion of full population who have nLVO',
+        'prop_lvo': 'Proportion of full population who have LVO',
+        'prop_other': 'Proportion of full population who have neither nLVO nor LVO',
+        'prop_redir_considered': 'Proportion of full population where redirection was considered. The rest of the population uses “usual care”.',
+        'redir_sensitivity': 'The proportion of patients redirected who have LVO.',
+        'redir_specificity': 'The proportion of patients rejected for redirection who have LVO.',
+        'prop_nlvo_ivt': 'Proportion of patients with nLVO who have IVT.',
+        'prop_lvo_ivt': 'Proportion of patients with LVO who have IVT.',
+        'prop_lvo_mt': 'Proportion of patients with LVO who receive MT only.',
+        'prop_lvo_ivt_mt': 'Proportion of patients with LVO who have both IVT and MT.'
+    }
 
     # # Convert to percent:
     df_pops[number_cols] = df_pops[number_cols] * 100.0
@@ -43,7 +56,8 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
         conf[col] = st.column_config.NumberColumn(
             min_value=0.0, max_value=100.0, step=1.0,
             # format='percent',
-            format='%.0f%%'
+            format='%.0f%%',
+            help=dict_help[col],
         )
 
     df_pops = st.data_editor(

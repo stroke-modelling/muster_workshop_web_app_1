@@ -48,7 +48,7 @@ st.set_page_config(
 try:
     page_last_run = st.session_state['page_last_run']
     if page_last_run != 'OPTIMIST':
-        # Clear the OPTIMIST results.
+        # Clear the MUSTER results.
         keys_to_del = list(st.session_state.keys())
         for key in keys_to_del:
             del st.session_state[key]
