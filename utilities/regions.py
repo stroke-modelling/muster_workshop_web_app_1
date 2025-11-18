@@ -1657,6 +1657,8 @@ def calculate_network_usual_care(df_network, dict_pops_u):
     # and who aren't already at an MT unit.
     df_net_u['admissions_first_unit_to_transfer'] = (
         df_net_u['admissions'].copy() * prop_mt_usual_care)
+    df_net_u['thrombectomy'] = (
+        df_net_u['admissions_first_unit_to_transfer'].copy())
     mask_no_transfer = (df_net_u['first_unit'] == df_net_u['transfer_unit'])
     df_net_u.loc[mask_no_transfer, 'admissions_first_unit_to_transfer'] = 0.0
     df_net_u['nearest_unit'] = 'nearest_' + df_net_u['nearest_unit'].astype(str)

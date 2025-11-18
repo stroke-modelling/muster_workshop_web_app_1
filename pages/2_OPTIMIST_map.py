@@ -628,38 +628,119 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
         st.table(df_treats)
 
+        # Find tracked admissions between units:
+        cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
+                        'transfer_unit']
+        df_network = (
+            st.session_state['df_region_unit_admissions']
+            [cols_units + [region]])
+        df_network = df_network.rename(columns={region: 'admissions'})
+        # Only keep units that have admissions from selected region:
+        df_network = df_network.dropna(subset=['admissions'])
+        # Usual care proportions:
+        df_net_u = reg.calculate_network_usual_care(
+            df_network, st.session_state['dict_pops']['usual_care'])
+        # Redirection proportions:
+        df_net_r = reg.calculate_network_redir(
+            df_network, st.session_state['dict_pops']['redir_allowed'])
+
+        # Gather units in the network:
+        cols_units = ['first_unit', 'transfer_unit']
+        all_units = sorted(list(
+            set(df_net_u[cols_units].values.flatten()) |
+            set(df_net_r[cols_units].values.flatten())
+        ))
+        # Only units whose catchment area is in the selected region:
+        nearest_units = sorted(list(
+            set(df_net_u['nearest_unit'].values.flatten()) |
+            set(df_net_r['nearest_unit'].values.flatten())
+        ))
+
+        # Tabulate direct admissions and transfers in usual care
+        # and in redir scenario for each unit.
+        catchment_units = sorted(list(df_net_u['first_unit'].values.flatten()))
+        cols = ['first_unit', 'admissions_catchment_to_first_unit']
+        df_unit_admissions = df_net_u[cols].copy()
+        # Combine redirection scenario rows. Patients for one first unit
+        # can cover many rows depending on their catchment unit,
+        # so find total admissions to each unit regardless of whether
+        # they were redirected there.
+        df_unit_admissions_redir = (
+            df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
+        # Place usual care and redir in same df:
+        df_unit_admissions = pd.merge(
+            df_unit_admissions, df_unit_admissions_redir,
+            on='first_unit', how='outer', suffixes=('_usual_care', '_redir')
+            )
+        df_unit_admissions['first_unit'] = (
+            df_unit_admissions['first_unit']
+            .map(df_unit_services['ssnap_name']))
+        df_unit_admissions = df_unit_admissions.sort_values('first_unit')
+        df_unit_admissions = df_unit_admissions.set_index('first_unit')
+        df_unit_admissions = df_unit_admissions.fillna(0.0)
+
+        config_dict = {
+            '_index':
+                st.column_config.Column(
+                    label='Directly-admitting unit', width='medium'),
+            'admissions_catchment_to_first_unit_usual_care':
+                st.column_config.NumberColumn(
+                    label='Usual care', format='%.2f', width='small'),
+            'admissions_catchment_to_first_unit_redir':
+                st.column_config.NumberColumn(
+                    label='Redirection available',
+                    format='%.2f', width='small')
+        }
+        st.markdown('Total direct admissions to each unit:')
+        st.dataframe(
+            df_unit_admissions,
+            column_config=config_dict
+            )
+
+        # Gather total transfers to each unit:
+        cols = ['transfer_unit', 'admissions_first_unit_to_transfer']
+        df_unit_transfers_r = (
+            df_net_r[cols].copy().groupby('transfer_unit').sum().reset_index())
+        df_unit_transfers_u = (
+            df_net_u[cols].copy().groupby('transfer_unit').sum().reset_index())
+        df_unit_transfers = pd.merge(
+            df_unit_transfers_u, df_unit_transfers_r,
+            on='transfer_unit', how='outer', suffixes=('_usual_care', '_redir')
+        )
+        df_unit_transfers['transfer_unit'] = (
+            df_unit_transfers['transfer_unit']
+            .map(df_unit_services['ssnap_name']))
+        df_unit_transfers = df_unit_transfers.sort_values('transfer_unit')
+        df_unit_transfers = df_unit_transfers.set_index('transfer_unit')
+        df_unit_transfers = df_unit_transfers.fillna(0.0)
+
+        config_dict = {
+            '_index':
+                st.column_config.Column(
+                    label='Transfer unit', width='medium'),
+            'admissions_first_unit_to_transfer_usual_care':
+                st.column_config.NumberColumn(
+                    label='Usual care', format='%.2f', width='small'),
+            'admissions_first_unit_to_transfer_redir':
+                st.column_config.NumberColumn(
+                    label='Redirection available',
+                    format='%.2f', width='small')
+        }
+        st.markdown('Total transfers to each MT unit:')
+        st.dataframe(
+            df_unit_transfers,
+            column_config=config_dict
+            )
+
+
+
+
         # ----- Network graph -----
         cn = st.expander('Network graphs')
         with cn:
             if region_type == 'national':
                 st.markdown('Too big an area to draw the network graphs.')
             else:
-                cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
-                              'transfer_unit']
-                df_network = (
-                    st.session_state['df_region_unit_admissions']
-                    [cols_units + [region]])
-                df_network = df_network.rename(columns={region: 'admissions'})
-                # Only keep units that have admissions from selected region:
-                df_network = df_network.dropna(subset=['admissions'])
-                # Usual care proportions:
-                df_net_u = reg.calculate_network_usual_care(
-                    df_network, st.session_state['dict_pops']['usual_care'])
-                # Redirection proportions:
-                df_net_r = reg.calculate_network_redir(
-                    df_network, st.session_state['dict_pops']['redir_allowed'])
-
-                # Gather units in the network:
-                cols_units = ['first_unit', 'transfer_unit']
-                all_units = sorted(list(
-                    set(df_net_u[cols_units].values.flatten()) |
-                    set(df_net_r[cols_units].values.flatten())
-                ))
-                # Only units whose catchment area is in the selected region:
-                nearest_units = sorted(list(
-                    set(df_net_u['nearest_unit'].values.flatten()) |
-                    set(df_net_r['nearest_unit'].values.flatten())
-                ))
                 gdf_units = plot_maps.generate_node_coordinates(
                     df_unit_services, all_units)
                 gdf_region, region_display_name = (

@@ -1031,7 +1031,7 @@ def plot_networks(
             w = np.log(a)  # / 75.0
             w = 1.0 if w < 1.0 else w
             aw = w * 5 if w < 3 else w*2
-            standoff = 10
+            standoff = 5
             # Setup for sneaking:
             bw = w * 1.3
             baw = aw * 1.0
