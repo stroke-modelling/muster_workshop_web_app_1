@@ -951,8 +951,9 @@ def plot_networks(
         subplot_titles=[]
         ):
     fig = make_subplots(
-        rows=3, cols=1,
-        vertical_spacing=0.05,
+        rows=2, cols=2,
+        horizontal_spacing=0.0,
+        vertical_spacing=0.0,
         subplot_titles=subplot_titles,
         )
 
@@ -963,8 +964,7 @@ def plot_networks(
         fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
         line=dict(color='grey', width=4,),
         layer='between',  # below other traces
-        col='all', row='all',
-        # zorder=-2
+        col=[1, 2, 2], row=[1, 1, 2],
     )
 
     # ----- Country outline -----
@@ -984,7 +984,8 @@ def plot_networks(
         showlegend=False,
         hoverinfo='skip',
         zorder=-1,
-        ), row='all', col='all',
+        ),
+        col=[1, 2, 2], row=[1, 1, 2],
     )
 
     # Region catchment:
@@ -1004,7 +1005,9 @@ def plot_networks(
                 # text=gdf_region.loc[i, region_type],
                 hoverinfo='skip',
                 # hoverlabel=dict(bgcolor='#ff4b4b'),
-                ), row='all', col='all')
+                ),
+                col=[1, 2, 2], row=[1, 1, 2]
+                )
 
     # Links between units:
     link_drawn_to_first = False
@@ -1048,7 +1051,7 @@ def plot_networks(
                 # text=[a],
                 hoverinfo='skip',
                 name=None,
-            ), col=1, row=d+2)
+            ), col=2, row=d+1)
             # The actual arrow:
             fig.add_trace(go.Scatter(
                 x=[x_nearest, x_first],
@@ -1061,7 +1064,7 @@ def plot_networks(
                 # text=[a],
                 hoverinfo='skip',
                 name=(None if link_drawn_to_first else 'Admissions to first unit'),
-            ), col=1, row=d+2)
+            ), col=2, row=d+1)
             # Add a sneaky trace halfway along the line for a hoverlabel:
             fig.add_trace(go.Scatter(
                 x=[0.5*(x_nearest+x_first)],
@@ -1089,14 +1092,14 @@ def plot_networks(
                     '<extra></extra>'
                     ),
                 hoverlabel=dict(bordercolor=colour),
-            ), col=1, row=d+2)
+            ), col=2, row=d+1)
 
         # First unit to transfer unit:
         df_net_trans = df_net.copy()
         df_net_trans = df_net_trans.drop('nearest_unit', axis='columns')
         df_net_trans = df_net_trans.groupby(
             ['first_unit', 'transfer_unit']).sum().reset_index()
-        colour = 'white'  #'rgba(0.95, 0.95, 0.95, 1.0)'
+        colour = 'rgba(0.9, 0.9, 0.9, 1.0)'
         for i in df_net_trans.index:
             s = df_net_trans.loc[i]
             name_first = df_unit_services.loc[
@@ -1132,7 +1135,7 @@ def plot_networks(
                     # text=[a],
                     hoverinfo='skip',
                     name=None,
-                ), col=1, row=d+2)
+                ), col=2, row=d+1)
                 # The actual arrow:
                 fig.add_trace(go.Scatter(
                     x=[x_first, x_trans],
@@ -1144,7 +1147,7 @@ def plot_networks(
                     line_width=w,
                     hoverinfo='skip',
                     name=(None if link_drawn_to_trans else 'Transfers for thrombectomy'),
-                ), col=1, row=d+2)
+                ), col=2, row=d+1)
                 # Add a sneaky trace halfway along the line for a hoverlabel:
                 fig.add_trace(go.Scatter(
                     x=[0.5*(x_first+x_trans)],
@@ -1174,12 +1177,14 @@ def plot_networks(
                         '<extra></extra>'
                         ),
                     hoverlabel=dict(bordercolor=colour),
-                ), col=1, row=d+2)
+                ), col=2, row=d+1)
 
     # Stroke units:
     unit_traces = make_units_traces(gdf_units)
-    fig.add_trace(go.Scatter(unit_traces['ivt']), row='all', col='all')
-    fig.add_trace(go.Scatter(unit_traces['mt']), row='all', col='all')
+    fig.add_trace(go.Scatter(unit_traces['ivt']), 
+        col=[1, 2, 2], row=[1, 1, 2],)
+    fig.add_trace(go.Scatter(unit_traces['mt']), 
+        col=[1, 2, 2], row=[1, 1, 2],)
 
     # Catchment anchors:
     fig.add_trace(go.Scatter(
@@ -1208,42 +1213,43 @@ def plot_networks(
             '<extra></extra>'
             ),
         hoverlabel=dict(bordercolor=gdf_nearest_units['colour']),
-    ), row=[2, 3], col='all')
+    ), row='all', col=2)
 
     fig.update_layout(hovermode='closest')
 
     fig = england_map_setup(fig)
-    fig.update_yaxes(row=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(row=2, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(row=3, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=1, row=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, row=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, row=2, scaleanchor='x', scaleratio=1)
     # Shared pan and zoom settings:
     fig.update_xaxes(matches='x')
     fig.update_yaxes(matches='y')
 
     fig = update_plotly_font_sizes(fig)
-    fig.update_layout(title_text='')
+    fig.update_layout(title_text=region_display_name)
 
     # Calculate height based on aspect ratio:
-    width = 500
-    height = (
-        (0.75 * width) +  # space for subplot gaps
-        (3.0 * 0.8 * width * (bounds[3] - bounds[1]) / (bounds[2] - bounds[0]))
-    )
+    width = 800
+    height = width
+    # height = (
+    #     (0.25 * width) +  # space for subplot gaps
+    #     (2.0 * 0.4 * width * (bounds[3] - bounds[1]) / (bounds[2] - bounds[0]))
+    # )
     # Figure setup.
     fig.update_layout(
         width=width,
         height=height,
-        margin_t=25,
+        margin_t=50,
         margin_b=0,
         margin_l=0,
         margin_r=0,
         )
     fig.update_layout(legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.05,
-        xanchor="center",
-        x=0.5,
+        # orientation="h",
+        yanchor='middle',
+        y=0.25,
+        xanchor='center',
+        x=0.25,
     ))
     plotly_config = get_map_config()
     st.plotly_chart(fig, width='stretch', config=plotly_config)
