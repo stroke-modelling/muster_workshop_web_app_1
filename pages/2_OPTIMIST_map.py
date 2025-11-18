@@ -628,6 +628,92 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
         st.table(df_treats)
 
+        # ----- Network graph -----
+        cn = st.expander('Network graphs')
+        with cn:
+            if region_type == 'national':
+                st.markdown('Too big an area to draw the network graphs.')
+            else:
+                cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
+                              'transfer_unit']
+                df_network = (
+                    st.session_state['df_region_unit_admissions']
+                    [cols_units + [region]])
+                df_network = df_network.rename(columns={region: 'admissions'})
+                # Only keep units that have admissions from selected region:
+                df_network = df_network.dropna(subset=['admissions'])
+                # Usual care proportions:
+                df_net_u = reg.calculate_network_usual_care(
+                    df_network, st.session_state['dict_pops']['usual_care'])
+                # Redirection proportions:
+                df_net_r = reg.calculate_network_redir(
+                    df_network, st.session_state['dict_pops']['redir_allowed'])
+
+                # Gather units in the network:
+                cols_units = ['first_unit', 'transfer_unit']
+                all_units = sorted(list(
+                    set(df_net_u[cols_units].values.flatten()) |
+                    set(df_net_r[cols_units].values.flatten())
+                ))
+                # Only units whose catchment area is in the selected region:
+                nearest_units = sorted(list(
+                    set(df_net_u['nearest_unit'].values.flatten()) |
+                    set(df_net_r['nearest_unit'].values.flatten())
+                ))
+                gdf_units = plot_maps.generate_node_coordinates(
+                    df_unit_services, all_units)
+                gdf_region, region_display_name = (
+                    plot_maps.load_region_outline_here(region_type, region))
+                bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
+                    gdf_units, gdf_region)
+                gdf_nearest_units = (
+                    plot_maps.make_coords_nearest_unit_catchment(
+                        gdf_units, df_net_u, bounds, nearest_units,
+                        x_buffer, y_buffer
+                        )
+                    )
+
+                # Set up colours for catchment units:
+                colours_reds = ['tomato', 'crimson', 'darkred', 'firebrick',
+                                'indianred', 'lightcoral', 'orangered', 'red',
+                                'salmon']
+                colours_blues = [
+                    'blue', 'cornflowerblue', 'cyan',
+                    'deepskyblue',
+                    'dodgerblue', 'lightblue', 'lightskyblue', 'mediumblue',
+                    'navy', 'powderblue', 'royalblue',
+                    'skyblue', 'slateblue', 'steelblue',
+                    # # The following are a bit more green:
+                    # 'darkcyan', 'darkturquoise', 'turquoise',
+                    # 'mediumturquoise',
+                    ]
+                mask_mt = gdf_nearest_units['Use_MT'] == 1
+                while len(gdf_nearest_units.loc[mask_mt]) > len(colours_reds):
+                    colours_reds += colours_reds
+                while (len(gdf_nearest_units.loc[~mask_mt]) >
+                       len(colours_blues)):
+                    colours_blues += colours_blues
+                gdf_nearest_units.loc[mask_mt, 'colour'] = (
+                    colours_reds[:len(gdf_nearest_units.loc[mask_mt])])
+                gdf_nearest_units.loc[~mask_mt, 'colour'] = (
+                    colours_blues[:len(gdf_nearest_units.loc[~mask_mt])])
+
+                catch_trace = plot_maps.make_unit_catchment_raster(
+                    df_lsoa_units_times,
+                    gdf_nearest_units.index.values,
+                    gdf_nearest_units['colour'],
+                    df_raster,
+                    transform_dict,
+                    )
+
+                # Plot graph:
+                plot_maps.plot_networks(
+                    df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
+                    gdf_units, bounds, catch_trace, gdf_region, region,
+                    subplot_titles=['Catchment map', 'Usual care',
+                                    'Redirection available'],
+                    )
+
         # Outcomes:
         for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
             df_u = st.session_state['dict_highlighted_region_outcomes'][
@@ -681,60 +767,6 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     }
                     reg.plot_mrs_bars(mrs_lists_dict,
                                       key='_'.join([region, subgroup]))
-
-# ----- Network graph -----
-cols_units = ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit']
-df_network = (
-    st.session_state['df_region_unit_admissions'][cols_units + [region]])
-df_network = df_network.rename(columns={region: 'admissions'})
-# Only keep units that have admissions from selected region:
-df_network = df_network.dropna(subset=['admissions'])
-# Usual care proportions:
-df_net_u = reg.calculate_network_usual_care(
-    df_network, st.session_state['dict_pops']['usual_care'])
-# Redirection proportions:
-df_net_r = reg.calculate_network_redir(
-    df_network, st.session_state['dict_pops']['redir_allowed'])
-st.write(df_net_u)
-st.write(df_net_r)
-
-# Gather units in the network:
-cols_units = ['first_unit', 'transfer_unit']
-all_units = sorted(list(
-    set(df_net_u[cols_units].values.flatten()) |
-    set(df_net_r[cols_units].values.flatten())
-))
-# Only units whose catchment area is in the selected region:
-nearest_units = sorted(list(
-    set(df_net_u['nearest_unit'].values.flatten()) |
-    set(df_net_r['nearest_unit'].values.flatten())
-))
-gdf_units = plot_maps.generate_node_coordinates(df_unit_services, all_units)
-gdf_region, region_display_name = (
-    plot_maps.load_region_outline_here(region_type, region))
-bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
-    gdf_units, gdf_region)
-gdf_nearest_units = plot_maps.make_coords_nearest_unit_catchment(
-    gdf_units, df_net_u, bounds, nearest_units, x_buffer, y_buffer)
-
-
-colours = [
-    'yellow', 'tomato', 'steelblue', 'yellowgreen',
-    'sandybrown', 'slateblue', 'seagreen', 'palevioletred',
-    'paleturquoise', 'purple'
-    ]
-while len(gdf_nearest_units) > len(colours):
-    colours += colours
-gdf_nearest_units['colour'] = colours[:len(gdf_nearest_units)]
-
-# Plot graph:
-plot_maps.plot_networks(
-    df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
-    gdf_units, bounds, gdf_region, region,
-    subplot_titles=['Catchment map', 'Usual care', 'Redirection available']
-    )
-
-st.stop()
 
 
 # ----- Maps -----

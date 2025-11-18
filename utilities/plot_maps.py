@@ -612,8 +612,8 @@ def set_network_map_bounds(gdf_units, gdf_region=None):
         bounds = gdf_units.total_bounds
 
     # Add breathing room to region bounding box:
-    x_buffer = (bounds[2] - bounds[0]) * 0.05
-    y_buffer = (bounds[3] - bounds[1]) * 0.05
+    x_buffer = (bounds[2] - bounds[0]) * 0.1
+    y_buffer = (bounds[3] - bounds[1]) * 0.1
     bounds = [
         bounds[0] - x_buffer,
         bounds[1] - y_buffer,
@@ -706,7 +706,8 @@ def make_coords_nearest_unit_catchment(
         np.tan(gdf.loc[mask_right, 'angle'])
         )
 
-    cols_to_keep = ['nearest_unit', 'side', 'x_anchor', 'y_anchor', 'ssnap_name']
+    cols_to_keep = ['nearest_unit', 'side', 'x_anchor', 'y_anchor',
+                    'ssnap_name', 'Use_MT']
     gdf = gdf[cols_to_keep]
     gdf = pd.merge(
         gdf.reset_index(),
@@ -714,6 +715,73 @@ def make_coords_nearest_unit_catchment(
         left_on='Postcode', right_on='first_unit', how='left'
         ).set_index('Postcode').drop('first_unit', axis='columns')
     return gdf
+
+
+def make_unit_catchment_raster(
+        df_lsoa_units_times,
+        catchment_units,
+        colour_lookup,
+        df_raster,
+        transform_dict,
+        ):
+    """
+    colour lookup e.g. [[0, 'rgb(0,0,0)'], [1, colour]]
+    """
+    # Unit catchment:
+    df_lsoa_units_times = df_lsoa_units_times.copy()
+    mask = df_lsoa_units_times['nearest_ivt_unit'].isin(catchment_units)
+    # Set up unit --> number --> colour lookup.
+    df = df_lsoa_units_times.loc[mask].copy()
+    unit_dict = dict(zip(catchment_units, np.linspace(0.0, 1.0, len(catchment_units))))
+    df['unit_number'] = df['nearest_ivt_unit'].map(unit_dict)
+    colour_lookup = pd.DataFrame(colour_lookup)
+    colour_lookup['unit_number'] = colour_lookup.index.map(unit_dict)
+    colour_scale = colour_lookup[['unit_number', 'colour']].values
+    colour_scale = [list(i) for i in colour_scale]
+
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df,
+        ['unit_number'],
+        _log=False
+        )
+    arr = arrs[0]
+
+    # Crop the array to non-NaN values:
+    mask0 = np.all(np.isnan(arr), axis=0)
+    min0 = np.where(mask0 == False)[0][0]
+    max0 = np.where(mask0 == False)[0][-1]
+    mask1 = np.all(np.isnan(arr), axis=1)
+    min1 = np.where(mask1 == False)[0][0]
+    max1 = np.where(mask1 == False)[0][-1]
+    arr = arr[min1:max1+1, min0:max0+1]
+    # Update the transform dictionary to reflect the crop.
+    # Make a copy of the transform dict:
+    transform_dict_here = {}
+    for k, v in transform_dict.items():
+        transform_dict_here[k] = v
+    # Update the coordinates of the bottom left corner:
+    transform_dict_here['xmin'] = (
+        transform_dict['xmin'] + transform_dict['pixel_size'] * min0)
+    transform_dict_here['ymin'] = (
+        transform_dict['ymin'] + transform_dict['pixel_size'] * min1)
+
+    # The actual map:
+    catch_trace = go.Heatmap(
+        z=arr,
+        transpose=False,
+        x0=transform_dict_here['xmin'],
+        dx=transform_dict_here['pixel_size'],
+        y0=transform_dict_here['ymin'],
+        dy=transform_dict_here['pixel_size'],
+        zmin=0,
+        zmax=1,
+        showscale=False,
+        colorscale=colour_scale,
+        hoverinfo='skip',
+    )
+    return catch_trace
 
 
 #MARK: Plot figures
@@ -879,14 +947,25 @@ def plot_outcome_maps(
 
 def plot_networks(
         df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
-        gdf_units, bounds, gdf_region=None, region_display_name=None,
+        gdf_units, bounds, catch_trace, gdf_region=None, region_display_name=None,
         subplot_titles=[]
         ):
     fig = make_subplots(
         rows=3, cols=1,
-        vertical_spacing=0.0,
+        vertical_spacing=0.05,
         subplot_titles=subplot_titles,
         )
+
+    # Border:
+    fig.add_shape(
+        type="rect",
+        x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
+        fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
+        line=dict(color='grey', width=4,),
+        layer='between',  # below other traces
+        col='all', row='all',
+        # zorder=-2
+    )
 
     # ----- Country outline -----
     gdf_eng = load_england_outline(bounds)
@@ -898,23 +977,18 @@ def plot_networks(
         y=gdf_eng['y'],
         mode='lines',
         fill="toself",
-        # fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
-        fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
+        fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
+        # fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
         # fillcolor='rgba(0.573, 0.573, 0.573, 1)',  # grey
         line_color='rgba(0, 0, 0, 0)',
         showlegend=False,
         hoverinfo='skip',
-        ), row='all', col='all'
+        zorder=-1,
+        ), row='all', col='all',
     )
 
-    # Border:
-    fig.add_shape(
-        type="rect",
-        x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
-        line=dict(color='grey', width=4,),
-        layer='between',  # below other traces
-        col='all', row='all'
-    )
+    # Region catchment:
+    fig.add_trace(catch_trace, row=1, col=1)
 
     # Selected region:
     if isinstance(gdf_region, pd.DataFrame):
@@ -925,7 +999,7 @@ def plot_networks(
                 mode='lines',
                 fill="toself",
                 fillcolor='rgba(0, 0, 0, 0)',
-                line_color='grey',
+                line_color='black',
                 name=region_display_name,
                 # text=gdf_region.loc[i, region_type],
                 hoverinfo='skip',
@@ -960,7 +1034,7 @@ def plot_networks(
             standoff = 10
             # Setup for sneaking:
             bw = w * 1.3
-            baw = aw * 1.1
+            baw = aw * 1.0
             bcolour = 'black'
             # Sneaky background arrow for outline effect:
             fig.add_trace(go.Scatter(
@@ -1022,7 +1096,7 @@ def plot_networks(
         df_net_trans = df_net_trans.drop('nearest_unit', axis='columns')
         df_net_trans = df_net_trans.groupby(
             ['first_unit', 'transfer_unit']).sum().reset_index()
-        colour = 'rgba(0.95, 0.95, 0.95, 1.0)'
+        colour = 'white'  #'rgba(0.95, 0.95, 0.95, 1.0)'
         for i in df_net_trans.index:
             s = df_net_trans.loc[i]
             name_first = df_unit_services.loc[
@@ -1042,12 +1116,30 @@ def plot_networks(
                 w = np.log(a)  #  / 75.0
                 w = 1.0 if w < 1.0 else w
                 aw = w * 5 if w < 3 else w*2
+                # Setup for sneaking:
+                bw = w * 1.3
+                baw = aw * 1.0
+                bcolour = 'black'
+                # Sneaky background arrow for outline effect:
+                fig.add_trace(go.Scatter(
+                    x=[x_first, x_trans],
+                    y=[y_first, y_trans],
+                    mode='lines+markers',
+                    marker=dict(size=baw, symbol='arrow-up', angleref='previous',
+                                standoff=standoff, line=dict(color='black', width=2)),
+                    line_color=bcolour,
+                    line_width=bw,
+                    # text=[a],
+                    hoverinfo='skip',
+                    name=None,
+                ), col=1, row=d+2)
+                # The actual arrow:
                 fig.add_trace(go.Scatter(
                     x=[x_first, x_trans],
                     y=[y_first, y_trans],
                     mode='lines+markers',
                     marker=dict(size=aw, symbol='arrow-up', angleref='previous',
-                                standoff=10),
+                                standoff=standoff),
                     line_color=colour,
                     line_width=w,
                     hoverinfo='skip',
@@ -1114,7 +1206,8 @@ def plot_networks(
             # Need the following line to remove default "trace" bit
             # in second "extra" box:
             '<extra></extra>'
-            )
+            ),
+        hoverlabel=dict(bordercolor=gdf_nearest_units['colour']),
     ), row=[2, 3], col='all')
 
     fig.update_layout(hovermode='closest')
@@ -1130,10 +1223,16 @@ def plot_networks(
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title_text='')
 
+    # Calculate height based on aspect ratio:
+    width = 500
+    height = (
+        (0.75 * width) +  # space for subplot gaps
+        (3.0 * 0.8 * width * (bounds[3] - bounds[1]) / (bounds[2] - bounds[0]))
+    )
     # Figure setup.
     fig.update_layout(
-        width=500,
-        height=1200,
+        width=width,
+        height=height,
         margin_t=25,
         margin_b=0,
         margin_l=0,
@@ -1141,8 +1240,8 @@ def plot_networks(
         )
     fig.update_layout(legend=dict(
         orientation="h",
-        yanchor="top",
-        y=-0.1,
+        yanchor="bottom",
+        y=1.05,
         xanchor="center",
         x=0.5,
     ))
