@@ -394,12 +394,15 @@ def calculate_population_subgroup_grid_muster(
         .reset_index().set_index('treatment_group'))
 
     # Gather the new props dataframes:
-    list_of_dfs = [df_pop_usual_care, df_pop_msu]
+    dict_of_dfs = {
+        'usual_care': df_pop_usual_care,
+        'msu': df_pop_msu,
+        }
 
     # Split "treatment group" column into occlusion / treatment
     # columns. To match df_subgroups.
     cols_bits = ['nlvo', 'lvo', 'ivt', 'mt', 'ivt_mt', 'no_treatment']
-    for df in list_of_dfs:
+    for key, df in dict_of_dfs.items():
         # Set treatment group as index to make loc easier:
         i_col = df.index.name
         df.reset_index(inplace=True)
@@ -427,7 +430,7 @@ def calculate_population_subgroup_grid_muster(
     # Calculate proportions for the selected subgroups.
     for sub_name in df_subgroups.index:
         s = df_subgroups.loc[sub_name]
-        for df in list_of_dfs:
+        for key, df in dict_of_dfs.items():
             # Start with all rows allowed...
             mask = np.full(len(df), True)
             # ... then remove rows that don't match setup:
@@ -442,7 +445,7 @@ def calculate_population_subgroup_grid_muster(
     if _log:
         p = 'Calculated proportions of patients with each stroke type and treatment combo in each scenario.'
         print_progress_loc(p, _log_loc)
-    return tuple(list_of_dfs)
+    return dict_of_dfs
 
 
 def plot_population_props(

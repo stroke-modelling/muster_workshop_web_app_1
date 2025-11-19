@@ -267,15 +267,15 @@ def find_nearest_units_each_lsoa(df_unit_services, use_msu=False, _log=True, _lo
              'nearest_msu_unit', 'nearest_msu_time', 'Admissions',
              'nearest_ivt_then_mt_time'
     """
-    try:
-        geo = st.session_state['geo']
-    except KeyError:
-        # Process and save geographic data
-        # (only needed when hospital data changes)
-        geo = Geoprocessing(
-            limit_to_england=True,
-            use_msu=use_msu
-            )
+    # try:
+    #     geo = st.session_state['geo']
+    # except KeyError:
+    # Process and save geographic data
+    # (only needed when hospital data changes)
+    geo = Geoprocessing(
+        limit_to_england=True,
+        use_msu=use_msu
+        )
     # Update units:
     geo.df_unit_services = df_unit_services
     geo.update_unit_services()

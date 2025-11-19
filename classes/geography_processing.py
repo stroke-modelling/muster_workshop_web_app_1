@@ -194,6 +194,7 @@ class Geoprocessing(object):
         self.admissions = pd.read_csv(
             './data/admissions_2017-2019.csv', index_col='area')
         self.admissions.sort_index(inplace=True)
+        self.admissions = self.admissions.round(4)
 
         self.inter_hospital_time = pd.read_csv(
             './data/inter_hospital_time_calibrated.csv', index_col='from_postcode')
