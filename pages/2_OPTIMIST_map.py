@@ -267,6 +267,8 @@ with containers['units_text']:
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
         'ambo22': 'Ambulance service',
+        'nearest_ivt_unit': 'Nearest IVT unit',
+        'nearest_mt_unit': 'Nearest MT unit',
     }
 
     def f(label):
@@ -287,6 +289,7 @@ with containers['log_units']:  # for log_loc
         )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
+st.stop()
 
 
 # ----- Pathway timings -----
@@ -795,29 +798,6 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         )
 
     # Set up colours for catchment units:
-    colours_reds = ['tomato', 'crimson', 'darkred', 'firebrick',
-                    'indianred', 'lightcoral', 'orangered', 'red',
-                    'salmon']
-    colours_blues = [
-        'blue', 'cornflowerblue', 'cyan',
-        'deepskyblue',
-        'dodgerblue', 'lightblue', 'lightskyblue', 'mediumblue',
-        'navy', 'powderblue', 'royalblue',
-        'skyblue', 'slateblue', 'steelblue',
-        # # The following are a bit more green:
-        # 'darkcyan', 'darkturquoise', 'turquoise',
-        # 'mediumturquoise',
-        ]
-    mask_mt = gdf_nearest_units['Use_MT'] == 1
-    while len(gdf_nearest_units.loc[mask_mt]) > len(colours_reds):
-        colours_reds += colours_reds
-    while (len(gdf_nearest_units.loc[~mask_mt]) >
-            len(colours_blues)):
-        colours_blues += colours_blues
-    gdf_nearest_units.loc[mask_mt, 'colour'] = (
-        colours_reds[:len(gdf_nearest_units.loc[mask_mt])])
-    gdf_nearest_units.loc[~mask_mt, 'colour'] = (
-        colours_blues[:len(gdf_nearest_units.loc[~mask_mt])])
 
     catch_trace = plot_maps.make_unit_catchment_raster(
         df_lsoa_units_times,

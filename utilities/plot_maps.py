@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
+from itertools import groupby
 
 import stroke_maps.load_data
 
@@ -315,6 +316,38 @@ def make_shared_map_traces(
         colorscale=[[0, 'rgb(0,0,0)'], [1, colour]],
         hoverinfo='skip',
     )
+
+    # ----- Nearest MT units -----
+    try:
+        df_unit_services = df_unit_services.drop(
+            ['colour_ind', 'colour'], axis='columns')
+    except KeyError:
+        pass
+    map_traces['raster_nearest_mt_unit'], _, df_unit_services = make_unit_catchment_raster(
+        df_lsoa_units_times,
+        df_unit_services,
+        df_raster,
+        transform_dict,
+        # unit_number_column='unit_number',
+        nearest_unit_column='nearest_mt_unit',
+        redo_transform=False,
+        create_colour_scale=True,
+        )
+
+    # ----- Nearest IVT units -----
+    map_traces['raster_nearest_ivt_unit'], _, df_unit_services = (
+        make_unit_catchment_raster(
+            df_lsoa_units_times,
+            df_unit_services,  # this is returned with colours
+            df_raster,
+            transform_dict,
+            # unit_number_column='unit_number',
+            nearest_unit_column='nearest_ivt_unit',
+            redo_transform=False,
+            create_colour_scale=True,
+            )
+    )
+
     return map_traces
 
 
@@ -415,6 +448,237 @@ def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
         hoverinfo='skip',
     )
     return trace
+
+
+# def create_unit_ids(df_unit_services):
+#     # Set up unit --> number --> colour lookup.
+#     # The raster array prefers to work with numbers rather than strings.
+#     n = np.round(np.linspace(
+#         0.0, 1.0, len(df_unit_services)), 3)
+#     # np.random.shuffle(n)
+#     df_unit_services['unit_number'] = n
+#     return df_unit_services
+
+
+def make_unit_catchment_raster(
+        df_lsoa_units_times,
+        df_unit_services,
+        df_raster,
+        transform_dict,
+        # unit_number_column='unit_number',
+        nearest_unit_column='nearest_ivt_unit',
+        redo_transform=True,
+        create_colour_scale=False,
+        ):
+    """
+    colour lookup e.g. [[0, 'rgb(0,0,0)'], [1, colour]]
+    """
+    if 'colour_ind' in df_unit_services.columns:
+        pass
+    else:
+        df_unit_services['colour_ind'] = -1  # dtype int
+    if nearest_unit_column == 'nearest_mt_unit':
+        catchment_units = df_unit_services.loc[
+            df_unit_services['Use_MT'] == 1].index.values
+        df_units = df_unit_services.loc[
+            df_unit_services['Use_MT'] == 1].copy()
+    else:
+        catchment_units = df_unit_services.index.values
+        df_units = df_unit_services.copy()
+
+    # Set up unit --> number --> colour lookup.
+    # The raster array prefers to work with numbers rather than strings.
+    n = np.round(np.linspace(
+        0.0, 1.0, len(df_units)), 3)
+    # np.random.shuffle(n)
+    unit_number_column = 'unit_number'
+    df_units[unit_number_column] = n
+    # Make a copy in the actual df:
+    df_unit_services = pd.merge(
+        df_unit_services,
+        df_units[unit_number_column],
+        left_index=True, right_index=True, how='left'
+        )
+
+    # Limit to LSOA caught by the given units:
+    df_lsoa_units_times = df_lsoa_units_times.copy()
+    mask = df_lsoa_units_times[nearest_unit_column].isin(catchment_units)
+    df = df_lsoa_units_times.loc[mask].copy()
+    df = pd.merge(
+        df, df_units.reset_index()[['Postcode', unit_number_column]],
+        left_on=nearest_unit_column, right_on='Postcode', how='left'
+        )
+
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df,
+        [unit_number_column],
+        _log=False
+        )
+    arr = arrs[0]
+
+    # Update the transform dictionary to reflect the crop.
+    # Make a copy of the transform dict:
+    transform_dict_here = {}
+    for k, v in transform_dict.items():
+        transform_dict_here[k] = v
+    if redo_transform:
+        # Crop the array to non-NaN values:
+        mask0 = np.all(np.isnan(arr), axis=0)
+        min0 = np.where(mask0 == False)[0][0]
+        max0 = np.where(mask0 == False)[0][-1]
+        mask1 = np.all(np.isnan(arr), axis=1)
+        min1 = np.where(mask1 == False)[0][0]
+        max1 = np.where(mask1 == False)[0][-1]
+        arr = arr[min1:max1+1, min0:max0+1]
+        # Update the coordinates of the bottom left corner:
+        transform_dict_here['xmin'] = (
+            transform_dict['xmin'] + transform_dict['pixel_size'] * min0)
+        transform_dict_here['ymin'] = (
+            transform_dict['ymin'] + transform_dict['pixel_size'] * min1)
+
+    if create_colour_scale:
+        # Check which regions border each other.
+        # pairs = []
+        df_pairs = pd.DataFrame(
+            np.zeros((len(df_units), len(df_units))),
+            columns=df_units[unit_number_column],
+            index=df_units[unit_number_column],
+            )
+        for row in arr:
+            # From https://stackoverflow.com/a/5738933
+            vals_order = [key for key, _group in groupby(row[~np.isnan(row)])]
+            for i in range(len(vals_order))[:-1]:
+                df_pairs.loc[vals_order[i], vals_order[i+1]] = 1
+                df_pairs.loc[vals_order[i+1], vals_order[i]] = 1
+
+        # Dict of unit number to unit postcode:
+        dict_number_unit = (
+            df_units.reset_index().set_index(unit_number_column)
+            ['Postcode'].to_dict()
+        )
+        # Convert pairs df to postcode lookup:
+        df_pairs = df_pairs.rename(
+            columns=dict_number_unit, index=dict_number_unit)
+
+        # Check if any units already have colours assigned to them:
+        try:
+            units_with_colours = list(
+                df_units[df_units['colour'].notna()]
+                .index.values
+            )
+        except KeyError:
+            units_with_colours = []
+        # Sort columns from units that already have colours and then
+        # from most to fewest neighbours:
+        n_neighbours = df_pairs.sum(axis='rows').sort_values(ascending=False)
+        unit_order = (
+            units_with_colours +
+            [u for u in n_neighbours.index if u not in units_with_colours]
+        )
+        df_pairs = df_pairs[unit_order]
+        # Allow more colours than we'll likely need:
+        colour_options = range(10)
+        df_colours_allowed = pd.DataFrame(
+            np.ones((len(colour_options), len(df_pairs))),
+            columns=df_pairs.columns,
+            index=colour_options
+        )
+
+        for unit in df_pairs.columns:
+            # Pick the colour here:
+            s = df_colours_allowed[unit]
+            colours_allowed = s[s > 0]
+            if unit in units_with_colours:
+                colour = df_units.loc[unit, 'colour_ind']
+            else:
+                colour = colours_allowed.index[0]
+            # Set this unit to only be allowed this colour:
+            other_colours = [c for c in colour_options if c != colour]
+            df_colours_allowed.loc[other_colours, unit] = 0
+            # Update the allowed colours for its neighbours:
+            neighbours = df_pairs[df_pairs[unit] > 0].index.values
+            df_colours_allowed.loc[colour, neighbours] = 0
+
+        # Pick out the colour index assigned to each unit:
+        # colour_scale = df_unit_services[[unit_number_column]].copy()
+        # From now on update the original df_unit_services dataframe,
+        # not the temporary df_units dataframe.
+        for unit in df_units.index:
+            if unit not in units_with_colours:
+                ind = df_colours_allowed[df_colours_allowed[unit] == 1].index.values[0]
+                df_unit_services.loc[unit, 'colour_ind'] = int(ind)
+        # df_unit_services['colour_ind'] = df_unit_services['colour_ind'].astype(int)
+        # Use these indexes to pick out the colour for each unit.
+        # Setup for picking:
+        colours_dict = {
+            'Use_MT': [
+                # 'magenta',
+                'red', 'darkred', 'darkorange', 'lightcoral',
+                'crimson', 'indianred', 'darksalmon',
+                ],
+            'Use_IVT': [
+                # 'limegreen',
+                'blue', 'cornflowerblue', 'cyan',
+                'deepskyblue',
+                'dodgerblue', 'lightblue', 'lightskyblue', 'mediumblue',
+                'navy', 'powderblue', 'royalblue',
+                'skyblue', 'slateblue', 'steelblue',
+                # # The following are a bit more green:
+                # 'darkcyan', 'darkturquoise', 'turquoise',
+                # 'mediumturquoise',
+                ],
+        }
+        masks_dict = {
+            'Use_MT': df_unit_services['Use_MT'] == 1,
+            'Use_IVT': df_unit_services['Use_MT'] != 1,
+        }
+        # Duplicate colours if necessary (shouldn't be!):
+        while ((df_unit_services.loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1) >
+               len(colours_dict['Use_MT'])):
+            colours_dict['Use_MT'] += colours_dict['Use_MT']
+        while ((df_unit_services.loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1) >
+                len(colours_dict['Use_IVT'])):
+            colours_dict['Use_IVT'] += colours_dict['Use_IVT']
+
+        # Assign reds to MT units and blues to IVT units:
+        for t in ['Use_MT', 'Use_IVT']:
+            m = masks_dict[t]
+            c = colours_dict[t]
+            max_ind = df_unit_services.loc[m, 'colour_ind'].max()
+            if max_ind == -1:
+                # No units here.
+                pass
+            else:
+                for i in range(max_ind+1):
+                    mask = m & (df_unit_services['colour_ind'] == i)
+                    df_unit_services.loc[mask, 'colour'] = c[i]
+
+    # Set up unit --> number --> colour lookup.
+    mask_colours = df_unit_services['colour'].notna()
+    colour_scale = df_unit_services.loc[
+        mask_colours, [unit_number_column, 'colour']].copy().sort_values(unit_number_column).values
+    colour_scale = [list(i) for i in colour_scale]
+
+    # The actual map:
+    catch_trace = go.Heatmap(
+        z=arr,
+        transpose=False,
+        x0=transform_dict_here['xmin'],
+        dx=transform_dict_here['pixel_size'],
+        y0=transform_dict_here['ymin'],
+        dy=transform_dict_here['pixel_size'],
+        zmin=0,
+        zmax=1,
+        showscale=False,
+        colorscale=colour_scale,
+        hoverinfo='skip',
+    )
+    # Delete temporary data:
+    df_unit_services = df_unit_services.drop(
+        unit_number_column, axis='columns')
+    return catch_trace, transform_dict_here, df_unit_services
 
 
 #MARK: Figure setup
@@ -717,73 +981,6 @@ def make_coords_nearest_unit_catchment(
     return gdf
 
 
-def make_unit_catchment_raster(
-        df_lsoa_units_times,
-        catchment_units,
-        colour_lookup,
-        df_raster,
-        transform_dict,
-        ):
-    """
-    colour lookup e.g. [[0, 'rgb(0,0,0)'], [1, colour]]
-    """
-    # Unit catchment:
-    df_lsoa_units_times = df_lsoa_units_times.copy()
-    mask = df_lsoa_units_times['nearest_ivt_unit'].isin(catchment_units)
-    # Set up unit --> number --> colour lookup.
-    df = df_lsoa_units_times.loc[mask].copy()
-    unit_dict = dict(zip(catchment_units, np.linspace(0.0, 1.0, len(catchment_units))))
-    df['unit_number'] = df['nearest_ivt_unit'].map(unit_dict)
-    colour_lookup = pd.DataFrame(colour_lookup)
-    colour_lookup['unit_number'] = colour_lookup.index.map(unit_dict)
-    colour_scale = colour_lookup[['unit_number', 'colour']].values
-    colour_scale = [list(i) for i in colour_scale]
-
-    arrs = gather_map_data(
-        df_raster,
-        transform_dict,
-        df,
-        ['unit_number'],
-        _log=False
-        )
-    arr = arrs[0]
-
-    # Crop the array to non-NaN values:
-    mask0 = np.all(np.isnan(arr), axis=0)
-    min0 = np.where(mask0 == False)[0][0]
-    max0 = np.where(mask0 == False)[0][-1]
-    mask1 = np.all(np.isnan(arr), axis=1)
-    min1 = np.where(mask1 == False)[0][0]
-    max1 = np.where(mask1 == False)[0][-1]
-    arr = arr[min1:max1+1, min0:max0+1]
-    # Update the transform dictionary to reflect the crop.
-    # Make a copy of the transform dict:
-    transform_dict_here = {}
-    for k, v in transform_dict.items():
-        transform_dict_here[k] = v
-    # Update the coordinates of the bottom left corner:
-    transform_dict_here['xmin'] = (
-        transform_dict['xmin'] + transform_dict['pixel_size'] * min0)
-    transform_dict_here['ymin'] = (
-        transform_dict['ymin'] + transform_dict['pixel_size'] * min1)
-
-    # The actual map:
-    catch_trace = go.Heatmap(
-        z=arr,
-        transpose=False,
-        x0=transform_dict_here['xmin'],
-        dx=transform_dict_here['pixel_size'],
-        y0=transform_dict_here['ymin'],
-        dy=transform_dict_here['pixel_size'],
-        zmin=0,
-        zmax=1,
-        showscale=False,
-        colorscale=colour_scale,
-        hoverinfo='skip',
-    )
-    return catch_trace
-
-
 #MARK: Plot figures
 # ########################
 # ##### PLOT FIGURES #####
@@ -791,13 +988,24 @@ def make_unit_catchment_raster(
 def draw_units_map(map_traces, outline_name='none'):
     fig = go.Figure()
 
-    fig.add_trace(map_traces['raster_nearest_csc']['trace'])
+    # Only draw the "nearest unit has MT" raster if we're not
+    # drawing all the unit catchments anyway.
+    if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
+        pass
+    else:
+        fig.add_trace(map_traces['raster_nearest_csc']['trace'])
+    # Always draw the "nearest unit has MT" legend cheat:
     fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+    # Region outline or unit catchment raster:
     if outline_name == 'none':
         fig.add_trace(map_traces['england_outline'])
     else:
-        for t in map_traces[f'{outline_name}_outlines']:
-            fig.add_trace(t)
+        if f'{outline_name}_outlines' in map_traces.keys():
+            for t in map_traces[f'{outline_name}_outlines']:
+                fig.add_trace(t)
+        else:
+            fig.add_trace(map_traces[f'raster_{outline_name}'])
+
     for r in map_traces['roads']:
         fig.add_trace(r)
     fig.add_trace(map_traces['units']['ivt'])
@@ -821,7 +1029,8 @@ def draw_units_map(map_traces, outline_name='none'):
     st.plotly_chart(
         fig,
         width='content',
-        config=plotly_config
+        config=plotly_config,
+        key='pants'
         )
 
 
