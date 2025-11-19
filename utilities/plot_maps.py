@@ -348,7 +348,7 @@ def make_shared_map_traces(
             )
     )
 
-    return map_traces
+    return map_traces, df_unit_services
 
 
 def make_units_traces(gdf_units):
@@ -450,16 +450,6 @@ def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
     return trace
 
 
-# def create_unit_ids(df_unit_services):
-#     # Set up unit --> number --> colour lookup.
-#     # The raster array prefers to work with numbers rather than strings.
-#     n = np.round(np.linspace(
-#         0.0, 1.0, len(df_unit_services)), 3)
-#     # np.random.shuffle(n)
-#     df_unit_services['unit_number'] = n
-#     return df_unit_services
-
-
 def make_unit_catchment_raster(
         df_lsoa_units_times,
         df_unit_services,
@@ -488,14 +478,11 @@ def make_unit_catchment_raster(
 
     # Set up unit --> number --> colour lookup.
     # The raster array prefers to work with numbers rather than strings.
-    n = np.round(np.linspace(
-        0.0, 1.0, len(df_units)), 3)
-    # np.random.shuffle(n)
     unit_number_column = 'unit_number'
-    df_units[unit_number_column] = n
+    df_units[unit_number_column] = np.round(
+        np.linspace(0.0, 1.0, len(df_units)), 3)
     # Make a copy in the actual df:
-    df_unit_services = pd.merge(
-        df_unit_services,
+    df_unit_services = df_unit_services.merge(
         df_units[unit_number_column],
         left_index=True, right_index=True, how='left'
         )
@@ -565,9 +552,7 @@ def make_unit_catchment_raster(
         # Check if any units already have colours assigned to them:
         try:
             units_with_colours = list(
-                df_units[df_units['colour'].notna()]
-                .index.values
-            )
+                df_units[df_units['colour'].notna()].index.values)
         except KeyError:
             units_with_colours = []
         # Sort columns from units that already have colours and then
@@ -614,20 +599,14 @@ def make_unit_catchment_raster(
         # Setup for picking:
         colours_dict = {
             'Use_MT': [
-                # 'magenta',
-                'red', 'darkred', 'darkorange', 'lightcoral',
-                'crimson', 'indianred', 'darksalmon',
+                'red', 'firebrick', 'darkorange', 'lightcoral',
+                'crimson', 'indianred', 'darksalmon', 'darkred',
                 ],
             'Use_IVT': [
-                # 'limegreen',
-                'blue', 'cornflowerblue', 'cyan',
-                'deepskyblue',
-                'dodgerblue', 'lightblue', 'lightskyblue', 'mediumblue',
-                'navy', 'powderblue', 'royalblue',
+                'deepskyblue', 'dodgerblue', 'lightblue',
+                'mediumblue', 'royalblue', 'powderblue',
                 'skyblue', 'slateblue', 'steelblue',
-                # # The following are a bit more green:
-                # 'darkcyan', 'darkturquoise', 'turquoise',
-                # 'mediumturquoise',
+                'cornflowerblue', 'lightskyblue', 'navy', 'cyan', 'blue',
                 ],
         }
         masks_dict = {
@@ -971,7 +950,7 @@ def make_coords_nearest_unit_catchment(
         )
 
     cols_to_keep = ['nearest_unit', 'side', 'x_anchor', 'y_anchor',
-                    'ssnap_name', 'Use_MT']
+                    'ssnap_name', 'Use_MT', 'colour']
     gdf = gdf[cols_to_keep]
     gdf = pd.merge(
         gdf.reset_index(),

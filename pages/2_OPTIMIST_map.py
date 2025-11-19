@@ -256,11 +256,12 @@ with containers['log_units']:  # for log_loc
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
 map_traces = plot_maps.make_constant_map_traces()
-map_traces = (
+map_traces_shared, df_unit_services = (
     plot_maps.make_shared_map_traces(
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
-    ) | map_traces
+    )
 )
+map_traces = map_traces_shared | map_traces
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
@@ -289,7 +290,6 @@ with containers['log_units']:  # for log_loc
         )
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in the lines above.
-st.stop()
 
 
 # ----- Pathway timings -----
@@ -797,14 +797,19 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             )
         )
 
-    # Set up colours for catchment units:
-
-    catch_trace = plot_maps.make_unit_catchment_raster(
-        df_lsoa_units_times,
-        gdf_nearest_units.index.values,
-        gdf_nearest_units['colour'],
-        df_raster,
-        transform_dict,
+    if region_type == 'national':
+        pass
+    else:
+        # Set up colours for catchment units:
+        catch_trace, transform_dict_units, gdf_nearest_units = (
+            plot_maps.make_unit_catchment_raster(
+                df_lsoa_units_times,
+                gdf_nearest_units,
+                df_raster,
+                transform_dict,
+                nearest_unit_column='nearest_ivt_unit',
+                redo_transform=True,
+                )
         )
 
     with containers['region_unit_maps']:
