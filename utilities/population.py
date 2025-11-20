@@ -152,7 +152,7 @@ def calculate_population_subgroups(d, _log=True, _log_loc=None):
         s += d[f'prop_{occ}_redir_accepted']
         s += d[f'prop_{occ}_redir_rejected']
 
-    if not round(s, 7) == 1.0:
+    if not round(s, 7) == (d['prop_lvo'] + d['prop_nlvo']):
         st.error(f'Check proportions for {occ}: {s}.')
 
     if _log:
@@ -238,6 +238,9 @@ def calculate_population_subgroup_grid(
     for tre in treatment_groups:
         occ = tre.split('_')[0]
         s[tre] = d[f'prop_{occ}'] * d[f'prop_{tre}']
+    # Normalise:
+    # (for when full population includes "other" stroke types)
+    s = s / s.sum()
     # Store separate results for "usual care" by itself:
     df_pop_usual_care = pd.DataFrame(s)
     df_pop_usual_care.index.name = 'treatment_group'

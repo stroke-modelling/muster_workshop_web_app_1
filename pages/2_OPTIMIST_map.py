@@ -136,9 +136,10 @@ def set_up_page_layout():
             'region_unit_maps': 'Patient transport maps',
         }
         for container_name, container_label in c_dict.items():
-            c[f'{container_name}_top'] = st.expander(
+            c[f'{container_name}_exp'] = st.expander(
                 container_label, expanded=False)
-            with c[f'{container_name}_top']:
+            with c[f'{container_name}_exp']:
+                c[f'{container_name}_top'] = st.container()
                 h = True if container_name != 'region_unit_maps' else False
                 c[container_name] = st.container(horizontal=h)
 
@@ -223,7 +224,13 @@ These proportions can be changed in the following table:
 ''')
 with containers['pop_plots']:
     st.markdown('''
-We calculate six base outcomes. These can be combined in different proportions to find the outcomes for a selected subgroup of patients.
+We calculate six base outcomes. These can be combined in different proportions to find the outcomes for the ischaemic stroke patients in a selected subgroup of patients.
+''')
+with containers['region_unit_admissions_top']:
+    st.markdown('''
+Total patients from this catchment area
+directly admitted to (and transferred "t" to or from)
+each unit:
 ''')
 
 #MARK: Setup
@@ -671,10 +678,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
             st.table(df_treats)
 
-    # ----- Tracked unit admissions -----            
+    # ----- Tracked unit admissions -----
     # # Find tracked admissions between units:
     cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
-                    'transfer_unit']
+                  'transfer_unit']
     df_network = (
         st.session_state['df_region_unit_admissions']
         [cols_units + [region]])
@@ -798,11 +805,6 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with c:
             st.subheader(region_label)
 
-            st.markdown('''
-                        Total patients from this catchment area
-                        directly admitted to (and transferred "t" to or from)
-                        each unit:
-                        ''')
             st.dataframe(
                 df_unit_admissions,
                 # column_order=['admissions_combo_usual_care',
@@ -815,33 +817,34 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 )
 
     # ----- Network graph -----
-    gdf_units = plot_maps.generate_node_coordinates(
-        df_unit_services, all_units)
-    gdf_region, region_display_name = (
-        plot_maps.load_region_outline_here(region_type, region))
-    bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
-        gdf_units, gdf_region)
-    gdf_nearest_units = (
-        plot_maps.make_coords_nearest_unit_catchment(
-            gdf_units, df_net_u, bounds, nearest_units,
-            x_buffer, y_buffer
-            )
-        )
-
     if region_type == 'national':
         pass
     else:
+        gdf_units = plot_maps.generate_node_coordinates(
+            df_unit_services, all_units)
+        gdf_region, region_display_name = (
+            plot_maps.load_region_outline_here(region_type, region))
+
         # Set up colours for catchment units:
         catch_trace, transform_dict_units, gdf_nearest_units = (
             plot_maps.make_unit_catchment_raster(
                 df_lsoa_units_times,
-                gdf_nearest_units,
+                gdf_units.loc[[n.replace('nearest_', '') for n in nearest_units]],
                 df_raster,
                 transform_dict,
                 nearest_unit_column='nearest_ivt_unit',
                 redo_transform=True,
                 )
         )
+        # Limit the extent of the map to reasonable bounds:
+        bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
+            gdf_units, gdf_region, transform_dict_units)
+        gdf_nearest_units = (
+            plot_maps.make_coords_nearest_unit_catchment(
+                gdf_units, df_net_u, bounds, nearest_units,
+                x_buffer, y_buffer
+                )
+            )
 
     with containers['region_unit_maps']:
         c = st.container(width='stretch', border=True)
@@ -850,16 +853,21 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 st.subheader(region_label)
                 st.markdown('Too big an area to draw the network graphs.')
             else:
-
+                # Pick out label for the fig:
+                if region_type == 'nearest_ivt_unit':
+                    region_label = df_unit_services.loc[region, 'ssnap_name']
+                else:
+                    region_label = region
                 # Plot graph:
                 plot_maps.plot_networks(
                     df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
-                    gdf_units, bounds, catch_trace, gdf_region, region,
+                    gdf_units, bounds, catch_trace,
+                    gdf_region, region_label,
                     subplot_titles=['Catchment map', 'Usual care',
                                     '', 'Redirection available'],
                     )
 
-    # Outcomes:
+    # ----- Outcomes -----
     for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
         # Calculate "no treatment" data.
         # Should have the same total proportions of nLVO

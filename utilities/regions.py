@@ -758,8 +758,8 @@ def display_region_summary(series_u, series_r, k='mrs_0-2'):
         delta=f"{d:^{label_dict[k]['format']}} {s}",
         delta_color=label_dict[k]['delta_color']
         )
-    st.write(series_r[k], series_u[k])
-    st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
+    # st.write(series_r[k], series_u[k])
+    # st.write(series_r[f'{k}_std'], series_u[f'{k}_std'])
 
 
 def plot_mrs_bars_plus_cumulative(
@@ -1676,11 +1676,17 @@ def calculate_network_redir(df_network, dict_pops_r):
     prop_mt_redir_approved = (
         dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
         .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        )
+        ) / (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        ['full_population'].sum()
+    )
     prop_mt_redir_not_approved = (
         dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
         .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        )
+        ) / (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        ['full_population'].sum()
+    )
     # Redirection scenario:
     df_net_r = df_network.copy()
     # No redir, similar to usual care above:

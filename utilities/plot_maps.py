@@ -511,6 +511,8 @@ def make_unit_catchment_raster(
     for k, v in transform_dict.items():
         transform_dict_here[k] = v
     if redo_transform:
+        width_before = arr.shape[1]
+        height_before = arr.shape[0]
         # Crop the array to non-NaN values:
         mask0 = np.all(np.isnan(arr), axis=0)
         min0 = np.where(mask0 == False)[0][0]
@@ -519,11 +521,32 @@ def make_unit_catchment_raster(
         min1 = np.where(mask1 == False)[0][0]
         max1 = np.where(mask1 == False)[0][-1]
         arr = arr[min1:max1+1, min0:max0+1]
-        # Update the coordinates of the bottom left corner:
+        # New image width/height in pixels:
+        transform_dict_here['width'] = arr.shape[1]
+        transform_dict_here['height'] = arr.shape[0]
+        # Reference coordinates are xmin, ymax.
+        # Update the corner coordinates:
         transform_dict_here['xmin'] = (
-            transform_dict['xmin'] + transform_dict['pixel_size'] * min0)
-        transform_dict_here['ymin'] = (
-            transform_dict['ymin'] + transform_dict['pixel_size'] * min1)
+            transform_dict_here['xmin'] +
+            transform_dict_here['pixel_size'] * min0
+            )
+        transform_dict_here['ymax'] = (
+            transform_dict_here['ymax'] -
+            transform_dict_here['pixel_size'] * (height_before - (max1 + 1))
+            )
+        # Far corner in terms of pixels:
+        transform_dict_here['im_xmax'] = (
+            transform_dict_here['xmin'] +
+            transform_dict_here['pixel_size'] * transform_dict_here['width']
+            )
+        transform_dict_here['im_ymin'] = (
+            transform_dict_here['ymax'] -
+            transform_dict_here['pixel_size'] * transform_dict_here['height']
+            )
+        # Remove xmax and ymax because we now only have pixel-scale
+        # limits:
+        transform_dict_here['xmax'] = transform_dict_here['im_xmax']
+        transform_dict_here['ymin'] = transform_dict_here['im_ymin']
 
     if create_colour_scale:
         # Check which regions border each other.
@@ -841,18 +864,24 @@ def load_region_outline_here(region_type, region):
     return gdf_region, region_display_name
 
 
-def set_network_map_bounds(gdf_units, gdf_region=None):
+def set_network_map_bounds(gdf_units, gdf_region=None, transform_dict_units=None):
+    bounds_lists = [gdf_units.total_bounds]
     if gdf_region is not None:
-        bounds_reg = gdf_region.total_bounds
-        bounds_units = gdf_units.total_bounds
-        bounds = [
-            min(bounds_units[0], bounds_reg[0]),
-            min(bounds_units[1], bounds_reg[1]),
-            max(bounds_units[2], bounds_reg[2]),
-            max(bounds_units[3], bounds_reg[3]),
+        bounds_lists.append(gdf_region.total_bounds)
+    if transform_dict_units is not None:
+        bounds_units_raster = [
+            transform_dict_units['xmin'],
+            transform_dict_units['im_ymin'],
+            transform_dict_units['im_xmax'],
+            transform_dict_units['ymax'],
         ]
-    else:
-        bounds = gdf_units.total_bounds
+        bounds_lists.append(bounds_units_raster)
+    bounds = [
+        min([b[0] for b in bounds_lists]),
+        min([b[1] for b in bounds_lists]),
+        max([b[2] for b in bounds_lists]),
+        max([b[3] for b in bounds_lists]),
+    ]
 
     # Add breathing room to region bounding box:
     x_buffer = (bounds[2] - bounds[0]) * 0.1
@@ -1144,8 +1173,15 @@ def plot_outcome_maps(
 
 
 def plot_networks(
-        df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
-        gdf_units, bounds, catch_trace, gdf_region=None, region_display_name=None,
+        df_net_u,
+        df_net_r,
+        df_unit_services,
+        gdf_nearest_units,
+        gdf_units,
+        bounds,
+        catch_trace,
+        gdf_region=None,
+        region_display_name=None,
         subplot_titles=[]
         ):
     fig = make_subplots(
@@ -1360,7 +1396,7 @@ def plot_networks(
                         axis=-1
                         ),
                     hovertemplate=(
-                        '%{customdata[2]:.2f} patients transfer from ' +
+                        '%{customdata[2]:.1f} patients transfer from ' +
                         '<br>' +
                         '%{customdata[0]}' +
                         '<br>' +
