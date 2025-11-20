@@ -778,12 +778,6 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         '_index':
             st.column_config.TextColumn(
                 label='Directly-admitting unit', width=150),
-        # 'admissions_combo_usual_care':
-        #     st.column_config.Column(
-        #         label='Usual care', width='small'),
-        # 'admissions_combo_redir':
-        #     st.column_config.Column(
-        #         label='Redirection available', width='small'),
         'admissions_catchment_to_first_unit_usual_care':
             st.column_config.NumberColumn(
                 label='Usual care', format='%.2f', width='small'),

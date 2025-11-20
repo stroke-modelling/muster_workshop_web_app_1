@@ -533,6 +533,7 @@ if st.session_state['rerun_region_summaries']:
             ) = (
             reg.find_unit_admissions_by_region(
                 df_lsoa_units_times,
+                dict_onion['prop_of_all_stroke'],
                 highlighted_region_types,
                 df_highlighted_regions,
                 _log_loc=containers['log_regions'],
