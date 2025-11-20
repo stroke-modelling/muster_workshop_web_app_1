@@ -551,7 +551,6 @@ with containers['region_summaries']:
         with containers[f'{subgroup}_top']:
             containers[subgroup] = st.container(horizontal=True)
 
-# 
 cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
 cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
 cols_mrs_std = [f'{c}_std' for c in cols_mrs]
@@ -572,7 +571,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.write('summary summary summary bits')
 
     with containers['region_treat_stats']:
-        c = st.container(width=400, border=True)
+        c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
             # Admissions
@@ -653,7 +652,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 ''')
 
     with containers['region_times']:
-        c = st.container(width=400, border=True)
+        c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
             # Travel times
@@ -703,7 +702,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     # Tabulate direct admissions and transfers in usual care
     # and in redir scenario for each unit.
     catchment_units = sorted(list(df_net_u['first_unit'].values.flatten()))
-    cols = ['first_unit', 'admissions_catchment_to_first_unit']
+    cols = ['first_unit', 'admissions_catchment_to_first_unit',
+            'admissions_first_unit_to_transfer']
     df_unit_admissions = df_net_u[cols].copy()
     # Combine redirection scenario rows. Patients for one first unit
     # can cover many rows depending on their catchment unit,
@@ -711,6 +711,35 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     # they were redirected there.
     df_unit_admissions_redir = (
         df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
+
+    # Combine transfers for MT units.
+    def combine_transfers_for_mt_units(df, df_net):
+        c = 'admissions_first_unit_to_transfer'
+        # Instead of showing zero transfers away from the unit,
+        # show the total transfers towards the unit.
+        # Set existing values to negative:
+        df[c] *= -1
+        # Gather total transfers to each unit:
+        df_transfers = (
+            df_net[['transfer_unit', c]].copy()
+            .groupby('transfer_unit').sum().reset_index()
+        )
+        # Set MT unit transfer data to missing:
+        mask = df['first_unit'].isin(df_transfers['transfer_unit'])
+        df.loc[mask, c] = pd.NA
+        # Make indexes match:
+        df = df.set_index('first_unit')
+        df_transfers = df_transfers.rename(
+            columns={'transfer_unit': 'first_unit'}).set_index('first_unit')
+        # Fill missing data with the summed values:
+        df[c] = df[c].combine_first(df_transfers[c])
+        df = df.reset_index()
+        return df
+
+    df_unit_admissions = combine_transfers_for_mt_units(
+        df_unit_admissions, df_net_u)
+    df_unit_admissions_redir = combine_transfers_for_mt_units(
+        df_unit_admissions_redir, df_net_r)
     # Place usual care and redir in same df:
     df_unit_admissions = pd.merge(
         df_unit_admissions, df_unit_admissions_redir,
@@ -719,68 +748,59 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     df_unit_admissions['first_unit'] = (
         df_unit_admissions['first_unit']
         .map(df_unit_services['ssnap_name']))
+
+    df_unit_admissions = df_unit_admissions.fillna(0.0)
+    # Combine admissions and transfer values:
+    for s in ['usual_care', 'redir']:
+        df_unit_admissions[f'admissions_combo_{s}'] = (
+            df_unit_admissions[[f'admissions_catchment_to_first_unit_{s}',
+                                f'admissions_first_unit_to_transfer_{s}']]
+            .apply(lambda x: f'{x[0]:7.2f}   ({x[1]:+7.2f})', axis=1)
+        )
     df_unit_admissions = df_unit_admissions.sort_values('first_unit')
     df_unit_admissions = df_unit_admissions.set_index('first_unit')
-    df_unit_admissions = df_unit_admissions.fillna(0.0)
 
     config_dict = {
         '_index':
-            st.column_config.Column(
-                label='Directly-admitting unit', width='medium'),
+            st.column_config.TextColumn(
+                label='Directly-admitting unit', width=150),
+        # 'admissions_combo_usual_care':
+        #     st.column_config.Column(
+        #         label='Usual care', width='small'),
+        # 'admissions_combo_redir':
+        #     st.column_config.Column(
+        #         label='Redirection available', width='small'),
         'admissions_catchment_to_first_unit_usual_care':
             st.column_config.NumberColumn(
                 label='Usual care', format='%.2f', width='small'),
         'admissions_catchment_to_first_unit_redir':
             st.column_config.NumberColumn(
                 label='Redirection available',
-                format='%.2f', width='small')
-    }
-
-    # Gather total transfers to each unit:
-    cols = ['transfer_unit', 'admissions_first_unit_to_transfer']
-    df_unit_transfers_r = (
-        df_net_r[cols].copy().groupby('transfer_unit').sum().reset_index())
-    df_unit_transfers_u = (
-        df_net_u[cols].copy().groupby('transfer_unit').sum().reset_index())
-    df_unit_transfers = pd.merge(
-        df_unit_transfers_u, df_unit_transfers_r,
-        on='transfer_unit', how='outer', suffixes=('_usual_care', '_redir')
-    )
-    df_unit_transfers['transfer_unit'] = (
-        df_unit_transfers['transfer_unit']
-        .map(df_unit_services['ssnap_name']))
-    df_unit_transfers = df_unit_transfers.sort_values('transfer_unit')
-    df_unit_transfers = df_unit_transfers.set_index('transfer_unit')
-    df_unit_transfers = df_unit_transfers.fillna(0.0)
-
-    config_dict_transfers = {
-        '_index':
-            st.column_config.Column(
-                label='Transfer unit', width='medium'),
+                format='%.2f', width='small'),
         'admissions_first_unit_to_transfer_usual_care':
             st.column_config.NumberColumn(
-                label='Usual care', format='%.2f', width='small'),
+                label='t', format='%+.2f', width='small'),
         'admissions_first_unit_to_transfer_redir':
             st.column_config.NumberColumn(
-                label='Redirection available',
-                format='%.2f', width='small')
+                label='t',
+                format='%+.2f', width='small')
     }
+
     with containers['region_unit_admissions']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
 
-            st.markdown('Total direct admissions to each unit:')
+            st.markdown('Total direct admissions to (and transfers "t" to or from) each unit:')
             st.dataframe(
                 df_unit_admissions,
+                # column_order=['admissions_combo_usual_care',
+                #               'admissions_combo_redir'],
+                column_order=['admissions_catchment_to_first_unit_usual_care',
+                              'admissions_first_unit_to_transfer_usual_care',
+                              'admissions_catchment_to_first_unit_redir',
+                              'admissions_first_unit_to_transfer_redir',],
                 column_config=config_dict,
-                height=230,
-                )
-
-            st.markdown('Total transfers to each MT unit:')
-            st.dataframe(
-                df_unit_transfers,
-                column_config=config_dict_transfers,
                 )
 
     # ----- Network graph -----
