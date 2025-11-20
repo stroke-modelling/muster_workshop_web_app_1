@@ -1020,13 +1020,23 @@ def draw_units_msu_map(map_traces, outline_name='none'):
         subplot_titles=['Usual care', 'MSU available'],
         )
 
-    fig.add_trace(map_traces['raster_nearest_csc']['trace'], row='all', col='all')
-    fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'], row='all', col='all')
+    # Only draw the "nearest unit has MT" raster if we're not
+    # drawing all the unit catchments anyway.
+    if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
+        pass
+    else:
+        fig.add_trace(map_traces['raster_nearest_csc']['trace'], row='all', col='all')
+    # Always draw the "nearest unit has MT" legend cheat:
+    fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+    # Region outline or unit catchment raster:
     if outline_name == 'none':
         fig.add_trace(map_traces['england_outline'], row='all', col='all')
     else:
-        for t in map_traces[f'{outline_name}_outlines']:
-            fig.add_trace(t, row='all', col='all')
+        if f'{outline_name}_outlines' in map_traces.keys():
+            for t in map_traces[f'{outline_name}_outlines']:
+                fig.add_trace(t, row='all', col='all')
+        else:
+            fig.add_trace(map_traces[f'raster_{outline_name}'], row='all', col='all')
     for r in map_traces['roads']:
         fig.add_trace(r, row='all', col='all')
     fig.add_trace(map_traces['units']['msu'], row='all', col=2)

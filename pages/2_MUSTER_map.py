@@ -238,7 +238,7 @@ df_unit_services = reg.select_unit_services_muster(
     container_buttons=containers['units_buttons'],
     container_dataeditor=containers['units_df'],
     )
-with containers['units_df']:
+with containers['units_buttons']:
     if all(df_unit_services['Use_MSU'] == 0):
         st.error('There must be at least one MSU.', icon='❗')
         st.stop()
@@ -248,17 +248,20 @@ with containers['log_units']:  # for log_loc
 # Load LSOA geometry:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
 map_traces = plot_maps.make_constant_map_traces()
-map_traces = (
+map_traces_shared, df_unit_services = (
     plot_maps.make_shared_map_traces(
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
-    ) | map_traces
+    )
 )
+map_traces = map_traces_shared | map_traces
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
         'ambo22': 'Ambulance service',
+        'nearest_ivt_unit': 'Nearest IVT unit',
+        'nearest_mt_unit': 'Nearest MT unit',
     }
 
     def f(label):
