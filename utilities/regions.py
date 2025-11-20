@@ -1556,6 +1556,7 @@ def calculate_no_treatment_mrs(pops, dict_no_treatment_outcomes):
 
 def find_unit_admissions_by_region(
         df_lsoa_units_times,
+        prop_of_all_stroke,
         region_types=[],
         df_highlight=None,
         keep_only_england=True,
@@ -1615,18 +1616,20 @@ def find_unit_admissions_by_region(
                 else:
                     mask_combo = mask_reg & mask_lsoa
                 df_admissions.loc[region, f'admissions_{mask_label}'] = (
-                     df_lsoa_regions.loc[mask_combo, 'Admissions'].sum())
+                     df_lsoa_regions.loc[mask_combo, 'Admissions'].sum() *
+                     prop_of_all_stroke
+                     )
             # How many people go to each combination of stroke units?
             # First unit, nearest MT unit, transfer unit combos.
-            df_unit_admissions = df_lsoa_regions.loc[
-                mask_reg, unit_cols + ['Admissions']].groupby(unit_cols).sum()
+            df_unit_admissions = (
+                df_lsoa_regions.loc[mask_reg, unit_cols + ['Admissions']].
+                groupby(unit_cols).sum() *
+                prop_of_all_stroke
+            )
             df_unit_admissions = df_unit_admissions.rename(
                 columns={'Admissions': region})
             dfs_to_concat.append(df_unit_admissions)
     df_unit_admissions = pd.concat(dfs_to_concat, axis='columns').reset_index()
-    # df_unit_admissions['nearest_unit_no_mt'] = (
-    #     df_unit_admissions['nearest_ivt_unit'] !=
-    #     df_unit_admissions['nearest_mt_unit'])
 
     df_admissions['prop_nearest_unit_no_mt'] = (
         df_admissions['admissions_nearest_unit_no_mt'] /

@@ -445,6 +445,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
     st.session_state['df_lsoa_units_times'] = df_lsoa_units_times
     st.session_state['df_subgroups'] = df_subgroups
     st.session_state['dict_pops'] = dict_pops
+    st.session_state['dict_onion'] = dict_onion
     st.session_state['inputs_changed'] = False
     st.session_state['rerun_region_summaries'] = True
     st.session_state['rerun_maps'] = True
@@ -500,13 +501,13 @@ if st.session_state['rerun_region_summaries']:
                 unique_travel=False,
                 _log_loc=containers['log_regions'])
             )
-
         (
             st.session_state['df_highlighted_region_admissions'],
             st.session_state['df_region_unit_admissions']
             ) = (
             reg.find_unit_admissions_by_region(
                 df_lsoa_units_times,
+                dict_onion['prop_of_all_stroke'],
                 highlighted_region_types,
                 df_highlighted_regions,
                 _log_loc=containers['log_regions'],
@@ -579,7 +580,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 st.session_state['df_highlighted_region_admissions']
                 .loc[region]
                 )
-            st.metric('Annual stroke admissions',
+            st.metric('Annual stroke admissions in this population',
                         f"{s_admissions['admissions_all_patients']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
@@ -733,6 +734,12 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             columns={'transfer_unit': 'first_unit'}).set_index('first_unit')
         # Fill missing data with the summed values:
         df[c] = df[c].combine_first(df_transfers[c])
+        # Check for any units that exist in the transfer data
+        # but not the first unit data:
+        units_missing = list(set(df_transfers.index) -
+                             set(df.index))
+        for unit in units_missing:
+            df.loc[unit, c] = df_transfers.loc[unit, c]
         df = df.reset_index()
         return df
 
@@ -791,7 +798,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with c:
             st.subheader(region_label)
 
-            st.markdown('Total direct admissions to (and transfers "t" to or from) each unit:')
+            st.markdown('''
+                        Total patients from this catchment area
+                        directly admitted to (and transferred "t" to or from)
+                        each unit:
+                        ''')
             st.dataframe(
                 df_unit_admissions,
                 # column_order=['admissions_combo_usual_care',

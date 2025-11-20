@@ -35,6 +35,7 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
     number_cols = [c for c in df_pops.columns if is_numeric_dtype(df_pops[c])]
     # Labels for number cols:
     dict_help = {
+        'prop_of_all_stroke': 'Proportion of all emergency stroke patients in this population',
         'prop_nlvo': 'Proportion of full population who have nLVO',
         'prop_lvo': 'Proportion of full population who have LVO',
         'prop_other': 'Proportion of full population who have neither nLVO nor LVO',
