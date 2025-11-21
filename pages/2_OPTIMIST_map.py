@@ -260,15 +260,16 @@ with containers['units_df']:
 with containers['log_units']:  # for log_loc
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
         df_unit_services, _log_loc=containers['log_units'])
-# Load LSOA geometry:
+
+# Setup for map:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()
-map_traces = plot_maps.make_constant_map_traces()
+map_traces_constant = plot_maps.make_constant_map_traces()
 map_traces_shared, df_unit_services = (
     plot_maps.make_shared_map_traces(
         df_unit_services, df_lsoa_units_times, df_raster, transform_dict
     )
 )
-map_traces = map_traces_shared | map_traces
+map_traces = map_traces_shared | map_traces_constant
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
@@ -290,6 +291,8 @@ with containers['units_text']:
         )
 with containers['units_map']:
     plot_maps.draw_units_map(map_traces, outline_name)
+
+
 with containers['log_units']:  # for log_loc
     unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
         reg.find_unique_travel_times(df_lsoa_units_times,
@@ -572,113 +575,103 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         region_label = df_unit_services.loc[region, 'ssnap_name']
     else:
         region_label = region
+
+    # ----- Top summary -----
     with containers['highlighted_region_summaries']:
         ch = st.container(border=True, width=500)
     with ch:
         st.subheader(region_label)
         st.write('summary summary summary bits')
 
+    # ----- Treatment numbers -----
+    s_admissions = (
+        st.session_state['df_highlighted_region_admissions']
+        .loc[region]
+        )
+    dict_region_treat_stats = reg.calculate_region_treat_stats(
+        st.session_state['dict_pops']['usual_care'],
+        st.session_state['dict_pops']['redir_allowed'],
+        s_admissions
+        )
+    # Set up dataframes to display.
+    # These strings are defined to shorten the dict key lines:
+    u = 'usual_care'
+    r = 'redir'
+    u_mt = 'nearest_unit_has_mt'
+    u_no_mt = 'nearest_unit_no_mt'
+    red = 'and_redirected'
+    no_red = 'and_not_redirected'
+    df_mt = pd.DataFrame(
+        [[dict_region_treat_stats[f'n_mt_{u_mt}_{u}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{no_red}_{u}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{u}']],
+         [dict_region_treat_stats[f'n_mt_{u_mt}_{r}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{no_red}_{r}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{r}']]],
+        columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
+        index=['Usual care', 'Redirection']
+    )
+    column_config_mt = dict([
+        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        for c in df_mt.columns
+        ])
+    df_ivt = pd.DataFrame(
+        [[dict_region_treat_stats[f'n_ivt_only_{u_mt}_{u}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{no_red}_{u}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{u}']],
+         [dict_region_treat_stats[f'n_ivt_only_{u_mt}_{r}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{no_red}_{r}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{r}']]],
+        columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
+        index=['Usual care', 'Redirection']
+    )
+    column_config_ivt_only = dict([
+        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        for c in df_ivt.columns
+        ])
     with containers['region_treat_stats']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
-            # Admissions
-            s_admissions = (
-                st.session_state['df_highlighted_region_admissions']
-                .loc[region]
-                )
-            st.metric('Annual stroke admissions in this population',
-                        f"{s_admissions['admissions_all_patients']:.1f}")
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric('Annual stroke admissions  \nin this population',
+                          f"{s_admissions['admissions_all_patients']:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
-            st.metric(n, f"{p:.1f}%")
-            # Numbers redirected:
-            dict_pops_u = st.session_state['dict_pops']['usual_care']
-            dict_pops_r = st.session_state['dict_pops']['redir_allowed']
-            prop_mt_usual_care = (
-                dict_pops_u
-                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-                )
-            prop_mt_redir_approved = (
-                dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
-                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-                )
-            prop_mt_redir_not_approved = (
-                dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-                .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-                )
-            prop_ivt_only_usual_care = (
-                dict_pops_u
-                .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
-                )
-            prop_ivt_only_redir_approved = (
-                dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
-                .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
-                )
-            # Number of patients who receive MT:
-            n_mt_usual_care = (
-                prop_mt_usual_care * s_admissions['admissions_all_patients'])
-            # Number of patients who receive MT and need a transfer
-            # in usual care:
-            n_subset_mt_usual_care = (
-                prop_mt_usual_care *
-                s_admissions['admissions_nearest_unit_no_mt']
-                )
-            # Number of patients who receive MT and need a transfer
-            # in redir scenario:
-            n_subset_mt_redir_allowed = (
-                prop_mt_redir_not_approved *
-                s_admissions['admissions_nearest_unit_no_mt']
-                )
-            # Number of patients who receive MT and were redirected:
-            n_subset_mt_redir_approved = (
-                prop_mt_redir_approved *
-                s_admissions['admissions_nearest_unit_no_mt']
-                )
-            st.markdown(
-                f'''
-                Patients who receive thrombectomy: {n_mt_usual_care:.1f},  
-                Patients who receive thrombectomy and need a transfer in usual care: {n_subset_mt_usual_care:.1f},  
-                Patients who receive thrombectomy and need a transfer in redir scenario: {n_subset_mt_redir_allowed:.1f},  
-                Patients who receive thrombectomy and were redirected: {n_subset_mt_redir_approved:.1f}
-                ''')
+            with cols[1]:
+                st.metric(n, f"{p:.1f}%")
 
-            # Number of patients who receive IVT only:
-            n_ivt_only_usual_care = (
-                prop_ivt_only_usual_care *
-                s_admissions['admissions_all_patients']
-                )
-            # Number of patients who receive IVT only and were redirected:
-            n_subset_ivt_only_redir_approved = (
-                prop_ivt_only_redir_approved *
-                s_admissions['admissions_nearest_unit_no_mt']
-                )
-            st.markdown(
-                f'''
-                Patients who receive IVT only: {n_ivt_only_usual_care:.1f},  
-                Patients who receive IVT only and were redirected: {n_subset_ivt_only_redir_approved:.1f}
-                ''')
+            st.markdown(f'''Of the {dict_region_treat_stats['n_mt']:.1f}
+                        patients who receive thrombectomy
+                        (with or without thrombolysis):''')
+            st.dataframe(df_mt, column_config=column_config_mt)
 
+            st.markdown(f'''Of the {dict_region_treat_stats['n_ivt_only']:.1f}
+                        patients who receive thrombolysis only:''')
+            st.dataframe(df_ivt, column_config=column_config_ivt_only)
+
+    # ----- Travel and treatment times -----
+    time_bins, admissions_times = reg.gather_this_region_travel_times(
+        st.session_state['dict_highlighted_region_travel_times'],
+        lsoa_subset, region
+        )
+    s_treats = st.session_state[
+        'dict_highlighted_region_average_treatment_times'][
+            lsoa_subset].loc[region]
+    df_treats = reg.make_average_treatment_time_df(s_treats)
     with containers['region_times']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
             # Travel times
-            time_bins, admissions_times = reg.gather_this_region_travel_times(
-                st.session_state['dict_highlighted_region_travel_times'],
-                lsoa_subset, region
-                )
             reg.plot_travel_times(time_bins, admissions_times)
 
             # Average treatment times:
-            s_treats = st.session_state[
-                'dict_highlighted_region_average_treatment_times'][
-                    lsoa_subset].loc[region]
-            df_treats = reg.make_average_treatment_time_df(s_treats)
             st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
             st.table(df_treats)
 
-    # ----- Tracked unit admissions -----
+    # ----- Admissions by unit -----
     # # Find tracked admissions between units:
     cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
                   'transfer_unit']
@@ -810,7 +803,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 column_config=config_dict,
                 )
 
-    # ----- Network graph -----
+    # ----- Patient transport maps -----
     if region_type == 'national':
         pass
     else:

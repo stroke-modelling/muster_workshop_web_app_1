@@ -179,6 +179,7 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
 # #########################
 # ##### CREATE TRACES #####
 # #########################
+@st.cache_data
 def make_constant_map_traces():
     """
     Make dict of plotly traces for constant map data.
@@ -266,6 +267,7 @@ def make_constant_map_traces():
     return map_traces
 
 
+@st.cache_data
 def make_shared_map_traces(
         df_unit_services,
         df_lsoa_units_times,

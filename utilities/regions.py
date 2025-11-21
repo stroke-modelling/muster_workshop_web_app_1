@@ -1735,3 +1735,83 @@ def calculate_network_redir(df_network, dict_pops_r):
         ['nearest_unit', 'first_unit', 'transfer_unit']).sum().reset_index()
     df_net_r['nearest_unit'] = 'nearest_' + df_net_r['nearest_unit'].astype(str)
     return df_net_r
+
+
+def calculate_region_treat_stats(dict_pops_u, dict_pops_r, s_admissions):
+    d = {}
+    # Numbers redirected:
+    d['prop_mt_usual_care'] = (
+        dict_pops_u
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    d['prop_mt_redir_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    d['prop_mt_redir_not_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    d['prop_ivt_only_usual_care'] = (
+        dict_pops_u
+        .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
+        )
+    d['prop_ivt_only_redir_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+        .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
+        )
+    d['prop_ivt_only_redir_not_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        .loc[['nlvo_ivt', 'lvo_ivt'], 'full_population'].sum()
+        )
+    # Number of thrombectomies:
+    d['n_mt'] = (
+        d['prop_mt_usual_care'] * s_admissions['admissions_all_patients'])
+    # Usual care:
+    d['n_mt_nearest_unit_has_mt_usual_care'] = (
+        d['prop_mt_usual_care'] *
+        (s_admissions['admissions_all_patients'] -
+         s_admissions['admissions_nearest_unit_no_mt'])
+        )
+    d['n_mt_nearest_unit_no_mt_and_not_redirected_usual_care'] = (
+        d['prop_mt_usual_care'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    d['n_mt_nearest_unit_no_mt_and_redirected_usual_care'] = 0.0
+    # Redir scenario:
+    d['n_mt_nearest_unit_has_mt_redir'] = (
+        d['n_mt_nearest_unit_has_mt_usual_care'])
+    d['n_mt_nearest_unit_no_mt_and_not_redirected_redir'] = (
+        d['prop_mt_redir_not_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    d['n_mt_nearest_unit_no_mt_and_redirected_redir'] = (
+        d['prop_mt_redir_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+
+    # Number of thrombolysis only (not thrombectomy):
+    d['n_ivt_only'] = (
+        d['prop_ivt_only_usual_care'] *
+        s_admissions['admissions_all_patients']
+        )
+    # Usual care:
+    d['n_ivt_only_nearest_unit_has_mt_usual_care'] = (
+        d['prop_ivt_only_usual_care'] *
+        (s_admissions['admissions_all_patients'] -
+         s_admissions['admissions_nearest_unit_no_mt'])
+        )
+    d['n_ivt_only_nearest_unit_no_mt_and_redirected_usual_care'] = 0.0
+    d['n_ivt_only_nearest_unit_no_mt_and_not_redirected_usual_care'] = (
+        d['prop_ivt_only_usual_care'] *
+        s_admissions['admissions_nearest_unit_no_mt']
+        )
+    # Redir scenario:
+    d['n_ivt_only_nearest_unit_has_mt_redir'] = (
+        d['n_ivt_only_nearest_unit_has_mt_usual_care'])
+    d['n_ivt_only_nearest_unit_no_mt_and_not_redirected_redir'] = (
+        d['prop_ivt_only_redir_not_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt']
+        )
+    d['n_ivt_only_nearest_unit_no_mt_and_redirected_redir'] = (
+        d['prop_ivt_only_redir_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt']
+        )
+    return d
