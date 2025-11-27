@@ -15,10 +15,11 @@ import stroke_maps.load_data
 from classes.geography_processing import Geoprocessing
 from utilities.utils import print_progress_loc, update_plotly_font_sizes, \
     set_inputs_changed, set_rerun_full_results, set_rerun_region_summaries, \
-    make_formatted_time_str
+    make_formatted_time_str, set_rerun_lsoa_units_times
 
 
 # ----- Functions -----
+@st.cache_data
 def import_stroke_unit_services(
         use_msu=True,
         keep_only_ivt_mt=False,
@@ -128,7 +129,7 @@ def select_unit_services(use_msu=False):
             'Use_MT': st.column_config.CheckboxColumn(),
             'Use_MSU': st.column_config.CheckboxColumn(),
         },
-        on_change=set_inputs_changed,
+        on_change=set_rerun_lsoa_units_times,
         )
     return df_unit_services
 
@@ -140,7 +141,7 @@ def select_unit_services_muster(
         ):
     """
     """
-        # If this has already been loaded in, keep that version instead
+    # If this has already been loaded in, keep that version instead
     # so changes are retained:
     try:
         df_unit_services = st.session_state['df_unit_services']
@@ -235,7 +236,7 @@ def select_unit_services_muster(
 
     # Display data_editor to collect changes from the user:
     with container_dataeditor:
-        df_edited = st.data_editor(
+        st.data_editor(
             df_unit_services,
             disabled=['postcode', 'ssnap_name', 'isdn'],
             # height=180  # limit height to show fewer rows
@@ -246,7 +247,7 @@ def select_unit_services_muster(
                 'Use_MSU': st.column_config.CheckboxColumn(),
             },
             key='units_data_editor',
-            on_change=set_inputs_changed
+            on_change=set_rerun_lsoa_units_times
             )
     # Do not keep a copy of the returned edited dataframe.
     # We'll update it ourselves when the script reruns.
@@ -255,7 +256,6 @@ def select_unit_services_muster(
     return df_unit_services
 
 
-@st.cache_data
 def find_nearest_units_each_lsoa(df_unit_services, use_msu=False, _log=True, _log_loc=None):
     """
 

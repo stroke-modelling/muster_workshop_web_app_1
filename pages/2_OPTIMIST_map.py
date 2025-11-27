@@ -22,7 +22,8 @@ import utilities.pathway as pathway
 import utilities.outcomes as outcomes
 import utilities.population as pop
 import utilities.colour_setup as colour_setup
-from utilities.utils import set_rerun_map, set_rerun_full_results
+from utilities.utils import set_rerun_map, set_rerun_full_results, \
+    set_rerun_lsoa_units_times
 
 
 #MARK: Functions
@@ -62,6 +63,7 @@ if 'inputs_changed' not in st.session_state.keys():
     st.session_state['rerun_region_summaries'] = True
     st.session_state['rerun_maps'] = True
     st.session_state['rerun_full_results'] = True
+    st.session_state['rerun_lsoa_units_times'] = True
 
 
 def set_up_page_layout():
@@ -257,9 +259,16 @@ each unit:
 
 with containers['units_df']:
     df_unit_services = reg.select_unit_services()
-with containers['log_units']:  # for log_loc
+
+# Calculate LSOA-unit allocation now so that the unit catchment
+# can be shown on the units map.
+if st.session_state['rerun_lsoa_units_times']:
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
         df_unit_services, _log_loc=containers['log_units'])
+    st.session_state['input_df_lsoa_units_times'] = df_lsoa_units_times
+    set_rerun_lsoa_units_times(False)
+else:
+    df_lsoa_units_times = st.session_state['input_df_lsoa_units_times']
 
 # Setup for map:
 df_raster, transform_dict = maps.load_lsoa_raster_lookup()

@@ -79,17 +79,24 @@ def page_setup():
     # n.b. this can be set separately for each separate page if you like.
 
 
-def set_inputs_changed():
-    st.session_state['inputs_changed'] = True
+def set_inputs_changed(b=True):
+    st.session_state['inputs_changed'] = b
 
 
-def set_rerun_region_summaries():
-    st.session_state['rerun_region_summaries'] = True
+def set_rerun_region_summaries(b=True):
+    st.session_state['rerun_region_summaries'] = b
 
 
-def set_rerun_map():
-    st.session_state['rerun_maps'] = True
+def set_rerun_map(b=True):
+    st.session_state['rerun_maps'] = b
 
 
-def set_rerun_full_results():
-    st.session_state['rerun_full_results'] = True
+def set_rerun_full_results(b=True):
+    st.session_state['rerun_full_results'] = b
+
+
+def set_rerun_lsoa_units_times(b=True):
+    st.session_state['rerun_lsoa_units_times'] = b
+    if b:
+        # Also flag any inputs changed:
+        set_inputs_changed()

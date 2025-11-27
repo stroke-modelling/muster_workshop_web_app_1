@@ -18,6 +18,9 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
     Resulting series keys: population, label, prop_nlvo, prop_lvo,
     prop_other, prop_redir_considered, redir_sensitivity,
     redir_specificity.
+
+    Note November 2025, pandas styling currently only works for
+    disabled columns in data_editor so can't add coloured backgrounds.
     """
     # Load in pathway timings from file:
     if project == 'optimist':
@@ -53,22 +56,28 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
 
     # Set up display:
     conf = dict()
+    conf['label'] = st.column_config.Column(width=150, help='Onion layer')
     for col in number_cols:
         conf[col] = st.column_config.NumberColumn(
             min_value=0.0, max_value=100.0, step=1.0,
+            label='_'.join(col.split('_')[1:]),  # no initial "prop"/"redir"
             # format='percent',
             format='%.0f%%',
             help=dict_help[col],
+            width='small',
+            required=True
         )
 
+    df_pops = df_pops.set_index('label')
     df_pops = st.data_editor(
         df_pops,
-        column_order=['label'] + number_cols,
-        hide_index=True,
+        column_order=number_cols,
+        # hide_index=True,  # broken?
         column_config=conf,
         num_rows=num_rows,
         on_change=set_inputs_changed,
     )
+    df_pops = df_pops.reset_index()
 
     # Convert to proportions:
     df_pops[number_cols] = df_pops[number_cols] / 100.0
