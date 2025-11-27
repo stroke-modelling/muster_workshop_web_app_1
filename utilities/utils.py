@@ -100,3 +100,15 @@ def set_rerun_lsoa_units_times(b=True):
     if b:
         # Also flag any inputs changed:
         set_inputs_changed()
+        # # Also flag to change unique travel times
+        # # and treatment times:
+        # set_rerun_unique_travel_times()
+        # set_rerun_unique_treat_times()
+
+
+# def set_rerun_unique_travel_times(b=True):
+#     st.session_state['rerun_unique_travel_times'] = b
+
+
+# def set_rerun_unique_treat_times(b=True):
+#     st.session_state['rerun_unique_treat_times'] = b

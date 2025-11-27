@@ -267,7 +267,6 @@ def make_constant_map_traces():
     return map_traces
 
 
-@st.cache_data
 def make_shared_map_traces(
         df_unit_services,
         df_lsoa_units_times,
@@ -302,7 +301,7 @@ def make_shared_map_traces(
         y=[None],
         mode='markers',
         marker={'color': colour, 'symbol': 'square', 'size': 10},
-        name='Nearest unit has MT',
+        name='Nearest IVT unit has MT',
     )
     # The actual map:
     map_traces['raster_nearest_csc']['trace'] = go.Heatmap(

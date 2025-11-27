@@ -111,17 +111,56 @@ def load_lsoa_region_lookups():
 def select_unit_services(use_msu=False):
     """
     """
-    # Load stroke unit data from file:
-    df = import_stroke_unit_services(
-        use_msu=use_msu,
-        keep_only_ivt_mt=False,
-        keep_only_england=True
-        )
+    # If this has already been loaded in, keep that version instead
+    # so changes are retained:
+    try:
+        df_unit_services = st.session_state['input_df_unit_services']
+    except KeyError:
+        # Load stroke unit data from file:
+        df_unit_services = import_stroke_unit_services(
+            use_msu=use_msu,
+            keep_only_ivt_mt=False,
+            keep_only_england=True
+            )
+        df_unit_services.index.name = 'Postcode'
+
+    # Manually apply the edits from data_editor.
+    try:
+        units_data_editor = st.session_state['units_data_editor']
+        # Update each of the changes listed in this dict:
+        for ind in list(units_data_editor['edited_rows'].keys()):
+            for col in list(units_data_editor['edited_rows'][ind].keys()):
+                # Which row in the dataframe is this?
+                ind_name = df_unit_services.iloc[[ind]].index
+                # Is the value True or False?
+                val = units_data_editor['edited_rows'][ind][col]
+                val = 1 if val is True else 0
+                # Update this value in the dataframe:
+                df_unit_services.loc[ind_name, col] = val
+        # Delete the changelog:
+        del st.session_state['units_data_editor']
+        # ^ otherwise the same edits would be applied again
+        # as soon as the data_editor widget is rendered.
+    except KeyError:
+        # The edit dict doesn't exist yet.
+        # This is the first run of the script.
+        pass
+
+    # Force MT units to provide IVT:
+    df_unit_services.loc[df_unit_services['Use_MT'] == 1, 'Use_IVT'] = 1
+
+    # Store a copy of the dataframe with our edits:
+    st.session_state['input_df_unit_services'] = df_unit_services.copy()
+
+    # Add some junk data so that data_editor thinks it's a new df:
+    # (prevents storing multiple changes in the edited_rows)
+    df_unit_services.loc[df_unit_services.index[0], 'junk'] = np.random.rand(1)
 
     # Display this as an editable dataframe:
-    df_unit_services = st.data_editor(
-        df,
-        disabled=['postcode', 'ssnap_name', 'isdn'],
+    st.data_editor(
+        df_unit_services,
+        column_order=['Postcode', 'ssnap_name', 'Use_IVT', 'Use_MT', 'isdn'],
+        disabled=['Postcode', 'ssnap_name', 'isdn'],
         # height=180  # limit height to show fewer rows
         # Make columns display as checkboxes instead of 0/1 ints:
         column_config={
@@ -129,8 +168,17 @@ def select_unit_services(use_msu=False):
             'Use_MT': st.column_config.CheckboxColumn(),
             'Use_MSU': st.column_config.CheckboxColumn(),
         },
+        key='units_data_editor',
         on_change=set_rerun_lsoa_units_times,
         )
+    # Do not keep a copy of the returned edited dataframe.
+    # We'll update it ourselves when the script reruns.
+    # The script reruns immediately after the dataframe is edited
+    # or a button is pressed.
+
+    # Delete junk:
+    df_unit_services = df_unit_services.drop('junk', axis='columns')
+
     return df_unit_services
 
 
@@ -231,13 +279,22 @@ def select_unit_services_muster(
         # This is the first run of the script.
         pass
 
+    # Force MT units to provide IVT:
+    df_unit_services.loc[df_unit_services['Use_MT'] == 1, 'Use_IVT'] = 1
+
     # Store a copy of the dataframe with our edits:
     st.session_state['df_unit_services'] = df_unit_services.copy()
+
+    # Add some junk data so that data_editor thinks it's a new df:
+    # (prevents storing multiple changes in the edited_rows)
+    df_unit_services.loc[df_unit_services.index[0], 'junk'] = np.random.rand(1)
 
     # Display data_editor to collect changes from the user:
     with container_dataeditor:
         st.data_editor(
             df_unit_services,
+            column_order=['postcode', 'ssnap_name',
+                          'Use_IVT', 'Use_MT', 'Use_MSU', 'isdn'],
             disabled=['postcode', 'ssnap_name', 'isdn'],
             # height=180  # limit height to show fewer rows
             # Make columns display as checkboxes instead of 0/1 ints:
@@ -253,10 +310,18 @@ def select_unit_services_muster(
     # We'll update it ourselves when the script reruns.
     # The script reruns immediately after the dataframe is edited
     # or a button is pressed.
+
+    # Delete junk:
+    df_unit_services = df_unit_services.drop('junk', axis='columns')
     return df_unit_services
 
 
-def find_nearest_units_each_lsoa(df_unit_services, use_msu=False, _log=True, _log_loc=None):
+def find_nearest_units_each_lsoa(
+        df_unit_services,
+        use_msu=False,
+        _log=True,
+        _log_loc=None
+        ):
     """
 
     Result
@@ -328,7 +393,6 @@ def calculate_extra_muster_travel_times(
     return df_lsoa_units_times
 
 
-@st.cache_data
 def find_unique_travel_times(
         df_times,
         cols_ivt=['nearest_ivt_time', 'nearest_mt_time'],
