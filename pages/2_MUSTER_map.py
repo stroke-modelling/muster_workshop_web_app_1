@@ -5,6 +5,9 @@ This version calculates as few elements as possible. Instead of
 calculating full data for thousands of LSOA, we instead process the
 unique treatment times that may be shared across many LSOA.
 The full LSOA results are only built up at the end when required.
+
+# Note: logs print in wrong location for cached functions,
+# so have extra "with" blocks in the lines above.
 """
 #MARK: Imports
 # ###################
@@ -179,6 +182,8 @@ containers = set_up_page_layout()
 with containers['units_text']:
     reg.plot_basic_travel_options_msu()
     st.markdown('''
+We assume that all of the MT units also provide IVT.
+
 In usual care:
 + patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
 + other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
@@ -235,6 +240,10 @@ We calculate six base outcomes. These can be combined in different proportions t
 # + Convert list of all LSOA in a region to a list of number of
 #   admissions per unique treatment time.
 
+# Setup for map:
+df_raster, transform_dict = maps.load_lsoa_raster_lookup()
+map_traces_constant = plot_maps.make_constant_map_traces()
+
 df_unit_services = reg.select_unit_services_muster(
     use_msu=True,
     container_buttons=containers['units_buttons'],
@@ -250,18 +259,19 @@ if st.session_state['rerun_lsoa_units_times']:
     df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
         df_unit_services, use_msu=True, _log_loc=containers['log_units'])
     st.session_state['input_df_lsoa_units_times'] = df_lsoa_units_times
+    (st.session_state['map_traces_shared'],
+     st.session_state['input_df_unit_services']) = (
+        plot_maps.make_shared_map_traces(
+            df_unit_services, df_lsoa_units_times, df_raster, transform_dict
+        )
+    )
     set_rerun_lsoa_units_times(False)
 else:
     df_lsoa_units_times = st.session_state['input_df_lsoa_units_times']
-# Load LSOA geometry:
-df_raster, transform_dict = maps.load_lsoa_raster_lookup()
-map_traces = plot_maps.make_constant_map_traces()
-map_traces_shared, df_unit_services = (
-    plot_maps.make_shared_map_traces(
-        df_unit_services, df_lsoa_units_times, df_raster, transform_dict
-    )
-)
-map_traces = map_traces_shared | map_traces
+
+# Will update map_traces dict later with the outcome maps.
+map_traces = st.session_state['map_traces_shared'] | map_traces_constant
+
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
@@ -297,34 +307,6 @@ df_lsoa_units_times = reg.calculate_extra_muster_travel_times(
     df_lsoa_units_times, df_pathway_steps
 )
 
-with containers['log_units']:  # for log_loc
-    unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
-        reg.find_unique_travel_times(
-            df_lsoa_units_times,
-            cols_ivt=[
-                'msu_response_time',                    # MSU
-                'ambo_response_then_nearest_ivt_time',  # usual care
-                ],
-            cols_mt=[
-                'msu_response_then_mt_time',                    # MSU
-                'ambo_response_then_nearest_ivt_then_mt_time',  # usual care
-                ],
-            cols_pairs={
-                'usual_care': (
-                    'ambo_response_then_nearest_ivt_time',
-                    'ambo_response_then_nearest_ivt_then_mt_time'
-                    ),
-                'msu': (
-                    'msu_response_time',
-                    'msu_response_then_mt_time'
-                    ),
-            },
-            cols_pairs_labels=['travel_for_ivt', 'travel_for_mt'],
-            _log_loc=containers['log_units'])
-        )
-# Note: logs print in wrong location for cached functions,
-# so have extra "with" blocks in the lines above.
-
 
 # ----- Pathway timings -----
 # Show the summary of pathway timings for each case: usual care;
@@ -347,66 +329,6 @@ with containers['pathway_fig']:
                           series_treatment_times_without_travel,
                           use_msu=True)
 
-unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
-    series_treatment_times_without_travel,
-    unique_travel_for_ivt,
-    unique_travel_for_mt,
-    _log_loc=containers['log_pathway']
-    )
-unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
-    dict_unique_travel_pairs, series_treatment_times_without_travel,
-    _log=True, _log_loc=containers['log_pathway'],
-)
-# LSOA-level treatment times:
-df_lsoa_units_times = (
-    pathway.calculate_treatment_times_each_lsoa_scenarios_muster(
-        df_lsoa_units_times,
-        series_treatment_times_without_travel,
-        _log_loc=containers['log_pathway']
-        )
-)
-# Find the unique sets of treatment times:
-scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
-treats = ['ivt', 'mt']
-cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
-cols_treat_scen = [c for c in cols_treat_scen
-                   if c in df_lsoa_units_times.columns]
-df_treat_times_sets_unique = (
-    df_lsoa_units_times[cols_treat_scen].drop_duplicates())
-# Update index to normal range:
-df_treat_times_sets_unique['index'] = range(
-    len(df_treat_times_sets_unique))
-df_treat_times_sets_unique = (
-    df_treat_times_sets_unique.set_index('index'))
-
-# ----- Base outcomes -----
-# Calculate base outcomes for the given travel times and scenarios.
-# Find outcomes for all of the unique treatment times given.
-# --- CALCULATIONS:
-# + Calculate outcomes for unique treatment times for the base
-#   groups: nLVO + IVT, LVO + IVT, LVO + MT.
-# + For unique pairs of times to treatment, find when LVO + IVT
-#   is better than LVO + MT.
-dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
-    _log_loc=containers['log_pathway'])
-dict_base_outcomes = outcomes.calculate_unique_outcomes(
-    unique_treatment_ivt, unique_treatment_mt,
-    _log_loc=containers['log_pathway'])
-# Combine dicts:
-dict_base_outcomes = dict_base_outcomes | dict_no_treatment_outcomes
-
-df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
-    dict_base_outcomes['lvo_ivt'],
-    dict_base_outcomes['lvo_mt'],
-    unique_treatment_pairs,
-    _log_loc=containers['log_pathway']
-    )
-dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
-    dict_base_outcomes['lvo_ivt'],
-    dict_base_outcomes['lvo_mt'],
-    df_base_lvo_ivt_mt_better,
-    _log_loc=containers['log_pathway']
-    )
 
 # ----- Patient population (onion layer) -----
 # Decide the patient population parameters. There are different
@@ -457,9 +379,103 @@ with containers['pop_plots']:
 with containers['run_results']:
     rerun_results = st.button('Recalculate results', type='primary')
 
+# Bits we need regardless of re-run:
+df_lsoa_units_times = st.session_state['input_df_lsoa_units_times']
+# Not expecting to change df_unit_services from now on,
+# only look up its data:
+df_unit_services = st.session_state['input_df_unit_services']
+dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
+    _log_loc=containers['log_pathway'])
+
 # Calculate results if this is the first go through the app
 # or the button has been pressed.
 if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
+
+    unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
+        reg.find_unique_travel_times(
+            df_lsoa_units_times,
+            cols_ivt=[
+                'msu_response_time',                    # MSU
+                'ambo_response_then_nearest_ivt_time',  # usual care
+                ],
+            cols_mt=[
+                'msu_response_then_mt_time',                    # MSU
+                'ambo_response_then_nearest_ivt_then_mt_time',  # usual care
+                ],
+            cols_pairs={
+                'usual_care': (
+                    'ambo_response_then_nearest_ivt_time',
+                    'ambo_response_then_nearest_ivt_then_mt_time'
+                    ),
+                'msu': (
+                    'msu_response_time',
+                    'msu_response_then_mt_time'
+                    ),
+            },
+            cols_pairs_labels=['travel_for_ivt', 'travel_for_mt'],
+            _log_loc=containers['log_units'])
+        )
+
+    unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
+        series_treatment_times_without_travel,
+        unique_travel_for_ivt,
+        unique_travel_for_mt,
+        _log_loc=containers['log_pathway']
+        )
+    unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
+        dict_unique_travel_pairs, series_treatment_times_without_travel,
+        _log=True, _log_loc=containers['log_pathway'],
+    )
+    # LSOA-level treatment times:
+    df_lsoa_units_times = (
+        pathway.calculate_treatment_times_each_lsoa_scenarios_muster(
+            df_lsoa_units_times,
+            series_treatment_times_without_travel,
+            _log_loc=containers['log_pathway']
+            )
+    )
+    # Find the unique sets of treatment times:
+    scens = ['usual_care', 'msu_ivt', 'msu_no_ivt']
+    treats = ['ivt', 'mt']
+    cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+    cols_treat_scen = [c for c in cols_treat_scen
+                    if c in df_lsoa_units_times.columns]
+    df_treat_times_sets_unique = (
+        df_lsoa_units_times[cols_treat_scen].drop_duplicates())
+    # Update index to normal range:
+    df_treat_times_sets_unique['index'] = range(
+        len(df_treat_times_sets_unique))
+    df_treat_times_sets_unique = (
+        df_treat_times_sets_unique.set_index('index'))
+
+    # ----- Base outcomes -----
+    # Calculate base outcomes for the given travel times and scenarios.
+    # Find outcomes for all of the unique treatment times given.
+    # --- CALCULATIONS:
+    # + Calculate outcomes for unique treatment times for the base
+    #   groups: nLVO + IVT, LVO + IVT, LVO + MT.
+    # + For unique pairs of times to treatment, find when LVO + IVT
+    #   is better than LVO + MT.
+    dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
+        _log_loc=containers['log_pathway'])
+    dict_base_outcomes = outcomes.calculate_unique_outcomes(
+        unique_treatment_ivt, unique_treatment_mt,
+        _log_loc=containers['log_pathway'])
+    # Combine dicts:
+    dict_base_outcomes = dict_base_outcomes | dict_no_treatment_outcomes
+
+    df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
+        dict_base_outcomes['lvo_ivt'],
+        dict_base_outcomes['lvo_mt'],
+        unique_treatment_pairs,
+        _log_loc=containers['log_pathway']
+        )
+    dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
+        dict_base_outcomes['lvo_ivt'],
+        dict_base_outcomes['lvo_mt'],
+        df_base_lvo_ivt_mt_better,
+        _log_loc=containers['log_pathway']
+        )
     # Re-run results.
     st.session_state['dict_outcomes'] = {}
     for s in df_subgroups.index:

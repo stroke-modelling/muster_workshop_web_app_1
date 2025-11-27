@@ -1683,6 +1683,8 @@ def find_unit_admissions_by_region(
                      df_lsoa_regions.loc[mask_combo, 'Admissions'].sum() *
                      prop_of_all_stroke
                      )
+            # TO DO - also calculate this for the LSOA subset whose nearest unit does not provide MT.
+            # TO DO -------------------------------------------------------------------------        TO DO
             # How many people go to each combination of stroke units?
             # First unit, nearest MT unit, transfer unit combos.
             df_unit_admissions = (

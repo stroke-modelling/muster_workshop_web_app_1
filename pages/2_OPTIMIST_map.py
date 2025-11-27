@@ -185,6 +185,8 @@ with containers['units_text']:
     cols = st.columns([1, 2])
     with cols[1]:
         st.markdown('''
+We assume that all of the MT units also provide IVT.
+
 In usual care:
 + patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
 + other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
@@ -233,6 +235,10 @@ We calculate six base outcomes. These can be combined in different proportions t
 ''')
 with containers['region_unit_admissions_top']:
     st.markdown('''
+:red-background[NOTE, November 2025, currently these admissions are always
+for all patients rather than toggled onto
+"only nearest unit has no MT" if requested]
+
 Total patients from this catchment area
 directly admitted to (and transferred "t" to or from)
 each unit:
@@ -402,16 +408,10 @@ dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
 # or the button has been pressed.
 if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
 
-    # if st.session_state['rerun_unique_travel_times']:
     unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
         reg.find_unique_travel_times(
             df_lsoa_units_times, _log_loc=containers['log_units'])
         )
-    #     set_rerun_unique_travel_times(False)
-    # else:
-    #     pass
-
-    # if st.session_state['rerun_unique_treat_times']:
     unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
         series_treatment_times_without_travel,
         unique_travel_for_ivt,
@@ -422,9 +422,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
         dict_unique_travel_pairs, series_treatment_times_without_travel,
         _log=True, _log_loc=containers['log_pathway'],
     )
-    #     set_rerun_unique_treat_times(False)
-    # else:
-    #     pass
+
     # LSOA-level treatment times:
     df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
         df_lsoa_units_times,
@@ -683,24 +681,34 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             st.dataframe(df_ivt, column_config=column_config_ivt_only)
 
     # ----- Travel and treatment times -----
-    time_bins, admissions_times = reg.gather_this_region_travel_times(
-        st.session_state['dict_highlighted_region_travel_times'],
-        lsoa_subset, region
-        )
-    s_treats = st.session_state[
-        'dict_highlighted_region_average_treatment_times'][
-            lsoa_subset].loc[region]
-    df_treats = reg.make_average_treatment_time_df(s_treats)
+    try:
+        time_bins, admissions_times = reg.gather_this_region_travel_times(
+            st.session_state['dict_highlighted_region_travel_times'],
+            lsoa_subset, region
+            )
+        s_treats = st.session_state[
+            'dict_highlighted_region_average_treatment_times'][
+                lsoa_subset].loc[region]
+        df_treats = reg.make_average_treatment_time_df(s_treats)
+        selected_region_is_mt_unit = False
+    except KeyError:
+        # This is an MT unit and the LSOA subset excludes patients
+        # nearest MT units.
+        selected_region_is_mt_unit = True
+
     with containers['region_times']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
-            # Travel times
-            reg.plot_travel_times(time_bins, admissions_times)
+            if selected_region_is_mt_unit:
+                st.markdown('No data to display.')
+            else:
+                # Travel times
+                reg.plot_travel_times(time_bins, admissions_times)
 
-            # Average treatment times:
-            st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
-            st.table(df_treats)
+                # Average treatment times:
+                st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+                st.table(df_treats)
 
     # ----- Admissions by unit -----
     # # Find tracked admissions between units:
@@ -902,11 +910,20 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with c:
             st.subheader(region_label)
             df_u = st.session_state['dict_highlighted_region_outcomes'][
-                subgroup]['usual_care'][lsoa_subset].loc[region]
+                subgroup]['usual_care'][lsoa_subset]
             df_r = st.session_state['dict_highlighted_region_outcomes'][
-                subgroup]['redir_allowed'][lsoa_subset].loc[region]
-            if df_u.isna().all() & df_r.isna().all():
+                subgroup]['redir_allowed'][lsoa_subset]
+            try:
+                df_u = df_u.loc[region]
+                df_r = df_r.loc[region]
+                selected_region_is_mt_unit = False
+            except KeyError:
                 st.markdown('No data available.')
+                # This is an MT unit and the LSOA subset excludes patients
+                # nearest MT units.
+                selected_region_is_mt_unit = True
+            if selected_region_is_mt_unit:
+                pass
             else:
                 cc = st.container(horizontal=True)
                 with cc:
