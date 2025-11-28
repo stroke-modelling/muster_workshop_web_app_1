@@ -1141,8 +1141,8 @@ def plot_basic_travel_options():
         }
     st.plotly_chart(
         fig,
+        config=plotly_config,
         width='content',
-        config=plotly_config
         )
 
 
@@ -1369,8 +1369,8 @@ def plot_basic_travel_options_msu():
         }
     st.plotly_chart(
         fig,
+        config=plotly_config,
         width='content',
-        config=plotly_config
         )
 
 
@@ -1438,7 +1438,7 @@ def plot_travel_times(
         # Options when the image is saved:
         'toImageButtonOptions': {'height': None, 'width': None},
         }
-    st.plotly_chart(fig, width='content', config=plotly_config)
+    st.plotly_chart(fig, config=plotly_config, width='content')
 
 
 # def calculate_average_treatment_times_highlighted_regions(

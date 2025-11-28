@@ -1037,9 +1037,8 @@ def draw_units_map(map_traces, outline_name='none'):
 
     st.plotly_chart(
         fig,
-        width='content',
         config=plotly_config,
-        key='pants'
+        width='content',
         )
 
 
@@ -1103,8 +1102,8 @@ def draw_units_msu_map(map_traces, outline_name='none'):
 
     st.plotly_chart(
         fig,
+        config=plotly_config,
         width='stretch',
-        config=plotly_config
         )
 
 
@@ -1487,4 +1486,4 @@ def plot_networks(
         x=0.25,
     ))
     plotly_config = get_map_config()
-    st.plotly_chart(fig, width='stretch', config=plotly_config)
+    st.plotly_chart(fig, config=plotly_config, width='stretch')

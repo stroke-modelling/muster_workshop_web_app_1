@@ -824,8 +824,8 @@ with containers['map_fig']:
     plotly_config = plot_maps.get_map_config()
     st.plotly_chart(
         st.session_state['maps_fig'],
+        config=plotly_config,
         # width='content',
-        config=plotly_config
         )
 
 
