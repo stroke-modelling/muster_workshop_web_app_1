@@ -61,12 +61,11 @@ except KeyError:
     pass
 st.session_state['page_last_run'] = 'MUSTER'
 # Set these so that all results run on first go of script:
-if 'inputs_changed' not in st.session_state.keys():
-    st.session_state['inputs_changed'] = True
-    st.session_state['rerun_region_summaries'] = True
-    st.session_state['rerun_maps'] = True
-    st.session_state['rerun_full_results'] = True
-    st.session_state['rerun_lsoa_units_times'] = True
+change_keys = ['inputs_changed', 'rerun_region_summaries', 'rerun_maps',
+               'rerun_full_results', 'rerun_lsoa_units_times']
+for k in change_keys:
+    if k not in st.session_state.keys():
+        st.session_state[k] = True
 
 
 def set_up_page_layout():

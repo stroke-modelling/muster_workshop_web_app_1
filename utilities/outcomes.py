@@ -77,7 +77,8 @@ def calculate_unique_outcomes(
     utility_shift, mrs_dists_i for i in 0 to 6,
     mrs_dists_noncum_i for i in 0 to 6.
     """
-    times = {'ivt': times_to_ivt, 'mt': times_to_mt}
+    times = {'ivt': list(np.array(times_to_ivt, dtype=float)),
+             'mt': list(np.array(times_to_mt, dtype=float))}
     # Run results for IVT and for MT separately.
     outcomes_by_stroke_type = {
         'ivt': run_outcome_model_for_unique_times_ivt(times['ivt']),

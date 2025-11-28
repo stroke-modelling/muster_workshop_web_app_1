@@ -348,19 +348,13 @@ def find_nearest_units_each_lsoa(
     geo.run()
     # Reset index because Model expects a column named 'lsoa':
     df_geo = geo.get_combined_data().copy(deep=True).reset_index()
-    # Round travel times to nearest minute.
-    # +1e-5 to make all 0.5 times round up to next minute.
-    cols_times = ['nearest_ivt_time', 'nearest_mt_time', 'transfer_time']
-    if use_msu:
-        cols_times.append('nearest_msu_time')
-    df_geo[cols_times] = np.round(df_geo[cols_times] + 1e-5, 0)
     # Separate column for separate travel time including transfer:
     df_geo['nearest_ivt_then_mt_time'] = (
         df_geo['nearest_ivt_time'] + df_geo['transfer_time'])
 
-    # Cache the geo class so that on the next run all of the big
-    # data files are not loaded in another time.
-    st.session_state['geo'] = geo
+    # # Cache the geo class so that on the next run all of the big
+    # # data files are not loaded in another time.
+    # st.session_state['geo'] = geo
 
     if _log:
         p = 'Assigned LSOA to nearest units.'
@@ -1715,6 +1709,9 @@ def calculate_network_usual_care(df_network, dict_pops_u):
         )
     # Usual care:
     df_net_u = df_network.copy()
+    # Convert unit columns to generic strings:
+    cols_units = [c for c in df_net_u.columns if 'unit' in c]
+    df_net_u[cols_units] = df_net_u[cols_units].astype('string')
     # Combine columns that share nearest and transfer units:
     df_net_u = df_net_u.drop('nearest_mt_unit', axis='columns')
     df_net_u = df_net_u.groupby(['nearest_ivt_unit', 'transfer_unit']
@@ -1755,6 +1752,9 @@ def calculate_network_redir(df_network, dict_pops_r):
     )
     # Redirection scenario:
     df_net_r = df_network.copy()
+    # Convert unit columns to generic strings:
+    cols_units = [c for c in df_net_r.columns if 'unit' in c]
+    df_net_r[cols_units] = df_net_r[cols_units].astype('string')
     # No redir, similar to usual care above:
     df_net_no_redir = df_net_r.copy()
     df_net_no_redir['admissions'] *= prop_no_redir

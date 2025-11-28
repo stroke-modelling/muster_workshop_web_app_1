@@ -8,6 +8,8 @@ The full LSOA results are only built up at the end when required.
 
 # Note: logs print in wrong location for cached functions,
 # so have extra "with" blocks in places.
+
+Possibly worth doing - change big df postcodes to int, LSOA to FID (int).
 """
 #MARK: Imports
 # ###################
@@ -61,12 +63,11 @@ except KeyError:
     pass
 st.session_state['page_last_run'] = 'OPTIMIST'
 # Set these so that all results run on first go of script:
-if 'inputs_changed' not in st.session_state.keys():
-    st.session_state['inputs_changed'] = True
-    st.session_state['rerun_region_summaries'] = True
-    st.session_state['rerun_maps'] = True
-    st.session_state['rerun_full_results'] = True
-    st.session_state['rerun_lsoa_units_times'] = True
+change_keys = ['inputs_changed', 'rerun_region_summaries', 'rerun_maps',
+               'rerun_full_results', 'rerun_lsoa_units_times']
+for k in change_keys:
+    if k not in st.session_state.keys():
+        st.session_state[k] = True
 
 
 def set_up_page_layout():
@@ -272,6 +273,7 @@ map_traces_constant = plot_maps.make_constant_map_traces()
 
 with containers['units_df']:
     df_unit_services = reg.select_unit_services()
+
 # If units are updated, the following block runs.
 # Calculate LSOA-unit allocation now so that the unit catchment
 # can be shown on the units map.
@@ -735,13 +737,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     ))
     # Only units whose catchment area is in the selected region:
     nearest_units = sorted(list(
-        set(df_net_u['nearest_unit'].values.flatten()) |
-        set(df_net_r['nearest_unit'].values.flatten())
+        set(df_net_u['nearest_unit'].values) |
+        set(df_net_r['nearest_unit'].values)
     ))
 
     # Tabulate direct admissions and transfers in usual care
     # and in redir scenario for each unit.
-    catchment_units = sorted(list(df_net_u['first_unit'].values.flatten()))
+    catchment_units = sorted(list(df_net_u['first_unit'].values))
     cols = ['first_unit', 'admissions_catchment_to_first_unit',
             'admissions_first_unit_to_transfer']
     df_unit_admissions = df_net_u[cols].copy()
