@@ -1,279 +1,50 @@
 """
-OPTIMIST results display app.
+Outcomes with usual care and redirection with maps for OPTIMIST.
 
-Because a long app quickly gets out of hand,
-try to keep this document to mostly direct calls to streamlit to write
-or display stuff. Use functions in other files to create and
-organise the stuff to be shown. In this example, most of the work is
-done in functions stored in files named container_(something).py
+This version calculates as few elements as possible. Instead of
+calculating full data for thousands of LSOA, we instead process the
+unique treatment times that may be shared across many LSOA.
+The full LSOA results are only built up at the end when required.
+
+# Note: logs print in wrong location for cached functions,
+# so have extra "with" blocks in places.
+
+Possibly worth doing - change big df postcodes to int, LSOA to FID (int).
 """
-# ----- Imports -----
+#MARK: Imports
+# ###################
+# ##### IMPORTS #####
+# ###################
 import streamlit as st
 import pandas as pd
 
-# Custom functions:
-import utilities.calculations as calc
+
+# ----- Custom functions -----
+import utilities.regions as reg
 import utilities.maps as maps
 import utilities.plot_maps as plot_maps
-import utilities.plot_mrs_dists as mrs
+import utilities.pathway as pathway
+import utilities.outcomes as outcomes
+import utilities.population as pop
 import utilities.colour_setup as colour_setup
-import utilities.inputs as inputs
-import utilities.plot_timeline as timeline
-from utilities.utils import load_reference_mrs_dists
+from utilities.utils import set_rerun_map, set_rerun_full_results, \
+    set_rerun_lsoa_units_times
 
 
-# @st.cache_data
-def calculate_treatment_times_each_lsoa(df_unit_services, treatment_time_dict):
-
-    # ---- Travel times -----
-    # One row per LSOA:
-    df_travel_times = calc.calculate_geography(df_unit_services).copy()
-    df_travel_times = df_travel_times.set_index('LSOA')
-
-    # Copy stroke unit names over. Currently has only postcodes.
-    cols_postcode = ['nearest_ivt_unit', 'nearest_mt_unit',
-                     'transfer_unit']
-    cols_postcode = [c for c in cols_postcode if c in df_travel_times.columns]
-    for col in cols_postcode:
-        df_travel_times = pd.merge(
-            df_travel_times, df_unit_services['ssnap_name'],
-            left_on=col, right_index=True, how='left'
-            )
-        df_travel_times = df_travel_times.rename(columns={
-            'ssnap_name': f'{col}_name'})
-        # Reorder columns so name appears next to postcode.
-        i = df_travel_times.columns.tolist().index(col)
-        cols_reorder = [
-            *df_travel_times.columns[:i],
-            f'{col}_name',
-            *df_travel_times.columns[i:-1]
-            ]
-        df_travel_times = df_travel_times[cols_reorder]
-
-    # ---- Treatment times -----
-    # Find the times to IVT and MT in each scenario and for each
-    # LSOA. The times are rounded to the nearest minute.
-    # One row per LSOA:
-    df_travel_times = calc.calculate_treatment_times_each_lsoa_prehospdiag(
-        df_travel_times, treatment_time_dict)
-    return df_travel_times
+#MARK: Functions
+# #####################
+# ##### FUNCTIONS #####
+# #####################
 
 
-def main_calculations(df_times):
-    # ----- Unique treatment times -----
-    # Find the complete set of times to IVT and times to MT.
-    # Don't need the combinations of IVT and MT times yet.
-    # Find set of treatment times:
-    scenarios = ['usual_care', 'redirection_approved', 'redirection_rejected']
-    cols_ivt = [f'{s}_ivt' for s in scenarios]
-    cols_mt = [f'{s}_mt' for s in scenarios]
+# ################
+# ##### MAIN #####
+# ################
 
-    times_to_ivt = sorted(list(set(df_times[cols_ivt].values.flatten())))
-    times_to_mt = sorted(list(set(df_times[cols_mt].values.flatten())))
-
-    # ----- Outcomes for unique treatment times -----
-    # Run the outcome model for only the unique treatment times
-    # instead of one row per LSOA.
-    # Run results for IVT and for MT separately.
-    outcomes_by_stroke_type_ivt_only = (
-        calc.run_outcome_model_for_unique_times_ivt(times_to_ivt))
-    outcomes_by_stroke_type_mt_only = (
-        calc.run_outcome_model_for_unique_times_mt(times_to_mt))
-
-    # Convert these results dictionaries into dataframes:
-    df_outcomes_ivt, df_outcomes_mt = (
-        calc.convert_outcome_dicts_to_df_outcomes(
-            times_to_ivt,
-            times_to_mt,
-            outcomes_by_stroke_type_ivt_only,
-            outcomes_by_stroke_type_mt_only
-            )
-        )
-    df_mrs_ivt, df_mrs_mt = (
-        calc.convert_outcome_dicts_to_df_mrs(
-            times_to_ivt,
-            times_to_mt,
-            outcomes_by_stroke_type_ivt_only,
-            outcomes_by_stroke_type_mt_only
-            )
-        )
-    return (
-        df_outcomes_ivt,
-        df_outcomes_mt,
-        df_mrs_ivt,
-        df_mrs_mt
-    )
-
-
-# @st.cache_data
-def calculate_outcomes_for_combo_groups(
-        df_lsoa,
-        input_dict
-        ):
-
-    df_lsoa = df_lsoa.rename(columns={'LSOA': 'lsoa'})
-    df_lsoa = df_lsoa.set_index('lsoa')
-    # Make a new dummy zero column available:
-    col_zero = 'zero'
-    df_lsoa[col_zero] = 0.0
-
-    # Extra calculations for redirection:
-    # Combine redirection rejected and approved results in
-    # proportions given by specificity and sensitivity.
-    # This creates columns labelled "redirection_considered".
-    # nLVO:
-    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
-        scenario_list=['redirection_rejected', 'redirection_approved'],
-        combo_name='redirection_considered',
-        treatment_list=['ivt'],
-        occlusion_list=['nlvo'],
-        dummy_col=col_zero
-        )
-    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
-        df_lsoa, cols_rr, cols_ra, cols_rc)
-    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
-    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
-    df_lsoa = calc.combine_results(
-        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
-    # LVO:
-    cols_rr, cols_ra, cols_rc = calc.build_columns_combine_redir(
-        scenario_list=['redirection_rejected', 'redirection_approved'],
-        combo_name='redirection_considered',
-        occlusion_list=['lvo'],
-        dummy_col=col_zero
-        )
-    cols_rr, cols_ra, cols_rc = calc.keep_existing_cols(
-        df_lsoa, cols_rr, cols_ra, cols_rc)
-    prop_lvo_redirected = input_dict['sensitivity']
-    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
-    df_lsoa = calc.combine_results(
-        df_lsoa, cols_rr, cols_ra, cols_rc, props_list)
-
-    # # Make combined nLVO + LVO data in the proportions given.
-    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
-    # # Don't calculate the separate redirection approved/rejected bits.
-    # Usual care:
-    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
-        calc.build_columns_combine_occlusions(
-            scenario_list=['usual_care'], dummy_col=col_zero))
-    # Keep a copy of these for later:
-    cols_usual = [cols_nlvo_usual, cols_lvo_usual, cols_combo_usual]
-    # Only keep existing columns:
-    cols_nlvo_usual, cols_lvo_usual, cols_combo_usual = (
-        calc.keep_existing_cols(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
-                                cols_combo_usual))
-    # Make the new data:
-    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_usual, cols_lvo_usual,
-                                   cols_combo_usual, props_list)
-
-    # Redirection:
-    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
-        calc.build_columns_combine_occlusions(
-            scenario_list=['redirection_considered'], dummy_col=col_zero))
-    # Keep a copy of these for later:
-    cols_redir = [cols_nlvo_redir, cols_lvo_redir, cols_combo_redir]
-    # Only keep existing columns:
-    cols_nlvo_redir, cols_lvo_redir, cols_combo_redir = (
-        calc.keep_existing_cols(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
-                                cols_combo_redir))
-    # Make the new data:
-    df_lsoa = calc.combine_results(df_lsoa, cols_nlvo_redir, cols_lvo_redir,
-                                   cols_combo_redir, props_list)
-    # Remove the dummy column now it's no longer needed:
-    df_lsoa = df_lsoa.drop(col_zero, axis='columns')
-
-    # Calculate diff: redirect minus usual care:
-    # Combine the three lists into one long list and remove repeats:
-    cols_usual = sum([sorted(list(set(c))) for c in cols_usual], [])
-    cols_redir = sum([sorted(list(set(c))) for c in cols_redir], [])
-    # Only keep useful columns that exist in the data:
-    cols_usual = [c for c in cols_usual if
-                  ((c != col_zero) & (c in df_lsoa.columns))]
-    cols_redir = [c for c in cols_redir if
-                  ((c != col_zero) & (c in df_lsoa.columns))]
-    # Make matching columns for the difference names:
-    diff_str = 'diff_redirection_considered_minus_usual_care'
-    cols_diff = [c.replace('usual_care', diff_str) for c in cols_usual]
-    # Make new data:
-    props_list = [1.0, -1.0]
-    df_lsoa = calc.combine_results(
-        df_lsoa, cols_redir, cols_usual, cols_diff, props_list)
-
-    return df_lsoa
-
-
-def calculate_pdeath_for_combo_groups(
-        df_pdeath, scenarios, input_dict,
-        treatment_types=['ivt', 'mt', 'ivt_mt']
-        ):
-    """
-    f'{s}_probdeath_nlvo_ivt',
-    f'{s}_probdeath_lvo_ivt',
-    f'{s}_probdeath_lvo_mt',
-    f'{s}_probdeath_lvo_ivt_mt',
-    """
-
-    # Make "redirection considered" group.
-    # For nLVO with IVT:
-    cols_rr = ['redirection_rejected_probdeath_nlvo_ivt']
-    cols_ra = ['redirection_approved_probdeath_nlvo_ivt']
-    cols_rc = ['redirection_considered_probdeath_nlvo_ivt']
-    prop_nlvo_redirected = (1.0 - input_dict['specificity'])
-    props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
-    df_pdeath = calc.combine_results(
-        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
-    # For LVO groups:
-    cols_rr = [f'redirection_rejected_probdeath_lvo_{t}'
-               for t in treatment_types]
-    cols_ra = [f'redirection_approved_probdeath_lvo_{t}'
-               for t in treatment_types]
-    cols_rc = [f'redirection_considered_probdeath_lvo_{t}'
-               for t in treatment_types]
-    prop_lvo_redirected = input_dict['sensitivity']
-    props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
-    df_pdeath = calc.combine_results(
-        df_pdeath, cols_rr, cols_ra, cols_rc, props_list)
-
-    # Combine nLVO and LVO groups.
-    # Set up data for no treatment:
-    dist_dict = load_reference_mrs_dists()
-    df_pdeath['probdeath_nlvo_no_treatment'] = (
-        dist_dict['nlvo_no_treatment_noncum'][-1])
-    # Gather the column names here:
-    cols_nlvo = []
-    cols_lvo = []
-    cols_combo = []
-    for s in scenarios + ['redirection_considered']:
-        for t in treatment_types:
-            # Set up existing column names.
-            col_nlvo = f'{s}_probdeath_nlvo_{t}'
-            col_lvo = col_nlvo.replace('nlvo', 'lvo')
-            # New column name:
-            col_combo = col_nlvo.replace('nlvo', 'combo')
-            # Change nLVO column for special cases where the treatment
-            # option is invalid:
-            if t == 'mt':
-                # Use no-treatment data.
-                col_nlvo = 'probdeath_nlvo_no_treatment'
-            elif t == 'ivt_mt':
-                # Use IVT-only data.
-                col_nlvo = col_nlvo.replace('ivt_mt', 'ivt')
-            else:
-                pass
-            cols_nlvo.append(col_nlvo)
-            cols_lvo.append(col_lvo)
-            cols_combo.append(col_combo)
-    # Combine the data:
-    props_list = [input_dict['prop_nlvo'], input_dict['prop_lvo']]
-    df_pdeath = calc.combine_results(
-        df_pdeath, cols_nlvo, cols_lvo, cols_combo, props_list)
-    return df_pdeath
-
-
-# ###########################
-# ##### START OF SCRIPT #####
-# ###########################
-# page_setup()
+#MARK: Page layout
+# #######################
+# ##### PAGE LAYOUT #####
+# #######################
 st.set_page_config(
     page_title='OPTIMIST',
     page_icon=':ambulance:',
@@ -291,1162 +62,1095 @@ except KeyError:
     # No page has been run yet.
     pass
 st.session_state['page_last_run'] = 'OPTIMIST'
-
-# """
-# TO DO - check geopandas version - updated with statsmodels?
-
-# Conversion from lat/long to BNG isn't working
-# returns inf coordinates, ends up with points instead of polygons
-
-# requirements file says 0.14.2, current install is 0.14.3
-
-# """
-
-# # All msoa shapes:
-# from utilities.maps import _import_geojson
-# import os
-
-# gdf_boundaries_msoa = geopandas.read_file(os.path.join('data', 'outline_msoa11cds.geojson'))
-
-# st.write(gdf_boundaries_msoa.crs)
-
-# # If crs is given in the file, geopandas automatically
-# # pulls it through. Convert to National Grid coordinates:
-# if gdf_boundaries_msoa.crs != 'EPSG:27700':
-#     gdf_boundaries_msoa = gdf_boundaries_msoa.to_crs('EPSG:27700')#
-
-# # gdf_boundaries_msoa = _import_geojson(
-# #     'MSOA11NM',
-# #     # path_to_file=os.path.join('data', 'MSOA_Dec_2011_Boundaries_Super_Generalised_Clipped_BSC_EW_V3_2022_7707677027087735278.geojson')# 'MSOA_V3_reduced_simplified.geojson')
-# #     # path_to_file=os.path.join('data', 'MSOA_V3_reduced_simplified.geojson')
-# #     path_to_file=os.path.join('data', 'outline_msoa11cds.geojson')
-#     # )
-# st.write(gdf_boundaries_msoa['geometry'])
-# for col in gdf_boundaries_msoa.columns:
-#     st.write(gdf_boundaries_msoa[col])
-# st.stop()
-
-# import utilities.utils as utils
-# utils.make_outline_ambo()
-# # utils.make_outline_lsoa_limit_to_england()
-# # # utils.make_outline_msoa_from_lsoa()
-# # # utils.make_outline_icbs('icb')
-# # # utils.make_outline_icbs('isdn')
-# # # utils.make_outline_england_wales()
-# st.stop()
+# Set these so that all results run on first go of script:
+change_keys = ['inputs_changed', 'rerun_region_summaries', 'rerun_maps',
+               'rerun_full_results', 'rerun_lsoa_units_times']
+for k in change_keys:
+    if k not in st.session_state.keys():
+        st.session_state[k] = True
 
 
-# #####################################
-# ########## CONTAINER SETUP ##########
-# #####################################
-# Both tabs:
-# +-----------------------------------------------+
-# |                container_intro                |
-# +-------------------------+---------------------+
-#
-# Inputs tab:
-# +-----------------------------------------------+
-# |                container_inputs               |
-# |  +-----------------------------------------+  |
-# |  |         container_inputs_summary        |  |
-# |  +-----------------------------------------+  |
-# |  |           container_inputs_top          |  |
-# |  +-----------------------------------------+  |
-# |  +---------+----------+---------+----------+  |
-# |  |    c1   |    c2    |    c3   |    c4    |  |
-# |  +---------+----------+---------+----------+  |
-# +-----------------------------------------------+
-# |             container_unit_services           |
-# |  +-----------------------------------------+  |
-# |  |         cu1        |         cu2        |  |
-# |  +-----------------------------------------+  |
-# |  |       container_services_buttons        |  |
-# |  +-----------------------------------------+  |
-# |  |      container_services_dataeditor      |  |
-# |  +-----------------------------------------+  |
-# +-----------------------------------------------+
-#
-# Results tab:
-# +-----------------------------------------------+
-# |                 container_rerun               |
-# +-----------------------------------------------+
-# |            container_results_tables           |
-# +-----------------------------------------------+
-# |              container_map_inputs             |
-# |  +------------+--------------+-------------+  |
-# |  |    cm0     |     cm1      |     cm2     |  |
-# |  +------------+--------------+-------------+  |
-# +-----------------------------------------------+
-# |                 container_map                 |
-# +-----------------------------------------------+
-# |          container_input_region_type          |
-# +-----------------------------------------------+
-# |              container_actual_vlim            |
-# +-----------------------------------------------+
-# +-----------------------------------------------+
-# |             container_mrs_dists_etc           |
-# |  +-----------------------------------------+  |
-# |  |           container_mrs_dists           |  |
-# |  +--------------------+--------------------+  |
-# |  |   container_bars   | container_mrs_input|  |
-# |  +--------------------+--------------------+  |
-# +-----------------------------------------------+
-#
-# Sidebar:
-# v Accessibility & advanced options
-#   +--------------------------+
-#   | container_select_outcome |
-#   +--------------------------+
-#   |  container_select_cmap   |
-#   +--------------------------+
-#   |  container_select_vlim   |
-#   +--------------------------+
+def set_up_page_layout():
+    """
+    Set up container placement and return as dict.
+    """
+    c = {}
+    st.title('Benefit in outcomes from redirection')
 
-container_intro = st.container()
-tab_inputs, tab_results = st.tabs(['Inputs', 'Results'])
-with tab_inputs:
-    container_inputs = st.container()
-    # container_timeline_plot = st.container()
-    container_unit_services = st.container()
+    # ----- Setup -----
+    c['setup'] = st.container(border=True)
+    tab_titles = [
+        'Stroke units', 'Treatment pathway', 'Population onion', 'Subgroups'
+    ]
+    with c['setup']:
+        st.header('Setup')
+        (c['units_setup'], c['pathway'], c['onion'], c['onion_subgroups']) = (
+            st.tabs(tab_titles))
 
-with container_inputs:
-    st.markdown('## Pathway timings')
-    container_inputs_summary = st.container()
-    container_inputs_top = st.container()
-    (
-        container_inputs_standard,     # c1
-        container_timeline_standard,   # c2
-        container_inputs_population    # c3
-    ) = st.columns(3)
-with container_unit_services:
-    st.header('Stroke unit services')
-    (
-        container_unit_services_top,  # cu1
-        container_services_map,        # cu2
-        container_services_dataeditor
-    ) = st.columns([2, 4, 8])
-with container_services_dataeditor:
-    st.info(''.join([
-        'To update the services, ',
-        'click the tick-boxes in the table.'
-        ]), icon='➡️')
+    with c['units_setup']:
+        cols = st.columns([1, 1])
+        with cols[0]:
+            c['units_text'] = st.container()
+        with cols[1]:
+            c['units_map'] = st.container()
+        with st.expander('Edit unit services'):
+            c['units_df'] = st.container()
 
-with tab_results:
-    container_rerun = st.container()
+    with c['pathway']:
+        c['pathway_text'] = st.container()
+        c['pathway_fig'] = st.container()
+        c['pathway_drop'] = st.expander('Edit pathway timings')
+        with c['pathway_drop']:
+            cols = st.columns(2)
+            with cols[0]:
+                st.markdown('Pre-hospital:')
+                c['pathway_inputs_prehosp'] = st.container(
+                    border=True, horizontal=True)
+            with cols[1]:
+                st.markdown('After arrival:')
+                c['pathway_inputs_units'] = st.container(
+                    border=True, horizontal=True)
 
-    st.markdown('## Summary results')
-    # Places to put summary boxes:
-    container_summary_results = st.container()
+    with c['onion']:
+        cols = st.columns([1, 1])
+        with cols[0]:
+            c['onion_fig'] = st.container()
+        with cols[1]:
+            c['onion_text'] = st.container()
+        c['onion_text2'] = st.container()
+        c['onion_setup'] = st.expander('Edit population proportions')
 
-    st.markdown('## Full results')
-    with st.expander('Full data tables'):
-        container_results_tables = st.container()
-    container_map_inputs = st.container()  # border=True)
-    with container_map_inputs:
-        st.markdown('## Subgroup results')
-        (
-            container_input_words,        # cm0
-            container_input_treatment,    # cm1
-            container_input_stroke_type,  # cm2
-        ) = st.columns(3)
-        with container_input_words:
-            st.markdown('Pick the subgroup using these buttons:')
+    with c['onion_subgroups']:
+        c['pop_plots'] = st.container()
 
-    # Convert the map container to empty so that the placeholder map
-    # is replaced once the real map is ready.
-    st.markdown('### Maps of average outcomes')
-    container_map = st.empty()
-    container_input_region_type = st.container()
-    container_actual_vlim = st.container()
-    container_mrs_dists_etc = st.container()
-    # Convert mRS dists to empty so that re-running a fragment replaces
-    # the bars rather than displays the new plot in addition.
-    with container_mrs_dists_etc:
-        st.markdown('### Distributions of mRS scores')
-        container_mrs_limit = st.container()
-        container_mrs_dists = st.empty()
+    # ----- Results -----
+    c['run_results'] = st.container()
+    c['results'] = st.container(border=True)
+    tabs_results = ['Region summaries', 'England maps', 'Full results tables']
+    with c['results']:
+        st.header('Results')
+        (c['region_summaries'], c['maps'], c['full_results']) = (
+            st.tabs(tabs_results))
 
-with st.sidebar:
-    with st.expander('Accessibility & advanced options'):
-        container_select_outcome = st.container()
-        container_select_cmap = st.container()
-        container_select_vlim = st.container()
+    with c['region_summaries']:
+        c['region_select'] = st.container()
+        c['highlighted_region_summaries'] = st.container(horizontal=True)
+        c_dict = {
+            'region_treat_stats': 'Treatment numbers',
+            'region_times': 'Travel and treatment times',
+            'region_unit_admissions': 'Admissions by unit',
+            'region_unit_maps': 'Patient transport maps',
+        }
+        for container_name, container_label in c_dict.items():
+            c[f'{container_name}_exp'] = st.expander(
+                container_label, expanded=False)
+            with c[f'{container_name}_exp']:
+                c[f'{container_name}_top'] = st.container()
+                h = True if container_name != 'region_unit_maps' else False
+                c[container_name] = st.container(horizontal=h)
 
-with container_intro:
-    st.markdown('# Benefit in outcomes from redirection')
+    with c['maps']:
+        c['map_fig'] = st.container()
+        with st.expander('Accessibility & advanced map setup'):
+            c['map_setup'] = st.container()
+    with c['full_results']:
+        c['full_results_setup'] = st.container()
+
+    # ----- Log -----
+    c['log'] = st.expander('Log of calculations', width=500)
+    log_keys_labels = {
+        'log_units': 'Stroke units',
+        'log_pathway': 'Treatment pathway',
+        'log_onion': 'Population onion',
+        'log_subgroups': 'Subgroups',
+        'log_regions': 'Region summaries',
+        'log_maps': 'England maps',
+        'log_full_results': 'Full results tables',
+    }
+    with c['log']:
+        for key, label in log_keys_labels.items():
+            c[key] = st.container()
+            with c[key]:
+                st.markdown(f':green[{label}]')
+
+    return c
 
 
-# #################################
-# ########## USER INPUTS ##########
-# #################################
+containers = set_up_page_layout()
 
-# These affect the data in all tables and all plots.
+#MARK: Page text
+# #####################
+# ##### PAGE TEXT #####
+# #####################
+with containers['units_text']:
+    cols = st.columns([1, 2])
+    with cols[1]:
+        st.markdown('''
+We assume that all of the MT units also provide IVT.
 
-# ----- Pathway timings and stroke units -----
-input_dict = {}
-with container_inputs_top:
-    st.info('To update the timings, use the number box options below.',
-            icon='➡️')
-    st.markdown(''.join([
-        'These timings affect the times to treatment for all patients ',
-        'excluding the travel times to their chosen stroke units.'
-    ]))
-with container_inputs_standard:
-    input_dict = inputs.select_parameters_pathway_optimist(input_dict)
-with container_inputs_population:
-    st.markdown('### Population inputs')
-    population_dict = inputs.select_parameters_population_optimist()
+In usual care:
++ patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
++ other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
 
-# Combine the two input dicts:
-input_dict = input_dict | population_dict
-
-with container_services_dataeditor:
-    df_unit_services, df_unit_services_full = (
-        inputs.select_stroke_unit_services(use_msu=False))
-
-# Calculate times to treatment without travel.
-# These are used in the main_calculations and also displayed on
-# the inputs page as a sanity check.
-treatment_times_without_travel = (
-    calc.calculate_times_to_treatment_without_travel_usual_care(input_dict))
-treatment_times_with_prehospdiag = (
-    calc.calculate_times_to_treatment_without_travel_prehospdiag(input_dict))
-# Combine these:
-treatment_times_without_travel = (
-    treatment_times_without_travel | treatment_times_with_prehospdiag
-    )
-
-# These do not change the underlying data,
-# but do change what is shown in the plots.
-
-# ----- Stroke type, treatment, outcome -----
-with container_select_outcome:
-    st.markdown('### Alternative outcome measures')
-    outcome_type, outcome_type_str = inputs.select_outcome_type()
-with container_input_treatment:
-    treatment_type, treatment_type_str = inputs.select_treatment_type()
-with container_input_stroke_type:
-    stroke_type, stroke_type_str = (
-        inputs.select_stroke_type(use_combo_stroke_types=True))
-
-
-# ----- Regions to draw -----
-# Name of the column in the geojson that labels the shapes:
-with container_input_region_type:
-    outline_name = st.radio(
-        'Region type to draw on maps',
-        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service'],
-        horizontal=True
-        )
-
-# ----- Colourmap selection -----
-cmap_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
-# Add the reverse option after each entry. Remove any double reverse
-# reverse _r_r. Result is flat list.
-cmap_names = sum([[c, (c + '_r').replace('_r_r', '')]
-                  for c in cmap_names], [])
-with container_select_cmap:
-    st.markdown('### Colour schemes')
-    cmap_name = inputs.select_colour_maps(cmap_names)
-cmap_diff_name = cmap_name
-cmap_pop_name = cmap_name
-# If we're showing mRS scores then flip the colour maps:
-if outcome_type == 'mrs_shift':
-    cmap_name = (cmap_name + '_r').replace('_r_r', '')
-    cmap_diff_name = (cmap_diff_name + '_r').replace('_r_r', '')
-
-
-# ----- Demographic data -----
-# For population map. Load in LSOA-level demographic data:
-try:
-    df_demog = st.session_state['df_demog']
-except KeyError:
-    df_demog = inputs.load_lsoa_demog()
-# Set the column of this data that we want...
-column_pop = 'population_density'
-# ... and how the name should be displayed in the app:
-column_pop_pretty = 'Population density (people per square kilometre)'
-
-
-# ----- Colour limits -----
-# Load initial colour limits info (vmin, vmax):
-dict_colours, dict_colours_diff = (
-    colour_setup.load_colour_limits(outcome_type))
-dict_colours_pop = {'vmin': 0.0, 'vmax': 100.0}
-# User inputs for vmin and vmax with loaded values as defaults:
-with container_select_vlim:
-    st.markdown('### Colour limits')
-    dict_colours['vmin'], dict_colours['vmax'] = (
-        inputs.select_map_colour_limits(dict_colours, outcome_type_str))
-    dict_colours_diff['vmin'], dict_colours_diff['vmax'] = (
-        inputs.select_map_colour_limits(
-            dict_colours_diff, f'{outcome_type_str} benefit of redirection'))
-    dict_colours_pop['vmin'], dict_colours_pop['vmax'] = (
-        inputs.select_map_colour_limits(dict_colours_pop, column_pop_pretty))
-
-
-# ######################################
-# ########## PLOT USER INPUTS ##########
-# ######################################
-
-# ----- Timeline -----
-# Load emoji and labels:
-timeline_display_dict = timeline.get_timeline_display_dict()
-# Create timelines:
-time_dicts = timeline.build_time_dicts_optimist(input_dict)
-time_offsets, tmax = timeline.build_time_dicts_for_plot_optimist(
-    time_dicts, gap_between_chunks=45)
-
-# Make subsets of the dictionaries to be displayed:
-time_keys_standard = ['prehosp_usual_care', 'prehosp_prehospdiag',
-                      'ivt_only_unit', 'mt_transfer_unit', 'ivt_mt_unit']
-time_dicts_standard, time_offsets_standard = (
-    timeline.subset_time_dicts(time_dicts, time_offsets, time_keys_standard))
-
-# Draw the timelines:
-with container_timeline_standard:
-    timeline.plot_timeline(
-        time_dicts_standard,
-        timeline_display_dict,
-        y_vals=[0, 2, 1.5, 1.5, 0.5],  # timeline fragment centres
-        time_offsets=time_offsets_standard,
-        tmax=tmax,
-        tmin=-10.0
-        )
-
-
-# ----- Treatment times summary -----
-df_treatment_times = (
-    timeline.make_treatment_time_df_optimist(treatment_times_without_travel))
-# Display the times:
-times_explanation_usual_str = ('''
-+ The "fastest" time to MT is when the first stroke unit provides MT.
-+ The "slowest" time to MT is when a transfer to the MT unit is needed.
+With redirection, patients who would normally travel to the IVT unit first (:grey[grey path]) instead travel directly to the MT unit (:primary[red path]).
 ''')
-with container_inputs_summary:
-    st.markdown('Summary of treatment times:')
-    st.table(df_treatment_times)
-    st.markdown(times_explanation_usual_str)
+    with cols[0]:
+        reg.plot_basic_travel_options()
+    st.markdown('''
 
+For most patients, redirection means faster access to MT because of the reduced travel time and delays for hospital transfer.
+It also means slower access to IVT because of the increased travel time to the MT unit compared with the IVT unit.
+''')
+with containers['pathway_text']:
+    st.markdown('''
+The time to treatment depends on the travel times and whether redirection was considered.
 
-# ----- Unit maps -----
-# Stroke unit scatter markers:
-traces_units = plot_maps.create_stroke_team_markers(
-    df_unit_services_full)
-# Which subplots to draw which units on:
-# Each entry is [row number, column number].
-# In plotly, the first row is 1 and first column is 1.
-# The order in which they are drawn (and so which markers appear
-# on top) is the order of this dictionary.
-unit_subplot_dict = {
-    'ivt': [[1, 1]],  # first map only
-    'mt': [[1, 1]]    # both maps
-}
-# Regions to draw
-# Name of the column in the geojson that labels the shapes:
-with container_unit_services_top:
-    st.markdown(''.join([
-        'These maps show which services are provided ',
-        'by each stroke unit in England.'
-        ]))
-    outline_name_for_unit_map = st.radio(
-        'Region type to draw on maps',
-        ['None', 'ISDN', 'ICB', 'Nearest service', 'Ambulance service'],
-        key='outlines_for_unit_map'
+Assumptions:
+1. When redirection is considered, the ambulance spends more time on-scene to do the pre-hospital diagnostic.
+2. All stroke units share the same time from arrival to delivery of IVT.
+3. The time from arrival to delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
+4. All other pathway timings are the same in every scenario.
+''')
+with containers['onion_text']:
+    st.markdown('''
+The population can be grouped in a series of subsets:
++ :grey-background[Full study population]:  
+  + All patients suspected to be stroke by ambulance staff  
+  __and__  
+  + All patients confirmed to be stroke at hospital, conveyed by ambulance but not initially suspected to be stroke by ambulance staff.
++ :orange-background[Ambulance suspected stroke population]: patients suspected to be stroke by ambulance staff.
++ :yellow-background[Target population]: Ambulance suspected stroke patients who have the pathway initiation crieria i.e. drip-ship area, specified clinical features.
++ :green-background[Primary analysis population]: Patients with ischaemic stroke.
++ :blue-background[Thrombectomy]: Patients with LVO ischaemic stroke who receive thrombectomy.
+''')
+with containers['onion_text2']:
+    st.markdown('''
+The different layers of the onion have different make-ups of patients,
+e.g. types of stroke and proportions treated.  
+These proportions can be changed in the following table:
+:red-background[(NOTE, November 2025, all values are placeholders)]
+''')
+with containers['pop_plots']:
+    st.markdown('''
+We calculate six base outcomes. These can be combined in different proportions to find the outcomes for the ischaemic stroke patients in a selected subgroup of patients.
+''')
+with containers['region_unit_admissions_top']:
+    st.markdown('''
+:red-background[NOTE, November 2025, currently these admissions are always
+for all patients rather than toggled onto
+"only nearest unit has no MT" if requested]
+
+Total patients from this catchment area
+directly admitted to (and transferred "t" to or from)
+each unit:
+''')
+
+#MARK: Setup
+# #################
+# ##### SETUP #####
+# #################
+
+# ----- Unit services -----
+# Show the map of England with the stroke units and so introduce
+# the idea that some geographical areas are nearest a CSC (MT)
+# and others would need a transfer to the MT unit.
+# Allow unit services to be updated in a data editor table.
+# Show the areas whose nearest unit is not a CSC.
+# Group the data over each geographical region. Regions
+# include ICBs, ISDNs, ambulance services, nearest unit.
+# Find two copies of the results - one with all LSOA in the region
+# and one with only LSOA whose nearest unit is not a CSC.
+# --- CALCULATIONS:
+# + Calculate the travel times for all LSOA. Flag which LSOA
+#   are nearest a CSC.
+# + Gather the unique travel times.
+# + Convert list of all LSOA in a region to a list of number of
+#   admissions per unique treatment time.
+
+# Setup for map:
+df_raster, transform_dict = maps.load_lsoa_raster_lookup()
+map_traces_constant = plot_maps.make_constant_map_traces()
+
+with containers['units_df']:
+    df_unit_services = reg.select_unit_services()
+
+# If units are updated, the following block runs.
+# Calculate LSOA-unit allocation now so that the unit catchment
+# can be shown on the units map.
+if st.session_state['rerun_lsoa_units_times']:
+    df_lsoa_units_times = reg.find_nearest_units_each_lsoa(
+        df_unit_services,
+        _log_loc=containers['log_units']
         )
-
-# Region outlines:
-if outline_name_for_unit_map == 'None':
-    outline_names_col_for_unit_map = None
-    gdf_catchment_lhs_for_unit_map = None
-else:
-    if outline_name_for_unit_map == 'Nearest service':
-        # Times to treatment:
-        geo = calc.calculate_geography(df_unit_services)
-        # Put columns in the format expected by the region outline
-        # function:
-        geo = geo.rename(columns={
-            'LSOA': 'lsoa',
-            'nearest_ivt_unit': 'nearest_ivt_unit_name',
-            'nearest_mt_unit': 'nearest_mt_unit_name',
-            })
-        geo = geo.set_index(['lsoa', 'nearest_ivt_unit_name'])
-    else:
-        # Don't need catchment areas.
-        geo = None
-    (
-        outline_names_col_for_unit_map,
-        gdf_catchment_lhs_for_unit_map,
-        gdf_catchment_rhs_for_unit_map,
-        gdf_catchment_pop_for_unit_map
-    ) = calc.load_or_calculate_region_outlines(
-        outline_name_for_unit_map, geo, use_msu=False)
-
-# ----- Process geography for plotting -----
-# Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [
-    gdf_catchment_lhs_for_unit_map,
-    ]
-for gdf in gdfs_to_convert:
-    if gdf is None:
-        pass
-    else:
-        gdf['x'], gdf['y'] = maps.convert_shapely_polys_into_xy(gdf)
-
-with container_services_map:
-    plot_maps.plotly_unit_map(
-        traces_units,
-        unit_subplot_dict,
-        gdf_catchment_lhs_for_unit_map,
-        outline_names_col_for_unit_map,
-        outline_name_for_unit_map,
-        subplot_titles=['']
-        )
-
-
-# #######################################
-# ########## MAIN CALCULATIONS ##########
-# #######################################
-# While the main calculations are happening, display a blank map.
-# Later, when the calculations are finished, replace with the actual map.
-with container_map:
-    plot_maps.plotly_blank_maps(['', '', ''], n_blank=3)
-
-try:
-    df_lsoa_regions = st.session_state['df_lsoa_regions']
-except KeyError:
-    df_lsoa_regions = inputs.load_lsoa_region_lookups()
-    st.session_state['df_lsoa_regions'] = df_lsoa_regions
-
-with container_rerun:
-    if st.button('Calculate results', type='primary'):
-
-        st.session_state['input_dict'] = input_dict
-        st.session_state['df_unit_services_on_last_run'] = df_unit_services
-        st.session_state['df_unit_services_full_on_last_run'] = (
-            df_unit_services_full)
-
-        df_times = calculate_treatment_times_each_lsoa(
-            df_unit_services, treatment_times_without_travel)
-
-        (
-            df_outcomes_ivt,
-            df_outcomes_mt,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-        ) = main_calculations(df_times)
-
-        scenarios = [
-            'usual_care', 'redirection_rejected', 'redirection_approved']
-        st.session_state['df_lsoa'] = (
-            calc.build_full_lsoa_outcomes_from_unique_time_results(
-                df_times, df_outcomes_ivt, df_outcomes_mt, scenarios)
-        )
-
-        # Calculate outcomes:
-        st.session_state['df_lsoa'] = calculate_outcomes_for_combo_groups(
-            st.session_state['df_lsoa'],
-            input_dict
-            )
-
-        # Calculate probabilities of death.
-        # Pick out the masks where IVT is better than MT:
-        cols_ivt_better = [f'{s}_lvo_ivt_better_than_mt' for s in scenarios]
-        # Place these masks in the travel time data:
-        df_pdeath = pd.merge(
-            df_times.copy().reset_index().rename(
-                columns={'LSOA': 'lsoa'}).set_index('lsoa'),
-            st.session_state['df_lsoa'][cols_ivt_better],
-            left_index=True, right_index=True, how='left'
-            )
-        # Now gather P(death):
-        df_pdeath = calc.gather_pdeath_from_unique_time_results(
-            df_pdeath.reset_index(), st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'], scenarios,
-        )
-        df_pdeath = df_pdeath.set_index('lsoa')
-        # Calculate P(death) for combined groups,
-        # mix of nLVO and LVO and "redirection considered" groups.
-        df_pdeath = calculate_pdeath_for_combo_groups(
-            df_pdeath, scenarios, input_dict)
-
-        # Combine outcome and P(death) data:
-        cols_pdeath = [c for c in df_pdeath.columns if 'probdeath' in c]
-        st.session_state['df_lsoa'] = pd.merge(
-            st.session_state['df_lsoa'], df_pdeath[cols_pdeath],
-            left_index=True, right_index=True, how='left'
-        )
-
-        # Gather outcomes and P(death) into regions:
-        (
-            st.session_state['df_icb'],
-            st.session_state['df_isdn'],
-            st.session_state['df_nearest_ivt'],
-            st.session_state['df_ambo'],
-            st.session_state['df_benefit_icb'],
-            st.session_state['df_benefit_isdn'],
-            st.session_state['df_benefit_nearest_ivt'],
-            st.session_state['df_benefit_ambo'],
-        ) = calc.group_results_by_region(
-            st.session_state['df_lsoa'].reset_index().rename(
-                columns={'LSOA': 'lsoa'}),
+    st.session_state['input_df_lsoa_units_times'] = df_lsoa_units_times
+    # For map:
+    (st.session_state['map_traces_shared'],
+     st.session_state['input_df_unit_services']) = (
+        plot_maps.make_shared_map_traces(
             df_unit_services,
-            df_lsoa_regions
-            )
-
-        new_results_run = True
-    else:
-        new_results_run = False
-        # Check whether the inputs have changed from last run:
-        try:
-            # Define s to shorten the following lines:
-            s = st.session_state['df_unit_services_on_last_run']
-            # Conditions that mean inputs have changed:
-            c1 = (st.session_state['input_dict'] != input_dict)
-            c2 = (s['Use_IVT'] != df_unit_services['Use_IVT']).any()
-            c3 = (s['Use_MT'] != df_unit_services['Use_MT']).any()
-            # Check for any of these changing:
-            inputs_changed = (c1 | c2 | c3)
-        except KeyError:
-            # First run of the app.
-            inputs_changed = False
-        # If the inputs have changed, print a warning:
-        if inputs_changed:
-            with container_rerun:
-                st.warning(''.join([
-                    'Inputs have changed! The results currently being shown ',
-                    'are for the previous set of inputs. ',
-                    'Use the "calculate results" button ',
-                    'to update the results.'
-                    ]), icon='⚠️')
-
-
-if 'df_lsoa' in st.session_state.keys():
-    pass
-else:
-    # This hasn't been created yet and so the results cannot be drawn.
-    st.stop()
-
-
-# #################################################
-# ########## RESULTS - SUMMARY BY REGION ##########
-# #################################################
-
-@st.fragment
-def display_summary_stats():
-    # Select a region based on what's actually in the data,
-    # not by guessing in advance which IVT units are included for example.
-    region_options_dict = inputs.load_region_lists(df_unit_services_full)
-    select_options = []  # ['National']
-    for key, region_list in region_options_dict.items():
-        select_options += [f'{key}: {v}' for v in region_list]
-    selected_rows = st.multiselect('Highlighted regions', select_options)
-    limit_summary_to_benefit = st.toggle('Limit summary stats to areas that benefit from redirection')
-    container_summary_metrics = st.container(
-        horizontal=True, horizontal_alignment='left', border=False)
-
-    for r, row in enumerate(selected_rows):
-        region_type = row.split(': ')[0]
-        if row.startswith('ISDN'):
-            df_here = st.session_state['df_isdn']
-            df_ben = st.session_state['df_benefit_isdn']
-        elif row.startswith('ICB'):
-            df_here = st.session_state['df_icb']
-            df_ben = st.session_state['df_benefit_icb']
-        elif row.startswith('Nearest unit'):
-            df_here = st.session_state['df_nearest_ivt']
-            df_ben = st.session_state['df_benefit_nearest_ivt']
-        elif row.startswith('Amb'):
-            df_here = st.session_state['df_ambo']
-            df_ben = st.session_state['df_benefit_ambo']
-        else:
-            st.write('meep')
-
-        if row.startswith('Nearest'):
-            series_row = df_here.loc[df_here['ssnap_name'] == row.replace(f'{region_type}: ', '')].squeeze()
-            series_ben = df_ben.loc[df_ben['ssnap_name'] == row.replace(f'{region_type}: ', '')].squeeze()
-        else:
-            series_row = df_here.loc[row.replace(f'{region_type}: ', '')].squeeze()
-            series_ben = df_ben.loc[row.replace(f'{region_type}: ', '')].squeeze()
-
-        with container_summary_metrics:
-            ch = st.container(border=True)
-        with ch:
-            title = f'__{row}__'
-
-            # st.markdown(title.ljust(longest_str, '~'))
-            st.markdown(title)
-
-            s = series_ben if limit_summary_to_benefit else series_row
-            if s.empty:
-                st.write('No patients in this category.')
-                pass
-            else:
-                # Only patients who benefit:
-                t = s['transfer_required']
-                v_uc = s['usual_care_combo_ivt_mt_mrs_0-2']
-                v_rc = s['redirection_considered_combo_ivt_mt_mrs_0-2']
-                v_di = s['diff_redirection_considered_minus_usual_care_combo_ivt_mt_mrs_0-2']
-                d_uc = s['usual_care_probdeath_combo_ivt_mt']
-                d_rc = s['redirection_considered_probdeath_combo_ivt_mt']
-                d_di = d_rc - d_uc
-
-                st.write('Proportion of patients with:')
-                st.metric('Nearest unit offering MT', f'{1.0 - t:.1%}')
-                st.metric('mRS<=2', f'{v_rc:.1%}', f'{v_di:.1%} from usual care')
-                st.metric('Dead', f'{d_rc:.1%}', f'{d_di:.1%} from usual care', delta_color='inverse')
-
-
-with container_summary_results:
-    display_summary_stats()
-
-
-# #########################################
-# ########## RESULTS - FULL DATA ##########
-# #########################################
-with container_results_tables:
-
-    table_choice = st.selectbox(
-        'Display the following results table:',
-        options=[
-            'Results by IVT unit catchment',
-            'Results by ISDN',
-            'Results by ICB',
-            'Results by ambulance service',
-            'Full results by LSOA'
-            ]
+            df_lsoa_units_times, df_raster, transform_dict
         )
-
-    show_summary_boxes = True
-    if 'IVT unit' in table_choice:
-        st.markdown(''.join([
-            'Results are the mean values of all LSOA ',
-            'in each IVT unit catchment area.'
-            ]))
-        df_here = st.session_state['df_nearest_ivt']
-        column_config = {
-            'transfer_required': st.column_config.CheckboxColumn(),
-            }
-
-    elif 'ISDN' in table_choice:
-        st.markdown('Results are the mean values of all LSOA in each ISDN.')
-        df_here = st.session_state['df_isdn']
-        column_config = {}
-
-    elif 'ICB' in table_choice:
-        st.markdown('Results are the mean values of all LSOA in each ICB.')
-        df_here = st.session_state['df_icb']
-        column_config= {}
-
-    elif 'ambulance' in table_choice:
-        st.markdown(''.join([
-            'Results are the mean values of all LSOA ',
-            'in each ambulance service.'
-            ]))
-        df_here = st.session_state['df_ambo']
-        column_config = {}
-    else:
-        df_here = st.session_state['df_lsoa']
-        column_config = {
-            'transfer_required': st.column_config.CheckboxColumn(),
-            }
-        show_summary_boxes = False
-
-    # Main results table:
-    st.dataframe(
-        df_here,
-        # Set some columns to bool for nicer display:
-        column_config=column_config,
-        )
-
-
-# #########################################
-# ########## RESULTS - mRS DISTS ##########
-# #########################################
-
-with container_mrs_limit:
-    limit_mrs_dists = st.toggle(
-        'Limit mRS distributions to LSOA whose nearest stroke units do not offer MT.',
-        value=True
     )
-if limit_mrs_dists:
-    # Limit the mRS data to only LSOA that are in the redirection zone,
-    # i.e. remove anything that has the same nearest IVT unit and
-    # nearest MT unit.
-    col_to_mask_mrs = 'transfer_required'
+    set_rerun_lsoa_units_times(False)
 else:
-    col_to_mask_mrs = ''
+    pass
 
+# Will update map_traces dict later with the outcome maps.
+map_traces = st.session_state['map_traces_shared'] | map_traces_constant
 
-# Which mRS distributions will be shown on the bars:
-scenario_mrs = ['usual_care', 'redirection_considered']
-# Select mRS distribution region.
-# Select a region based on what's actually in the data,
-# not by guessing in advance which IVT units are included for example.
-region_options_dict = inputs.load_region_lists(df_unit_services_full)
-bar_options = ['National']
-for key, region_list in region_options_dict.items():
-    bar_options += [f'{key}: {v}' for v in region_list]
-
-# Keep this in its own fragment so that choosing a new region
-# to plot doesn't re-run the maps too.
-
-# Pick out useful bits from the full outcome results:
-scenarios = ['usual_care', 'redirection_rejected', 'redirection_approved']
-all_mrs_scenarios = scenarios + ['redirection_considered']
-dict_of_dfs = {}
-for s in scenarios:
-    cols_to_copy = [
-        'Admissions',
-        f'{s}_ivt',
-        f'{s}_mt',
-        f'{s}_lvo_ivt_better_than_mt',
-        'nearest_ivt_unit_name'
-        ]
-    if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-        cols_to_copy.append(col_to_mask_mrs)
-
-    df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
-    df_mrs_s = df_mrs_s.rename(columns={
-        f'{s}_ivt': 'time_to_ivt',
-        f'{s}_mt': 'time_to_mt',
-        f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-    })
-    # Merge in region info:
-    df_mrs_s = pd.merge(
-        df_mrs_s.reset_index(), df_lsoa_regions,
-        on='lsoa', how='left'
-        ).set_index('lsoa')
-    # Store result:
-    dict_of_dfs[s] = df_mrs_s.copy()
-# For redirection considered, need to account for every combo
-# of time to treatment when redir approved and when redir
-# rejected.
-cols_to_copy = [
-    'Admissions',
-    'nearest_ivt_unit_name'
-    ]
-for s in ['redirection_rejected', 'redirection_approved']:
-    cols_to_copy += [
-        f'{s}_ivt',
-        f'{s}_mt',
-        f'{s}_lvo_ivt_better_than_mt',
-    ]
-if col_to_mask_mrs in st.session_state['df_lsoa'].columns:
-    cols_to_copy.append(col_to_mask_mrs)
-
-df_mrs_s = st.session_state['df_lsoa'][cols_to_copy].copy()
-for s in ['redirection_rejected', 'redirection_approved']:
-    df_mrs_s = df_mrs_s.rename(columns={
-        f'{s}_ivt': f'{s}_time_to_ivt',
-        f'{s}_mt': f'{s}_time_to_mt',
-        # f'{s}_lvo_ivt_better_than_mt': 'lvo_ivt_better_than_mt'
-    })
-# Merge in region info:
-df_mrs_s = pd.merge(
-    df_mrs_s.reset_index(), df_lsoa_regions,
-    on='lsoa', how='left'
-    ).set_index('lsoa')
-# Store result:
-dict_of_dfs['redirection_considered'] = df_mrs_s.copy()
-
-
-@st.fragment
-def display_mrs_dists():
-    (
-        container_bars,
-        container_mrs_input,
-    ) = st.columns(2)
-
-    with container_mrs_input:
-        # User input:
-        bar_option = st.selectbox('Region for mRS distributions', bar_options)
-
-    # Set up where the data should come from -
-    # which region type was selected, and which region name.
-    region_selected, col_region = mrs.pick_out_region_name(bar_option)
-
-    # Find reference mRS distributions (no treatment).
-    # If occ_type is nLVO or LVO, this returns the normal dists.
-    # Otherwise it returns a scaled sum of the nLVO and LVO dists.
-    dist_ref_cum, dist_ref_noncum = mrs.load_no_treatment_mrs_dists(
-        stroke_type, input_dict['prop_nlvo'], input_dict['prop_nlvo'])
-    # Store no-treatment data:
-    dict_no_treatment = {
-        'noncum': dist_ref_noncum,
-        'cum': dist_ref_cum,
-        'std': None
+with containers['units_text']:
+    outline_labels_dict = {
+        'none': 'None',
+        'icb': 'Integrated Care Board',
+        'isdn': 'Integrated Stroke Delivery Network',
+        'ambo22': 'Ambulance service',
+        'nearest_ivt_unit': 'Nearest IVT unit',
+        'nearest_mt_unit': 'Nearest MT unit',
     }
 
-    # Store results in here:
-    keys = ['no_treatment'] + all_mrs_scenarios
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return outline_labels_dict[label]
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        outline_labels_dict.keys(),
+        format_func=f,
+        horizontal=True
+        )
+with containers['units_map']:
+    plot_maps.draw_units_map(map_traces, outline_name)
 
-    # Decide whether to use no-treatment dists or to
-    # fish dists out of the big mRS lists.
-    use_ref_data = (True if
-                    ((stroke_type == 'nlvo') & (treatment_type == 'mt'))
-                    else False)
-    treat_type = treatment_type
-    # Calculate mRS for both nLVO and LVO so that we can find the mRS
-    # for "redirection considered" and for combo nLVO+LVO group.
-    stroke_types = ['nlvo', 'lvo']
 
-    mrs_dfs_dict = {}
-    if use_ref_data:
-        mrs_lists_dict = {}
-        mrs_lists_dict['no_treatment'] = dict_no_treatment
-        for key in keys:
-            mrs_lists_dict[key] = dict_no_treatment
-    else:
-        for key in all_mrs_scenarios:
-            mrs_dfs_dict[key] = {}
-        lsoa_names = mrs.find_lsoa_names_to_keep(
-            dict_of_dfs['usual_care'],
-            col_to_mask_mrs,
-            col_region,
-            region_selected
-            )
-        mrs_dfs_dict, dist_cols = mrs.find_total_mrs_for_unique_times(
-            dict([(k, dict_of_dfs[k]) for k in scenarios]),
-            lsoa_names,
-            treat_type,
-            stroke_types,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-            )
-        dfs_dict_rc, dist_cols_rc = mrs.find_total_mrs_for_unique_times(
-            dict([(k, dict_of_dfs[k]) for k in ['redirection_considered']]),
-            lsoa_names,
-            treat_type,
-            stroke_types,
-            st.session_state['df_mrs_ivt'],
-            st.session_state['df_mrs_mt'],
-            multi_scens=['redirection_rejected', 'redirection_approved']
-            )
+# ----- Pathway timings -----
+# Show the summary of pathway timings for each case: usual care;
+# redirection approved; redirection rejected. Show a timeline
+# image with the timings for the separate steps made clear.
+# Allow the timings to be changed with a series of widgets.
+# --- CALCULATIONS:
+# + Add up treatment times without travel for IVT and MT
+#   in each scenario.
+# + Find unique treatment times and pairs of treatment times.
 
-        df = dfs_dict_rc['redirection_considered']
-        dist_cols_to_combine = [c for c in df.columns if 'mrs' in c]
-        dist_cols_to_combine = sorted(list(set(
-            [d.replace('_redirection_rejected', '').replace('_redirection_approved', '')
-             for d in dist_cols_to_combine
-             ])))
+df_pathway_steps = pathway.select_pathway_timings(
+    'optimist', [containers['pathway_inputs_prehosp'],
+                 containers['pathway_inputs_units']]
+    )
+series_treatment_times_without_travel = (
+    pathway.calculate_treatment_times_without_travel(
+        df_pathway_steps, ['usual_care', 'prehospdiag'],
+        _log_loc=containers['log_pathway']
+        )
+    )
+with containers['pathway_fig']:
+    pathway.draw_timeline(df_pathway_steps,
+                          series_treatment_times_without_travel)
 
-        for d in dist_cols_to_combine:
-            if 'nlvo' in d:
-                prop_nlvo_redirected = (1.0 - input_dict['specificity'])
-                props_list = [1.0 - prop_nlvo_redirected, prop_nlvo_redirected]
-            else:
-                prop_lvo_redirected = input_dict['sensitivity']
-                props_list = [1.0 - prop_lvo_redirected, prop_lvo_redirected]
 
-            col_rr = f'{d}_redirection_rejected'
-            col_ra = f'{d}_redirection_approved'
-            df[d] = (
-                df[col_rr].values * props_list[0] +
-                df[col_ra].values * props_list[1]
-            )
-            df = df.drop([col_rr, col_ra], axis='columns')
+# ----- Patient population (onion layer) -----
+# Decide the patient population parameters. There are different
+# subgroups of patients in each layer of the SPEEDY onion graph.
+# The layer determines the proportion of patients with each stroke
+# type and the proportions of patients who will be redirected.
+# Inputs:
+# + nLVO / LVO proportions in this subgroup,
+# + full population proportions considered for redirection,
+# + sensitivity / specificity of redirection diagnostic.
+# --- CALCULATIONS:
+# + Unique time results for nLVO + LVO combo for usual care
+#   and for "redirection considered" groups.
 
-        # Place this data with the other scenarios:
-        mrs_dfs_dict['redirection_considered'] = df
+with containers['onion_fig']:
+    pop.plot_onion()
+with containers['onion_setup']:
+    df_onion_pops = pop.set_up_onion_parameters()
+with containers['onion_text']:
+    dict_onion = pop.select_onion_population(df_onion_pops)
+dict_onion = pop.calculate_population_subgroups(
+    dict_onion, _log_loc=containers['log_onion'])
 
-        # Calculate "redirection considered":
-        nlvo_cols = [c for c in dist_cols if 'nlvo' in c]
-        lvo_cols = [c for c in dist_cols if (('lvo' in c) & ('nlvo' not in c))]
 
-        if stroke_type not in ['nlvo', 'lvo']:
-            # Calculate combined nLVO + LVO data:
-            combo_cols = [c.replace('lvo', 'combo') for c in lvo_cols]
-            for key, df in mrs_dfs_dict.items():
-                df[combo_cols] = (
-                    (df[nlvo_cols] * input_dict['prop_nlvo']).values +
-                    (df[lvo_cols] * input_dict['prop_lvo']).values
+# ----- Subgroups (this onion layer) -----
+with containers['pop_plots']:
+    df_subgroups = pop.select_subgroups_for_results()
+
+dict_pops = pop.calculate_population_subgroup_grid(
+    dict_onion, df_subgroups, _log_loc=containers['log_subgroups']
+    )
+
+
+with containers['pop_plots']:
+    n_cols = 2
+    cols = st.columns(n_cols)
+    for i, s in enumerate(df_subgroups.index):
+        with cols[i % n_cols]:
+            c = st.container(border=True)
+        with c:
+            pop.plot_population_props(
+                dict_pops['usual_care'][['scenario'] + [s]],
+                dict_pops['redir_allowed'][['scenario'] + [s]],
+                s,
+                df_subgroups.loc[s]
                 )
-                mrs_dfs_dict[key] = df
 
-        # Pick out which columns should be displayed:
-        if stroke_type == 'nlvo':
-            dist_cols = nlvo_cols
-        elif stroke_type == 'lvo':
-            dist_cols = lvo_cols
-        else:
-            dist_cols = combo_cols
+# ----- Outcomes -----
+# Only recalculate results if anything above here has changed.
+# Don't rerun outcomes when selecting options in the Results section.
+with containers['run_results']:
+    rerun_results = st.button('Recalculate results', type='primary')
 
-        # Average these mRS dists:
-        mrs_lists_dict = {}
-        mrs_lists_dict['no_treatment'] = dict_no_treatment
-        for key, df in mrs_dfs_dict.items():
-            dist_noncum, dist_cum, dist_std = (
-                mrs.calculate_average_mrs_dists(df, dist_cols))
-            # Store in results dict:
-            mrs_lists_dict[key] = {}
-            mrs_lists_dict[key]['noncum'] = dist_noncum
-            mrs_lists_dict[key]['cum'] = dist_cum
-            mrs_lists_dict[key]['std'] = dist_std
+# Bits we need regardless of re-run:
+df_lsoa_units_times = st.session_state['input_df_lsoa_units_times']
+# Not expecting to change df_unit_services from now on,
+# only look up its data:
+df_unit_services = st.session_state['input_df_unit_services']
+dict_no_treatment_outcomes = outcomes.load_no_treatment_outcomes(
+    _log_loc=containers['log_pathway'])
 
-    mrs_format_dicts = (
-        mrs.setup_for_mrs_dist_bars(mrs_lists_dict))
+# Calculate results if this is the first go through the app
+# or the button has been pressed.
+if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
 
-    # Prettier formatting for the plot title:
-    col_pretty = ''.join([
-        f'{stroke_type_str}, ',
-        f'{treatment_type_str}'
-        ])
-    st.session_state['fig_mrs'] = mrs.plot_mrs_bars(
-        mrs_format_dicts, title_text=f'{region_selected}<br>{col_pretty}')
+    unique_travel_for_ivt, unique_travel_for_mt, dict_unique_travel_pairs = (
+        reg.find_unique_travel_times(
+            df_lsoa_units_times, _log_loc=containers['log_units'])
+        )
+    unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
+        series_treatment_times_without_travel,
+        unique_travel_for_ivt,
+        unique_travel_for_mt,
+        _log_loc=containers['log_pathway']
+        )
+    unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
+        dict_unique_travel_pairs, series_treatment_times_without_travel,
+        _log=True, _log_loc=containers['log_pathway'],
+    )
 
-    with container_bars:
-        # Options for the mode bar.
-        # (which doesn't appear on touch devices.)
-        plotly_config = {
-            # Mode bar always visible:
-            # 'displayModeBar': True,
-            # Plotly logo in the mode bar:
-            'displaylogo': False,
-            # Remove the following from the mode bar:
-            'modeBarButtonsToRemove': [
-                # 'zoom',
-                # 'pan',
-                'select',
-                # 'zoomIn',
-                # 'zoomOut',
-                'autoScale',
-                'lasso2d'
-                ],
-            # Options when the image is saved:
-            'toImageButtonOptions': {'height': None, 'width': None},
-            }
-        st.plotly_chart(
-            st.session_state['fig_mrs'],
-            use_container_width=True,
-            config=plotly_config
+    # LSOA-level treatment times:
+    df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
+        df_lsoa_units_times,
+        series_treatment_times_without_travel,
+        _log_loc=containers['log_pathway']
+        )
+    # Find the unique sets of treatment times:
+    scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
+    treats = ['ivt', 'mt']
+    cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
+    df_treat_times_sets_unique = (
+        df_lsoa_units_times[cols_treat_scen].drop_duplicates())
+    # Update index to normal range:
+    df_treat_times_sets_unique['index'] = range(
+        len(df_treat_times_sets_unique))
+    df_treat_times_sets_unique = (
+        df_treat_times_sets_unique.set_index('index'))
+
+    # ----- Base outcomes -----
+    # Calculate base outcomes for the given travel times and scenarios.
+    # Find outcomes for all of the unique treatment times given.
+    # --- CALCULATIONS:
+    # + Calculate outcomes for unique treatment times for the base
+    #   groups: nLVO + IVT, LVO + IVT, LVO + MT.
+    # + For unique pairs of times to treatment, find when LVO + IVT
+    #   is better than LVO + MT.
+    dict_base_outcomes = outcomes.calculate_unique_outcomes(
+        unique_treatment_ivt, unique_treatment_mt,
+        _log_loc=containers['log_pathway'])
+    # Combine dicts:
+    dict_base_outcomes = dict_base_outcomes | dict_no_treatment_outcomes
+
+    df_base_lvo_ivt_mt_better = outcomes.flag_lvo_ivt_better_than_mt(
+        dict_base_outcomes['lvo_ivt'],
+        dict_base_outcomes['lvo_mt'],
+        unique_treatment_pairs,
+        _log_loc=containers['log_pathway']
+        )
+    dict_base_outcomes['lvo_ivt_mt'] = outcomes.combine_lvo_ivt_mt_outcomes(
+        dict_base_outcomes['lvo_ivt'],
+        dict_base_outcomes['lvo_mt'],
+        df_base_lvo_ivt_mt_better,
+        _log_loc=containers['log_pathway']
+        )
+
+    # Re-run results.
+    st.session_state['dict_outcomes'] = {}
+    for s in df_subgroups.index:
+        st.session_state['dict_outcomes'][s] = (
+            pop.calculate_unique_outcomes_onion(
+                dict_base_outcomes,
+                dict_pops,
+                df_subgroups.loc[s],
+                df_treat_times_sets_unique,
+                s,
+                _log_loc=containers['log_subgroups']
             )
-
-
-with container_mrs_dists:
-    display_mrs_dists()
-
-
-# ####################################
-# ########## SETUP FOR MAPS ##########
-# ####################################
-# Keep this below the results above because the map creation is slow.
-
-# Display names:
-subplot_titles = [
-    'Usual care',
-    'Benefit of redirection over usual care',
-    column_pop_pretty
-]
-
-# ----- Find data for colours -----
-
-# df_lsoa column names are in the format:
-# `usual_care_lvo_ivt_mt_utility_shift`, i.e.
-# '{scenario}_{occlusion}_{treatment}_{outcome}' with these options:
-#
-# +---------------------------+------------+------------+---------------+
-# | Scenarios                 | Occlusions | Treatments | Outcomes      |
-# +---------------------------+------------+------------+---------------+
-# | usual_care                | nlvo       | ivt        | utility_shift |
-# | redirection_approved      | lvo        | mt         | mrs_shift     |
-# | redirection_rejected      | combo      | ivt_mt     | mrs_0-2       |
-# | redirection_considered    |            |            |               |
-# | diff_redirection_considered_minus_usual_care        |               |
-# +---------------------------+------------+------------+---------------+
-#
-# There is not a separate column for "no treatment" to save space.
-
-# Find the names of the columns that contain the data
-# that will be shown in the colour maps.
-if ((stroke_type == 'nlvo') & (treatment_type == 'mt')):
-    # Use no-treatment data.
-    # Set this to something that doesn't exist so it fails a check later.
-    # The check will set all values to zero.
-    column_colours = None
-    column_colours_diff = None
+        )
+    st.session_state['df_lsoa_units_times'] = df_lsoa_units_times
+    st.session_state['df_subgroups'] = df_subgroups
+    st.session_state['dict_pops'] = dict_pops
+    st.session_state['dict_onion'] = dict_onion
+    st.session_state['inputs_changed'] = False
+    st.session_state['rerun_region_summaries'] = True
+    st.session_state['rerun_maps'] = True
+    st.session_state['rerun_full_results'] = True
 else:
-    # If this is nLVO with IVT and MT, look up the data for
-    # nLVO with IVT only.
-    using_nlvo_ivt_mt = ((stroke_type == 'nlvo') & ('mt' in treatment_type))
-    t = 'ivt' if using_nlvo_ivt_mt else treatment_type
+    if st.session_state['inputs_changed']:
+        with containers['run_results']:
+            st.warning('Results are for previous set of inputs.', icon='⚠️')
+    # Pull out this data from before:
+    df_lsoa_units_times = st.session_state['df_lsoa_units_times']
 
-    column_colours = '_'.join([
-        'usual_care', stroke_type, t, outcome_type])
-    column_colours_diff = '_'.join([
-        'diff_redirection_considered_minus_usual_care',
-        stroke_type, t, outcome_type
+
+#MARK: Results
+# ###################
+# ##### RESULTS #####
+# ###################
+# ----- Region summaries -----
+with containers['region_select']:
+    df_highlighted_regions = reg.select_highlighted_regions(df_unit_services)
+# Only find the region results for highlighted region types:
+highlighted_region_types = sorted(list(set(
+    df_highlighted_regions['region_type'])))
+# Average the results over each geographical region.
+# Find two copies of the results - one with all LSOA in the region
+# and one with only LSOA whose nearest unit is not a CSC.
+# --- CALCULATIONS:
+# + Calculate admissions-weighted average outcomes.
+
+if st.session_state['rerun_region_summaries']:
+    if len(highlighted_region_types) == 0:
+        # Placeholder empty dfs:
+        st.session_state['dict_highlighted_region_travel_times'] = {}
+        st.session_state['dict_highlighted_region_unique_treatment_times'] = {}
+        st.session_state['df_highlighted_region_admissions'] = pd.DataFrame()
+        st.session_state['df_region_unit_admissions'] = pd.DataFrame()
+        st.session_state['dict_highlighted_region_outcomes'] = {}
+        st.session_state['dict_highlighted_region_average_treatment_times'] = {}
+    else:
+        st.session_state['dict_highlighted_region_travel_times'] = (
+            reg.find_region_admissions_by_unique_travel_times(
+                df_lsoa_units_times,
+                highlighted_region_types,
+                df_highlighted_regions,
+                _log_loc=containers['log_regions'])
+            )
+        # Find how many admissions per region have each set of
+        # unique treatment times:
+        st.session_state['dict_highlighted_region_unique_treatment_times'] = (
+            reg.find_region_admissions_by_unique_travel_times(
+                df_lsoa_units_times,
+                highlighted_region_types,
+                df_highlighted_regions,
+                unique_travel=False,
+                _log_loc=containers['log_regions'])
+            )
+        (
+            st.session_state['df_highlighted_region_admissions'],
+            st.session_state['df_region_unit_admissions']
+            ) = (
+            reg.find_unit_admissions_by_region(
+                df_lsoa_units_times,
+                dict_onion['prop_of_all_stroke'],
+                highlighted_region_types,
+                df_highlighted_regions,
+                _log_loc=containers['log_regions'],
+                )
+        )
+
+        # Nest levels: subgroup, scenario, lsoa subset.
+        st.session_state['dict_highlighted_region_outcomes'] = (
+            reg.calculate_nested_average_outcomes(
+                st.session_state['dict_outcomes'],
+                st.session_state[
+                    'dict_highlighted_region_unique_treatment_times'],
+                df_highlighted_regions,
+                _log_loc=containers['log_regions']
+                )
+        )
+        st.session_state['dict_highlighted_region_average_treatment_times'] = (
+            reg.calculate_average_treatment_times_highlighted_regions(
+                st.session_state['dict_highlighted_region_unique_treatment_times'],
+                _log_loc=containers['log_regions']
+                )
+        )
+        st.session_state['rerun_region_summaries'] = False
+else:
+    pass
+
+# Display chosen results:
+with containers['region_select']:
+    use_lsoa_subset = st.toggle(
+        'Use outcomes for only patients whose nearest unit does not provide MT.',
+        value=True,
+        )
+lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
+
+# Set up containers for the outcome subgroups:
+with containers['region_summaries']:
+    for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+        containers[f'{subgroup}_top'] = st.expander(
+            st.session_state['df_subgroups'].loc[subgroup, 'label'],
+            expanded=(True if s == 0 else False)
+            )
+        with containers[f'{subgroup}_top']:
+            containers[subgroup] = st.container(horizontal=True)
+
+cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
+cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
+cols_mrs_std = [f'{c}_std' for c in cols_mrs]
+
+for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+    region_type = df_highlighted_regions.loc[
+        df_highlighted_regions['highlighted_region'] == region,
+        'region_type'].values[0]
+    # Pick out label for the box:
+    if region_type == 'nearest_ivt_unit':
+        region_label = df_unit_services.loc[region, 'ssnap_name']
+    else:
+        region_label = region
+
+    # ----- Top summary -----
+    with containers['highlighted_region_summaries']:
+        ch = st.container(border=True, width=500)
+    with ch:
+        st.subheader(region_label)
+        st.write('summary summary summary bits')
+
+    # ----- Treatment numbers -----
+    s_admissions = (
+        st.session_state['df_highlighted_region_admissions']
+        .loc[region]
+        )
+    dict_region_treat_stats = reg.calculate_region_treat_stats(
+        st.session_state['dict_pops']['usual_care'],
+        st.session_state['dict_pops']['redir_allowed'],
+        s_admissions
+        )
+    # Set up dataframes to display.
+    # These strings are defined to shorten the dict key lines:
+    u = 'usual_care'
+    r = 'redir'
+    u_mt = 'nearest_unit_has_mt'
+    u_no_mt = 'nearest_unit_no_mt'
+    red = 'and_redirected'
+    no_red = 'and_not_redirected'
+    df_mt = pd.DataFrame(
+        [[dict_region_treat_stats[f'n_mt_{u_mt}_{u}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{no_red}_{u}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{u}']],
+         [dict_region_treat_stats[f'n_mt_{u_mt}_{r}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{no_red}_{r}'],
+          dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{r}']]],
+        columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
+        index=['Usual care', 'Redirection']
+    )
+    column_config_mt = dict([
+        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        for c in df_mt.columns
         ])
-
-
-# ----- Set up map data -----
-try:
-    df_raster = st.session_state['df_raster']
-    transform_dict = st.session_state['transform_dict']
-except KeyError:
-    # Load LSOA geometry:
-    df_raster, transform_dict = maps.load_lsoa_raster_lookup()
-    # Store:
-    st.session_state['df_raster'] = df_raster
-    st.session_state['df_raster_cols'] = df_raster.columns
-    st.session_state['transform_dict'] = transform_dict
-
-if new_results_run:
-    # Remove results from last run:
-    df_raster = df_raster[st.session_state['df_raster_cols']]
-    # Merge in outcomes data:
-    df_raster = pd.merge(df_raster, st.session_state['df_lsoa'],
-                         left_on='LSOA11NM', right_on='lsoa', how='left')
-    # Merge demographic data:
-    df_raster = pd.merge(df_raster, df_demog[['LSOA', column_pop]],
-                         left_on='LSOA11NM', right_on='LSOA', how='left')
-st.session_state['df_raster'] = df_raster
-
-# Make raster arrays out of the chosen data:
-burned_lhs = maps.convert_df_to_2darray(df_raster, column_colours,
-                                        transform_dict)
-burned_rhs = maps.convert_df_to_2darray(df_raster, column_colours_diff,
-                                        transform_dict)
-burned_pop = maps.convert_df_to_2darray(df_raster, column_pop,
-                                        transform_dict)
-
-
-# ----- Set up colours -----
-# Pick out the data for the colours:
-try:
-    vals_for_colours = df_raster[column_colours]
-    vals_for_colours_diff = df_raster[column_colours_diff]
-except KeyError:
-    # Those columns don't exist in the data.
-    # This should only happen for nLVO treated with MT only.
-    vals_for_colours = [0] * len(df_raster)
-    vals_for_colours_diff = [0] * len(df_raster)
-    # Note: this works for now because expect always no change
-    # for added utility and added mrs<=2 with no treatment.
-# Pick out values:
-vals_for_colours_pop = df_raster[column_pop]
-vals_lists = [vals_for_colours, vals_for_colours_diff, vals_for_colours_pop]
-
-# Colour limits.
-# Record actual highest and lowest values in a DataFrame:
-df_actual_vlim = pd.DataFrame(
-    [[min(v) for v in vals_lists], [max(v) for v in vals_lists]],
-    columns=subplot_titles, index=['Minimum', 'Maximum']
-)
-with container_actual_vlim:
-    st.markdown('Ranges of the plotted data:')
-    st.dataframe(df_actual_vlim)
-    st.markdown(''.join([
-        'The range of the colour scales in the maps can be changed ',
-        'using the options in the sidebar.'
-        ]))
-
-# Load colour map colours:
-dict_colours['cmap'] = colour_setup.make_colour_list(
-    cmap_name,
-    vmin=dict_colours['vmin'],
-    vmax=dict_colours['vmax']
+    df_ivt = pd.DataFrame(
+        [[dict_region_treat_stats[f'n_ivt_only_{u_mt}_{u}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{no_red}_{u}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{u}']],
+         [dict_region_treat_stats[f'n_ivt_only_{u_mt}_{r}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{no_red}_{r}'],
+          dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{r}']]],
+        columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
+        index=['Usual care', 'Redirection']
     )
-dict_colours_diff['cmap'] = colour_setup.make_colour_list(
-    cmap_diff_name,
-    vmin=dict_colours_diff['vmin'],
-    vmax=dict_colours_diff['vmax']
-    )
-dict_colours_pop['cmap'] = colour_setup.make_colour_list(
-    cmap_pop_name,
-    vmin=dict_colours_pop['vmin'],
-    vmax=dict_colours_pop['vmax']
-    )
-# Colour bar titles:
-dict_colours['title'] = f'{outcome_type_str}'
-dict_colours_diff['title'] = (
-    f'{outcome_type_str}: Benefit of redirection over usual care')
-dict_colours_pop['title'] = column_pop_pretty
+    column_config_ivt_only = dict([
+        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        for c in df_ivt.columns
+        ])
+    with containers['region_treat_stats']:
+        c = st.container(width=500, border=True)
+        with c:
+            st.subheader(region_label)
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric('Annual stroke admissions  \nin this population',
+                          f"{s_admissions['admissions_all_patients']:.1f}")
+            n = 'Proportion of patients whose  \nnearest unit offers MT'
+            p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
+            with cols[1]:
+                st.metric(n, f"{p:.1f}%")
 
+            st.markdown(f'''Of the {dict_region_treat_stats['n_mt']:.1f}
+                        patients who receive thrombectomy
+                        (with or without thrombolysis):''')
+            st.dataframe(df_mt, column_config=column_config_mt)
 
+            st.markdown(f'''Of the {dict_region_treat_stats['n_ivt_only']:.1f}
+                        patients who receive thrombolysis only:''')
+            st.dataframe(df_ivt, column_config=column_config_ivt_only)
 
-# ----- Region outlines -----
-if outline_name == 'None':
-    outline_names_col = None
-    gdf_catchment_pop = None
-    gdf_catchment_lhs = None
-    gdf_catchment_rhs = None
-else:
-    (
-        outline_names_col,
-        gdf_catchment_lhs,
-        gdf_catchment_rhs,
-        gdf_catchment_pop,
-    ) = calc.load_or_calculate_region_outlines(outline_name, st.session_state['df_lsoa'])
+    # ----- Travel and treatment times -----
+    try:
+        time_bins, admissions_times = reg.gather_this_region_travel_times(
+            st.session_state['dict_highlighted_region_travel_times'],
+            lsoa_subset, region
+            )
+        s_treats = st.session_state[
+            'dict_highlighted_region_average_treatment_times'][
+                lsoa_subset].loc[region]
+        df_treats = reg.make_average_treatment_time_df(s_treats)
+        selected_region_is_mt_unit = False
+    except KeyError:
+        # This is an MT unit and the LSOA subset excludes patients
+        # nearest MT units.
+        selected_region_is_mt_unit = True
 
+    with containers['region_times']:
+        c = st.container(width=500, border=True)
+        with c:
+            st.subheader(region_label)
+            if selected_region_is_mt_unit:
+                st.markdown('No data to display.')
+            else:
+                # Travel times
+                reg.plot_travel_times(time_bins, admissions_times)
 
-# ----- Process geography for plotting -----
-# Convert gdf polygons to xy cartesian coordinates:
-gdfs_to_convert = [gdf_catchment_pop, gdf_catchment_lhs, gdf_catchment_rhs]
-for gdf in gdfs_to_convert:
-    if gdf is None:
+                # Average treatment times:
+                st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+                st.table(df_treats)
+
+    # ----- Admissions by unit -----
+    # # Find tracked admissions between units:
+    cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
+                  'transfer_unit']
+    df_network = (
+        st.session_state['df_region_unit_admissions']
+        [cols_units + [region]])
+    df_network = df_network.rename(columns={region: 'admissions'})
+    # Only keep units that have admissions from selected region:
+    df_network = df_network.dropna(subset=['admissions'])
+    # Usual care proportions:
+    df_net_u = reg.calculate_network_usual_care(
+        df_network, st.session_state['dict_pops']['usual_care'])
+    # Redirection proportions:
+    df_net_r = reg.calculate_network_redir(
+        df_network, st.session_state['dict_pops']['redir_allowed'])
+
+    # Gather units in the network:
+    cols_units = ['first_unit', 'transfer_unit']
+    all_units = sorted(list(
+        set(df_net_u[cols_units].values.flatten()) |
+        set(df_net_r[cols_units].values.flatten())
+    ))
+    # Only units whose catchment area is in the selected region:
+    nearest_units = sorted(list(
+        set(df_net_u['nearest_unit'].values) |
+        set(df_net_r['nearest_unit'].values)
+    ))
+
+    # Tabulate direct admissions and transfers in usual care
+    # and in redir scenario for each unit.
+    catchment_units = sorted(list(df_net_u['first_unit'].values))
+    cols = ['first_unit', 'admissions_catchment_to_first_unit',
+            'admissions_first_unit_to_transfer']
+    df_unit_admissions = df_net_u[cols].copy()
+    # Combine redirection scenario rows. Patients for one first unit
+    # can cover many rows depending on their catchment unit,
+    # so find total admissions to each unit regardless of whether
+    # they were redirected there.
+    df_unit_admissions_redir = (
+        df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
+
+    # Combine transfers for MT units.
+    def combine_transfers_for_mt_units(df, df_net):
+        c = 'admissions_first_unit_to_transfer'
+        # Instead of showing zero transfers away from the unit,
+        # show the total transfers towards the unit.
+        # Set existing values to negative:
+        df[c] *= -1
+        # Gather total transfers to each unit:
+        df_transfers = (
+            df_net[['transfer_unit', c]].copy()
+            .groupby('transfer_unit').sum().reset_index()
+        )
+        # Set MT unit transfer data to missing:
+        mask = df['first_unit'].isin(df_transfers['transfer_unit'])
+        df.loc[mask, c] = pd.NA
+        # Make indexes match:
+        df = df.set_index('first_unit')
+        df_transfers = df_transfers.rename(
+            columns={'transfer_unit': 'first_unit'}).set_index('first_unit')
+        # Fill missing data with the summed values:
+        df[c] = df[c].combine_first(df_transfers[c])
+        # Check for any units that exist in the transfer data
+        # but not the first unit data:
+        units_missing = list(set(df_transfers.index) -
+                             set(df.index))
+        for unit in units_missing:
+            df.loc[unit, c] = df_transfers.loc[unit, c]
+        df = df.reset_index()
+        return df
+
+    df_unit_admissions = combine_transfers_for_mt_units(
+        df_unit_admissions, df_net_u)
+    df_unit_admissions_redir = combine_transfers_for_mt_units(
+        df_unit_admissions_redir, df_net_r)
+    # Place usual care and redir in same df:
+    df_unit_admissions = pd.merge(
+        df_unit_admissions, df_unit_admissions_redir,
+        on='first_unit', how='outer', suffixes=('_usual_care', '_redir')
+        )
+    df_unit_admissions['first_unit'] = (
+        df_unit_admissions['first_unit']
+        .map(df_unit_services['ssnap_name']))
+
+    df_unit_admissions = df_unit_admissions.fillna(0.0)
+    # Combine admissions and transfer values:
+    for s in ['usual_care', 'redir']:
+        df_unit_admissions[f'admissions_combo_{s}'] = (
+            df_unit_admissions[[f'admissions_catchment_to_first_unit_{s}',
+                                f'admissions_first_unit_to_transfer_{s}']]
+            .apply(lambda x: f'{x[0]:7.2f}   ({x[1]:+7.2f})', axis=1)
+        )
+    df_unit_admissions = df_unit_admissions.sort_values('first_unit')
+    df_unit_admissions = df_unit_admissions.set_index('first_unit')
+
+    config_dict = {
+        '_index':
+            st.column_config.TextColumn(
+                label='Directly-admitting unit', width=150),
+        'admissions_catchment_to_first_unit_usual_care':
+            st.column_config.NumberColumn(
+                label='Usual care', format='%.2f', width='small'),
+        'admissions_catchment_to_first_unit_redir':
+            st.column_config.NumberColumn(
+                label='Redirection available',
+                format='%.2f', width='small'),
+        'admissions_first_unit_to_transfer_usual_care':
+            st.column_config.NumberColumn(
+                label='t', format='%+.2f', width='small'),
+        'admissions_first_unit_to_transfer_redir':
+            st.column_config.NumberColumn(
+                label='t',
+                format='%+.2f', width='small')
+    }
+
+    with containers['region_unit_admissions']:
+        c = st.container(width=500, border=True)
+        with c:
+            st.subheader(region_label)
+
+            st.dataframe(
+                df_unit_admissions,
+                # column_order=['admissions_combo_usual_care',
+                #               'admissions_combo_redir'],
+                column_order=['admissions_catchment_to_first_unit_usual_care',
+                              'admissions_first_unit_to_transfer_usual_care',
+                              'admissions_catchment_to_first_unit_redir',
+                              'admissions_first_unit_to_transfer_redir',],
+                column_config=config_dict,
+                )
+
+    # ----- Patient transport maps -----
+    if region_type == 'national':
         pass
     else:
-        gdf['x'], gdf['y'] = maps.convert_shapely_polys_into_xy(gdf)
+        gdf_units = plot_maps.generate_node_coordinates(
+            df_unit_services, all_units)
+        gdf_region, region_display_name = (
+            plot_maps.load_region_outline_here(region_type, region))
 
-# ----- Stroke units -----
-# Stroke unit scatter markers:
-traces_units = plot_maps.create_stroke_team_markers(
-    st.session_state['df_unit_services_full_on_last_run'])
-# Which subplots to draw which units on:
-# Each entry is [row number, column number].
-# In plotly, the first row is 1 and first column is 1.
-# The order in which they are drawn (and so which markers appear
-# on top) is the order of this dictionary.
-unit_subplot_dict = {
-    'ivt': [[1, 1]],          # left map only
-    'mt': [[1, 1], [1, 2]]    # both maps
-}
-
-# ----- Plot -----
-st.session_state['fig_maps'] = plot_maps.plotly_many_heatmaps(
-    burned_lhs,
-    burned_rhs,
-    burned_pop,
-    gdf_catchment_lhs,
-    gdf_catchment_rhs,
-    gdf_catchment_pop,
-    outline_names_col,
-    outline_name,
-    traces_units,
-    unit_subplot_dict,
-    subplot_titles=subplot_titles,
-    dict_colours=dict_colours,
-    dict_colours_diff=dict_colours_diff,
-    dict_colours_pop=dict_colours_pop,
-    transform_dict=transform_dict,
-    cmaps=cmap_names,
-    )
-
-with container_map:
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    st.plotly_chart(
-            st.session_state['fig_maps'],
-            use_container_width=True,
-            config=plotly_config
+        # Set up colours for catchment units:
+        catch_trace, transform_dict_units, gdf_nearest_units = (
+            plot_maps.make_unit_catchment_raster(
+                df_lsoa_units_times,
+                gdf_units.loc[[n.replace('nearest_', '') for n in nearest_units]],
+                df_raster,
+                transform_dict,
+                nearest_unit_column='nearest_ivt_unit',
+                redo_transform=True,
+                )
+        )
+        # Limit the extent of the map to reasonable bounds:
+        bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
+            gdf_units, gdf_region, transform_dict_units)
+        gdf_nearest_units = (
+            plot_maps.make_coords_nearest_unit_catchment(
+                gdf_units, df_net_u, bounds, nearest_units,
+                x_buffer, y_buffer
+                )
             )
+
+    with containers['region_unit_maps']:
+        c = st.container(width='stretch', border=True)
+        with c:
+            if region_type == 'national':
+                st.subheader(region_label)
+                st.markdown('Too big an area to draw the network graphs.')
+            else:
+                # Pick out label for the fig:
+                if region_type == 'nearest_ivt_unit':
+                    region_label = df_unit_services.loc[region, 'ssnap_name']
+                else:
+                    region_label = region
+                # Plot graph:
+                plot_maps.plot_networks(
+                    df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
+                    gdf_units, bounds, catch_trace,
+                    gdf_region, region_label,
+                    subplot_titles=['Catchment map', 'Usual care',
+                                    '', 'Redirection available'],
+                    )
+
+    # ----- Outcomes -----
+    for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+        # Calculate "no treatment" data.
+        # Should have the same total proportions of nLVO
+        # and LVO in both the usual care and redir groups,
+        # with only the details of who goes where differing,
+        # so only calculate one set of no-treatment mRS dists.
+        pops = (
+            st.session_state['dict_pops']['usual_care'][subgroup])
+        df_no_treat = reg.calculate_no_treatment_mrs(
+            pops, dict_no_treatment_outcomes)
+
+        with containers[subgroup]:
+            c = st.container(width=500, border=True)
+        with c:
+            st.subheader(region_label)
+            df_u = st.session_state['dict_highlighted_region_outcomes'][
+                subgroup]['usual_care'][lsoa_subset]
+            df_r = st.session_state['dict_highlighted_region_outcomes'][
+                subgroup]['redir_allowed'][lsoa_subset]
+            try:
+                df_u = df_u.loc[region]
+                df_r = df_r.loc[region]
+                selected_region_is_mt_unit = False
+            except KeyError:
+                st.markdown('No data available.')
+                # This is an MT unit and the LSOA subset excludes patients
+                # nearest MT units.
+                selected_region_is_mt_unit = True
+            if selected_region_is_mt_unit:
+                pass
+            else:
+                cc = st.container(horizontal=True)
+                with cc:
+                    for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+                        with st.container():
+                            reg.display_region_summary(df_u, df_r, key)
+
+                mrs_lists_dict = {
+                    'usual_care': {
+                        'noncum': df_u[cols_mrs_noncum],
+                        'cum': df_u[cols_mrs],
+                        'std': df_u[cols_mrs_std],
+                        'colour': '#0072b2',
+                        'label': 'Usual care',
+                    },
+                    'redir_allowed': {
+                        'noncum': df_r[cols_mrs_noncum],
+                        'cum': df_r[cols_mrs],
+                        'std': df_r[cols_mrs_std],
+                        'colour': '#56b4e9',
+                        'label': 'Redirection available'
+                    },
+                    'no_treatment': {
+                        'noncum': df_no_treat[cols_mrs_noncum],
+                        'cum': df_no_treat[cols_mrs],
+                        'colour': 'grey',
+                        'label': 'No treatment'
+                    },
+                }
+                reg.plot_mrs_bars(mrs_lists_dict,
+                                  key='_'.join([region, subgroup]))
+
+
+# ----- Maps -----
+# For the selected data type to show on the maps, gather the full
+# LSOA-level data. Then reshape into the raster array.
+# Re-run map if the following have changed:
+# "setup" section inputs; colour limits.
+with containers['map_setup']:
+    map_outcome = outcomes.select_outcome_type()
+# Gather data for maps:
+with containers['map_fig']:
+    subgroup_map, subgroup_map_label = maps.select_map_data(
+        st.session_state['df_subgroups']
+    )
+    use_full_redir = st.toggle(
+        '''In middle map, include "reject redirection" and
+        "usual care" patients.''',
+        value=False,
+        key='full_redir_subset',
+        on_change=set_rerun_map
+        )
+    redir_subset = ('redir_allowed' if use_full_redir
+                    else 'redir_accepted_only')
+
+if st.session_state['rerun_maps']:
+    st.session_state['map_arrs_dict'], st.session_state['map_vlim_dict'] = (
+        maps.gather_map_arrays(
+            st.session_state['dict_outcomes'][subgroup_map]['usual_care'],
+            st.session_state['dict_outcomes'][subgroup_map][redir_subset],
+            st.session_state['df_lsoa_units_times'],
+            df_raster,
+            transform_dict,
+            col_map=map_outcome,
+            _log_loc=containers['log_maps']
+            )
+    )
+    st.session_state['map_arrs_dict']['pop'], vlim_dict_pop = (
+        maps.gather_pop_map(df_raster, transform_dict))
+    st.session_state['map_vlim_dict'] = (
+        st.session_state['map_vlim_dict'] | vlim_dict_pop)
+
+# Set up colour limits:
+with containers['map_setup']:
+    dicts_colours = colour_setup.select_colour_limits(
+        map_outcome, st.session_state['map_vlim_dict'])
+
+# Make colour maps:
+with containers['map_setup']:
+    default_cmap_name, all_cmaps = colour_setup.select_colour_maps()
+for p, dp in dicts_colours.items():
+    dicts_colours[p]['cmap'] = colour_setup.make_colour_list(
+        default_cmap_name, vmin=dp['vmin'], vmax=dp['vmax'])
+
+with containers['map_setup']:
+    outline_labels_dict = {
+        'none': 'None',
+        'icb': 'Integrated Care Board',
+        'isdn': 'Integrated Stroke Delivery Network',
+        'ambo22': 'Ambulance service',
+    }
+
+    def f(label):
+        """Display layer with nice name instead of key."""
+        return outline_labels_dict[label]
+    outline_name = st.radio(
+        'Region type to draw on maps',
+        outline_labels_dict.keys(),
+        format_func=f,
+        horizontal=True,
+        on_change=set_rerun_map,
+        key='maps_outcomes_outline'
+        )
+
+if st.session_state['rerun_maps']:
+    # Make traces for maps:
+    for col, arr in st.session_state['map_arrs_dict'].items():
+        map_traces[col] = plot_maps.make_trace_heatmap(
+            arr, transform_dict, dicts_colours[col], name=col)
+    st.session_state['maps_fig'] = plot_maps.plot_outcome_maps(
+        map_traces,
+        ['usual_care', 'redir_minus_usual_care', 'pop'],
+        dicts_colours,
+        all_cmaps,
+        outline_name=outline_name,
+        title=subgroup_map_label,
+        )
+    st.session_state['rerun_maps'] = False
+
+with containers['map_fig']:
+    plotly_config = plot_maps.get_map_config()
+    st.plotly_chart(
+        st.session_state['maps_fig'],
+        # width='content',
+        config=plotly_config
+        )
+
+
+# ----- Full LSOA results -----
+# Generate on request, not by default with each re-run.
+with containers['full_results_setup']:
+    generate_full_data = st.checkbox(
+        'Show options to generate full data',
+        on_change=set_rerun_full_results
+        )
+if generate_full_data:
+    with containers['full_results_setup']:
+        full_results_type = reg.select_full_data_type()
+    if st.session_state['rerun_full_results']:
+        # Only rerun these if the following have changed:
+        # "setup" section inputs; full results type.
+        if full_results_type == 'lsoa':
+            # Calculate LSOA-level results.
+            redir_scens = ['usual_care', 'redirection_approved',
+                           'redirection_rejected']
+            treats = ['ivt', 'mt']
+            cols_times = [f'{s}_{t}' for s in redir_scens for t in treats]
+            st.session_state['dict_full_outcomes'] = (
+                pop.gather_lsoa_level_outcomes(
+                    st.session_state['dict_outcomes'],
+                    st.session_state['df_lsoa_units_times'],
+                    cols_times,
+                    _log_loc=containers['log_full_results']
+                    )
+            )
+        else:
+            # Find how many admissions per region have each set of
+            # unique treatment times:
+            dict_this_region_unique_treatment_times = (
+                reg.find_region_admissions_by_unique_travel_times(
+                    st.session_state['df_lsoa_units_times'],
+                    [full_results_type],
+                    unique_travel=False,
+                    _log_loc=containers['log_regions'])
+                )
+            # Calculate the full outcomes for just this selected region type
+            # but for all the nested subsets (subgroup, scenario, LSOA subset):
+            st.session_state['dict_full_outcomes'] = (
+                reg.calculate_nested_average_outcomes(
+                    st.session_state['dict_outcomes'],
+                    dict_this_region_unique_treatment_times,
+                    _log_loc=containers['log_full_results']
+                    )
+            )
+        st.session_state['rerun_full_results'] = False
+    else:
+        pass
+    with containers['full_results_setup']:
+        if full_results_type == 'lsoa':
+            # Show several dataframes to prevent repeated data.
+            cols = st.columns([1, 4])
+            with cols[0]:
+                st.markdown('Unit postcode lookup')
+                st.dataframe(df_unit_services['ssnap_name'].sort_index())
+            with cols[1]:
+                st.markdown('Travel and treatment times:')
+                st.dataframe(st.session_state['df_lsoa_units_times']
+                             .set_index('LSOA'))
+            for subgroup, df_full in (
+                    st.session_state['dict_full_outcomes'].items()):
+                st.subheader(st.session_state['df_subgroups']
+                             .loc[subgroup, 'label'])
+                st.dataframe(df_full)
+        else:
+            use_lsoa_subset_full = st.toggle(
+                'Use only patients whose nearest unit does not provide MT.',
+                value=True,
+                key='full_lsoa_subset'
+                )
+            lsoa_subset_full = ('nearest_unit_no_mt' if use_lsoa_subset_full
+                                else 'all_patients')
+            for subgroup, dict_full in (
+                    st.session_state['dict_full_outcomes'].items()):
+                # Put the usual care and redirection data in the same df:
+                dfs = []
+                for scen in ['usual_care', 'redir_allowed']:
+                    df = dict_full[scen][lsoa_subset_full]
+                    df = df.rename(columns=dict(
+                        [(c, f'{c}_{scen}') for c in df.columns]))
+                    dfs.append(df)
+                df_full = pd.concat(dfs, axis='columns')
+
+                if full_results_type == 'nearest_ivt_unit':
+                    # Change postcodes to unit names:
+                    df_full.index = df_full.index.map(
+                        df_unit_services['ssnap_name'])
+                    df_full = df_full.sort_index()
+
+                st.subheader(
+                    st.session_state['df_subgroups'].loc[subgroup, 'label'])
+                st.dataframe(df_full)
+else:
+    # Remove stored full data.
+    try:
+        del st.session_state['dict_full_outcomes']
+    except KeyError:
+        pass
+    set_rerun_full_results()

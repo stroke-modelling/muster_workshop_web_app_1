@@ -1,49 +1,59 @@
-"""
-Functions for making plotly maps for Streamlit.
-"""
+"""Functions for plotly maps of England."""
 import streamlit as st
-import numpy as np
 import os
 import geopandas
 import pandas as pd
-
+import numpy as np
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
-from utilities.maps import convert_shapely_polys_into_xy
-from utilities.inputs import load_roads_gdf
-import utilities.colour_setup as colour_setup
+from itertools import groupby
 
 import stroke_maps.load_data
 
+from utilities.maps import gather_map_data
+from utilities.utils import update_plotly_font_sizes
+from utilities.colour_setup import make_colour_list_for_plotly_button
 
-def create_stroke_team_markers(df_units=None):
-    """
-    Create plotly traces for the stroke team scatter markers.
 
-    Create the traces first and then later actually draw them
-    on the figures because some traces need to appear identically
-    across multiple subplots.
+#MARK: Load geodata
+# ###############################
+# ##### LOAD GEOGRAPHY DATA #####
+# ###############################
+# @st.cache_data
+def load_roads_gdf():
+    # Load roads data:
+    path_to_roads = os.path.join('data', 'major_roads_england.geojson')
+    gdf_roads = geopandas.read_file(path_to_roads)
+    gdf_roads = gdf_roads.set_index('roadNumber')
 
-    Inputs
-    ------
-    df_units - pd.DataFrame. Information about which units provide
-               which services, and this affects which markers are
-               drawn for each unit.
+    # Convert Linestring to x and y coords:
+    x_lists = []
+    y_lists = []
+    for i in gdf_roads.index:
+        geo = gdf_roads.loc[i, 'geometry']
+        if geo.geom_type == 'LineString':
+            x, y = geo.coords.xy
+            x_lists.append(list(x))
+            y_lists.append(list(y))
+        elif geo.geom_type == 'MultiLineString':
+            x_multi = []
+            y_multi = []
+            for g in geo.geoms:
+                x, y = g.coords.xy
+                x_multi += list(x) + [None]
+                y_multi += list(y) + [None]
+            x_lists.append(np.array(x_multi))
+            y_lists.append(np.array(y_multi))
+        else:
+            # ???
+            x_lists.append([])
+            y_lists.append([])
+    gdf_roads['x'] = x_lists
+    gdf_roads['y'] = y_lists
+    return gdf_roads
 
-    Returns
-    -------
-    traces - dict. An entry for IVT, MT, and MSU units. Contains
-             plotly traces for the markers for the stroke units.
-    """
 
-    # Add stroke team markers.
-    if df_units is None:
-        df_units = stroke_maps.load_data.stroke_unit_region_lookup()
-        # Limit to England:
-        mask = df_units['country'] == 'England'
-        df_units = df_units.loc[mask].copy()
-    else:
-        pass
+def load_units_gdf(df_units):
     # Build geometry:
     gdf_points_units = stroke_maps.load_data.stroke_unit_coordinates()
     # Limit to units in df_units:
@@ -56,35 +66,308 @@ def create_stroke_team_markers(df_units=None):
         left_index=True, right_index=True,
         how='right'
     )
+    return gdf_points_units
 
-    # # Convert to British National Grid.
-    # The geometry column should be BNG on import, so just overwrite
-    # the longitude and latitude columns that are by default long/lat.
-    col_geo = 'geometry'
-    # gdf_points_units = gdf_points_units.set_crs(
-    #     'EPSG:27700', allow_override=True)
-    # # Overwrite long and lat:
-    # gdf_points_units[('Longitude', 'any')] = gdf_points_units[col_geo].x
-    # gdf_points_units[('Latitude', 'any')] = gdf_points_units[col_geo].y
 
-    # Set up markers using a new column in DataFrame.
-    # Set everything to the IVT marker:
-    markers = np.full(len(gdf_points_units), 'circle', dtype=object)
-    # Update MT units:
-    col_use_mt = 'Use_MT'
-    mask_mt = (gdf_points_units[col_use_mt] == 1)
-    markers[mask_mt] = 'square'
-    # Store in the DataFrame:
-    gdf_points_units['marker'] = markers
+def load_england_outline(bounds_to_clip=[]):
+    # Don't replace this with stroke-maps!
+    # This uses the same simplified LSOA shapes as plotted.
+    path_to_file = os.path.join('data', 'outline_england.geojson')
+    gdf_ew = geopandas.read_file(path_to_file)
 
+    if len(bounds_to_clip) < 1:
+        pass
+    else:
+        gdf_ew = geopandas.clip(gdf_ew, bounds_to_clip)
+
+    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
+    gdf_ew['x'] = x_list
+    gdf_ew['y'] = y_list
+
+    gdf_ew = gdf_ew.squeeze()
+    return gdf_ew
+
+
+#MARK: Process geo
+# ##################################
+# ##### PROCESS GEOGRAPHY DATA #####
+# ##################################
+def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
+    """
+    Turn Polygon objects into two lists of x and y coordinates.
+
+    Inputs
+    ------
+    gdf - geopandas.GeoDataFrame. Contains geometry.
+
+    Returns
+    -------
+    x_list - list. The x-coordinates from the input polygons.
+             One list entry per row in the input gdf.
+    y_list - list. Same but for y-coordinates.
+    """
+    x_list = []
+    y_list = []
+    for i in gdf.index:
+        geo = gdf.loc[i, 'geometry']
+        try:
+            geo.geom_type
+            if geo.geom_type == 'Polygon':
+                # Can use the data pretty much as it is.
+                x, y = geo.exterior.coords.xy
+                for interior in geo.interiors:
+                    x_i, y_i = interior.coords.xy
+                    x = list(x) + [None] + list(x_i)
+                    y = list(y) + [None] + list(y_i)
+                x_list.append(list(x))
+                y_list.append(list(y))
+            elif geo.geom_type == 'MultiPolygon':
+                # Put None values between polygons.
+                x_combo = []
+                y_combo = []
+                for poly in geo.geoms:
+                    x, y = poly.exterior.coords.xy
+                    x_combo += list(x) + [None]
+                    y_combo += list(y) + [None]
+                    for interior in poly.interiors:
+                        x_i, y_i = interior.coords.xy
+                        x_combo += list(x_i) + [None]
+                        y_combo += list(y_i) + [None]
+                x_list.append(np.array(x_combo))
+                y_list.append(np.array(y_combo))
+            elif geo.geom_type == 'GeometryCollection':
+                # Treat this similarly to MultiPolygon but remove
+                # anything that's not a polygon.
+                polys = [t for t in geo.geoms
+                         if t.geom_type in ['Polygon', 'MultiPolygon']]
+                # Put None values between polygons.
+                x_combo = []
+                y_combo = []
+                for t in polys:
+                    if t.geom_type == 'Polygon':
+                        # Can use the data pretty much as it is.
+                        x, y = t.exterior.coords.xy
+                        x_combo += list(x) + [None]
+                        y_combo += list(y) + [None]
+                        for interior in t.interiors:
+                            x_i, y_i = interior.coords.xy
+                            x_combo += list(x_i) + [None]
+                            y_combo += list(y_i) + [None]
+                    else:
+                        # Multipolygon.
+                        # Put None values between polygons.
+                        for poly in t.geoms:
+                            x, y = poly.exterior.coords.xy
+                            x_combo += list(x) + [None]
+                            y_combo += list(y) + [None]
+                            for interior in poly.interiors:
+                                x_i, y_i = interior.coords.xy
+                                x_combo += list(x_i) + [None]
+                                y_combo += list(y_i) + [None]
+                x_list.append(np.array(x_combo))
+                y_list.append(np.array(y_combo))
+            else:
+                raise TypeError('Geometry type error!') from None
+        except AttributeError:
+            # This isn't a geometry object. ???
+            x_list.append([]),
+            y_list.append([])
+    return x_list, y_list
+
+
+#MARK: Create traces
+# #########################
+# ##### CREATE TRACES #####
+# #########################
+@st.cache_data
+def make_constant_map_traces():
+    """
+    Make dict of plotly traces for constant map data.
+
+    Units of British National Grid (BNG).
+
+    TO DO? Should region outlines be pixellated to match raster arrs?
+    """
+    map_traces = {}
+    # ----- Roads -----
+    gdf_roads = load_roads_gdf()
+    trace_roads = []
+    for i in gdf_roads.index:
+        trace_roads.append(go.Scatter(
+            x=gdf_roads.loc[i, 'x'],
+            y=gdf_roads.loc[i, 'y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0, 0, 0, 0)',
+            line_color='grey',
+            line_width=0.5,
+            showlegend=False,
+            hoverinfo='skip',
+            ))
+    map_traces['roads'] = trace_roads
+
+    # ----- Country outline -----
+    gdf_eng = load_england_outline()
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    map_traces['england_outline'] = go.Scatter(
+        x=gdf_eng['x'],
+        y=gdf_eng['y'],
+        mode='lines',
+        fill="toself",
+        fillcolor='rgba(0, 0, 0, 0)',
+        line_color='grey',
+        showlegend=False,
+        hoverinfo='skip',
+        )
+
+    # ----- Region outlines -----
+    region_dicts = {
+        'isdn': {
+            'display_name': 'ISDN',
+            'file': './data/outline_isdns.geojson',
+            'trace_dict_name': 'isdn_outlines',
+        },
+        'icb': {
+            'display_name': 'ICB',
+            'file':  './data/outline_icbs.geojson',
+            'trace_dict_name': 'icb_outlines',
+        },
+        'ambo22': {
+            'display_name': 'Ambulance service',
+            'file':  './data/outline_ambo22s.geojson',
+            'trace_dict_name': 'ambo22_outlines',
+        },
+    }
+    for n, reg_dict in region_dicts.items():
+        # Convert to British National Grid:
+        f = reg_dict['file']
+        gdf_region = geopandas.read_file(f).to_crs('EPSG:27700')
+        gdf_region['x'], gdf_region['y'] = (
+            convert_shapely_polys_into_xy(gdf_region))
+        # Make trace:
+        trace_region = []
+        for i in gdf_region.index:
+            trace_region.append(go.Scatter(
+                x=gdf_region.loc[i, 'x'],
+                y=gdf_region.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor='rgba(0, 0, 0, 0)',
+                line_color='grey',
+                name=reg_dict['display_name'],
+                text=gdf_region.loc[i, n],
+                hoverinfo="text",
+                hoverlabel=dict(bgcolor='#ff4b4b'),
+                ))
+        # Store result:
+        map_traces[reg_dict['trace_dict_name']] = trace_region
+
+    return map_traces
+
+
+def make_shared_map_traces(
+        df_unit_services,
+        df_lsoa_units_times,
+        df_raster,
+        transform_dict
+        ):
+    """Make unit scatter, nearest unit CSC array."""
+    map_traces = {}
+    # ----- Stroke units -----
+    gdf_units = load_units_gdf(df_unit_services)
+    map_traces['units'] = make_units_traces(gdf_units)
+
+    # ----- CSC regions -----
+    df_lsoa_units_times = df_lsoa_units_times.copy()
+    df_lsoa_units_times['nearest_csc'] = np.nan
+    mask = df_lsoa_units_times['transfer_required']
+    df_lsoa_units_times.loc[~mask, 'nearest_csc'] = 1
+
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df_lsoa_units_times,
+        ['nearest_csc'],
+        _log=False
+        )
+    colour = '#ff4b4b'
+    map_traces['raster_nearest_csc'] = {}
+    # Sneaky invisible marker so we can have just the colour
+    # in the legend:
+    map_traces['raster_nearest_csc']['trace_legend'] = go.Scatter(
+        x=[None],
+        y=[None],
+        mode='markers',
+        marker={'color': colour, 'symbol': 'square', 'size': 10},
+        name='Nearest IVT unit has MT',
+    )
+    # The actual map:
+    map_traces['raster_nearest_csc']['trace'] = go.Heatmap(
+        z=arrs[0],
+        transpose=False,
+        x0=transform_dict['xmin'],
+        dx=transform_dict['pixel_size'],
+        y0=transform_dict['ymin'],
+        dy=transform_dict['pixel_size'],
+        zmin=0,
+        zmax=1,
+        showscale=False,
+        colorscale=[[0, 'rgb(0,0,0)'], [1, colour]],
+        hoverinfo='skip',
+    )
+
+    # ----- Nearest MT units -----
+    try:
+        df_unit_services = df_unit_services.drop(
+            ['colour_ind', 'colour'], axis='columns')
+    except KeyError:
+        pass
+    map_traces['raster_nearest_mt_unit'], _, df_unit_services = make_unit_catchment_raster(
+        df_lsoa_units_times,
+        df_unit_services,
+        df_raster,
+        transform_dict,
+        # unit_number_column='unit_number',
+        nearest_unit_column='nearest_mt_unit',
+        redo_transform=False,
+        create_colour_scale=True,
+        )
+
+    # ----- Nearest IVT units -----
+    map_traces['raster_nearest_ivt_unit'], _, df_unit_services = (
+        make_unit_catchment_raster(
+            df_lsoa_units_times,
+            df_unit_services,  # this is returned with colours
+            df_raster,
+            transform_dict,
+            # unit_number_column='unit_number',
+            nearest_unit_column='nearest_ivt_unit',
+            redo_transform=False,
+            create_colour_scale=True,
+            )
+    )
+
+    return map_traces, df_unit_services
+
+
+def make_units_traces(gdf_units):
+    """
+    Draw:
+    + outline of England
+    + stroke units with markers to show their services
+    + major roads
+    + LSOA nearest a CSC
+    """
     # Add markers in separate traces for the sake of legend entries.
     # Pick out which stroke unit types are where in the gdf:
-    col_ivt = 'Use_IVT'
-    col_mt = 'Use_MT'
-    col_msu = 'Use_MSU'
-    mask_ivt = gdf_points_units[col_ivt] == 1
-    mask_mt = gdf_points_units[col_mt] == 1
-    mask_msu = gdf_points_units[col_msu] == 1
+    mask_ivt = gdf_units['Use_IVT'] == 1
+    mask_mt = gdf_units['Use_MT'] == 1
+    try:
+        mask_msu = gdf_units['Use_MSU'] == 1
+    except KeyError:
+        mask_msu = np.full(len(gdf_units), False)
 
     # Formatting for the markers:
     format_dict = {
@@ -111,14 +394,13 @@ def create_stroke_team_markers(df_units=None):
         },
     }
 
-    # Build the traces for the stroke units...
+    # Build the traces for the stroke units.
     traces = {}
     for service, s_dict in format_dict.items():
         mask = s_dict['mask']
-
         trace = go.Scatter(
-            x=gdf_points_units.loc[mask, 'BNG_E'],
-            y=gdf_points_units.loc[mask, 'BNG_N'],
+            x=gdf_units.loc[mask, 'BNG_E'],
+            y=gdf_units.loc[mask, 'BNG_N'],
             mode='markers',
             marker={
                 'symbol': s_dict['marker'],
@@ -128,7 +410,7 @@ def create_stroke_team_markers(df_units=None):
             },
             name=s_dict['label'],
             customdata=np.stack(
-                [gdf_points_units.loc[mask, 'ssnap_name']],
+                [gdf_units.loc[mask, 'ssnap_name']],
                 axis=-1
                 ),
             hovertemplate=(
@@ -142,81 +424,271 @@ def create_stroke_team_markers(df_units=None):
     return traces
 
 
-def plotly_blank_maps(subplot_titles: list = None, n_blank: int = 2):
+def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
+    trace = go.Heatmap(
+        z=arr,
+        transpose=False,
+        x0=transform_dict['xmin'],
+        dx=transform_dict['pixel_size'],
+        y0=transform_dict['ymin'],
+        dy=transform_dict['pixel_size'],
+        zmin=dict_colours['vmin'],
+        zmax=dict_colours['vmax'],
+        colorscale=dict_colours['cmap'],
+        colorbar=dict(
+            thickness=20,
+            # tickmode='array',
+            # tickvals=tick_locs,
+            # ticktext=tick_names,
+            # ticklabelposition='outside top'
+            title=dict_colours['title'],
+            title_font=dict(size=16),
+            tickfont=dict(size=16),
+            ),
+        name=name,
+        hoverinfo='skip',
+    )
+    return trace
+
+
+def make_unit_catchment_raster(
+        df_lsoa_units_times,
+        df_unit_services,
+        df_raster,
+        transform_dict,
+        # unit_number_column='unit_number',
+        nearest_unit_column='nearest_ivt_unit',
+        redo_transform=True,
+        create_colour_scale=False,
+        ):
     """
-    Create dummy subplots with blank maps in them to mask load times.
-
-    Inputs
-    ------
-    subplot_titles - list or None. Titles for the subplots.
-    n_blank        - int. How many subplots to create.
+    colour lookup e.g. [[0, 'rgb(0,0,0)'], [1, colour]]
     """
-    # Don't replace this with stroke-maps!
-    # This uses the same simplified LSOA shapes as plotted.
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
+    if 'colour_ind' in df_unit_services.columns:
+        pass
+    else:
+        df_unit_services['colour_ind'] = -1  # dtype int
+    if nearest_unit_column == 'nearest_mt_unit':
+        catchment_units = df_unit_services.loc[
+            df_unit_services['Use_MT'] == 1].index.values
+        df_units = df_unit_services.loc[
+            df_unit_services['Use_MT'] == 1].copy()
+    else:
+        catchment_units = df_unit_services.index.values
+        df_units = df_unit_services.copy()
 
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=n_blank,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
+    # Set up unit --> number --> colour lookup.
+    # The raster array prefers to work with numbers rather than strings.
+    unit_number_column = 'unit_number'
+    df_units[unit_number_column] = np.round(
+        np.linspace(0.0, 1.0, len(df_units)), 3)
+    # Make a copy in the actual df:
+    df_unit_services = df_unit_services.merge(
+        df_units[unit_number_column],
+        left_index=True, right_index=True, how='left'
         )
 
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), row='all', col='all'
+    # Limit to LSOA caught by the given units:
+    df_lsoa_units_times = df_lsoa_units_times.copy()
+    mask = df_lsoa_units_times[nearest_unit_column].isin(catchment_units)
+    df = df_lsoa_units_times.loc[mask].copy()
+    df = pd.merge(
+        df, df_units.reset_index()[['Postcode', unit_number_column]],
+        left_on=nearest_unit_column, right_on='Postcode', how='left'
+        )
+
+    arrs = gather_map_data(
+        df_raster,
+        transform_dict,
+        df,
+        [unit_number_column],
+        _log=False
+        )
+    arr = arrs[0]
+
+    # Update the transform dictionary to reflect the crop.
+    # Make a copy of the transform dict:
+    transform_dict_here = {}
+    for k, v in transform_dict.items():
+        transform_dict_here[k] = v
+    if redo_transform:
+        width_before = arr.shape[1]
+        height_before = arr.shape[0]
+        # Crop the array to non-NaN values:
+        mask0 = np.all(np.isnan(arr), axis=0)
+        min0 = np.where(mask0 == False)[0][0]
+        max0 = np.where(mask0 == False)[0][-1]
+        mask1 = np.all(np.isnan(arr), axis=1)
+        min1 = np.where(mask1 == False)[0][0]
+        max1 = np.where(mask1 == False)[0][-1]
+        arr = arr[min1:max1+1, min0:max0+1]
+        # New image width/height in pixels:
+        transform_dict_here['width'] = arr.shape[1]
+        transform_dict_here['height'] = arr.shape[0]
+        # Reference coordinates are xmin, ymax.
+        # Update the corner coordinates:
+        transform_dict_here['xmin'] = (
+            transform_dict_here['xmin'] +
+            transform_dict_here['pixel_size'] * min0
             )
+        transform_dict_here['ymax'] = (
+            transform_dict_here['ymax'] -
+            transform_dict_here['pixel_size'] * (height_before - (max1 + 1))
+            )
+        # Far corner in terms of pixels:
+        transform_dict_here['im_xmax'] = (
+            transform_dict_here['xmin'] +
+            transform_dict_here['pixel_size'] * transform_dict_here['width']
+            )
+        transform_dict_here['im_ymin'] = (
+            transform_dict_here['ymax'] -
+            transform_dict_here['pixel_size'] * transform_dict_here['height']
+            )
+        # Remove xmax and ymax because we now only have pixel-scale
+        # limits:
+        transform_dict_here['xmax'] = transform_dict_here['im_xmax']
+        transform_dict_here['ymin'] = transform_dict_here['im_ymin']
 
-    # Add a blank trace to create space for a legend.
-    # Stupid? Yes. Works? Also yes.
-    fig.add_trace(go.Scatter(
-        x=[None],
-        y=[None],
-        mode='markers',
-        marker={'color': 'rgba(0,0,0,0)'},
-        name=' ' * 20
-    ))
+    if create_colour_scale:
+        # Check which regions border each other.
+        # pairs = []
+        df_pairs = pd.DataFrame(
+            np.zeros((len(df_units), len(df_units))),
+            columns=df_units[unit_number_column],
+            index=df_units[unit_number_column],
+            )
+        for row in arr:
+            # From https://stackoverflow.com/a/5738933
+            vals_order = [key for key, _group in groupby(row[~np.isnan(row)])]
+            for i in range(len(vals_order))[:-1]:
+                df_pairs.loc[vals_order[i], vals_order[i+1]] = 1
+                df_pairs.loc[vals_order[i+1], vals_order[i]] = 1
 
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
+        # Dict of unit number to unit postcode:
+        dict_number_unit = (
+            df_units.reset_index().set_index(unit_number_column)
+            ['Postcode'].to_dict()
+        )
+        # Convert pairs df to postcode lookup:
+        df_pairs = df_pairs.rename(
+            columns=dict_number_unit, index=dict_number_unit)
 
-    # Shared pan and zoom settings:
-    fig.update_xaxes(matches='x')
-    fig.update_yaxes(matches='y')
-
-    # Remove axis ticks:
-    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
-
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=700,
-        margin_t=40,
-        margin_b=60  # mimic space taken up by colourbar
+        # Check if any units already have colours assigned to them:
+        try:
+            units_with_colours = list(
+                df_units[df_units['colour'].notna()].index.values)
+        except KeyError:
+            units_with_colours = []
+        # Sort columns from units that already have colours and then
+        # from most to fewest neighbours:
+        n_neighbours = df_pairs.sum(axis='rows').sort_values(ascending=False)
+        unit_order = (
+            units_with_colours +
+            [u for u in n_neighbours.index if u not in units_with_colours]
+        )
+        df_pairs = df_pairs[unit_order]
+        # Allow more colours than we'll likely need:
+        colour_options = range(10)
+        df_colours_allowed = pd.DataFrame(
+            np.ones((len(colour_options), len(df_pairs))),
+            columns=df_pairs.columns,
+            index=colour_options
         )
 
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
+        for unit in df_pairs.columns:
+            # Pick the colour here:
+            s = df_colours_allowed[unit]
+            colours_allowed = s[s > 0]
+            if unit in units_with_colours:
+                colour = df_units.loc[unit, 'colour_ind']
+            else:
+                colour = colours_allowed.index[0]
+            # Set this unit to only be allowed this colour:
+            other_colours = [c for c in colour_options if c != colour]
+            df_colours_allowed.loc[other_colours, unit] = 0
+            # Update the allowed colours for its neighbours:
+            neighbours = df_pairs[df_pairs[unit] > 0].index.values
+            df_colours_allowed.loc[colour, neighbours] = 0
 
+        # Pick out the colour index assigned to each unit:
+        # colour_scale = df_unit_services[[unit_number_column]].copy()
+        # From now on update the original df_unit_services dataframe,
+        # not the temporary df_units dataframe.
+        for unit in df_units.index:
+            if unit not in units_with_colours:
+                ind = df_colours_allowed[df_colours_allowed[unit] == 1].index.values[0]
+                df_unit_services.loc[unit, 'colour_ind'] = int(ind)
+        # df_unit_services['colour_ind'] = df_unit_services['colour_ind'].astype(int)
+        # Use these indexes to pick out the colour for each unit.
+        # Setup for picking:
+        colours_dict = {
+            'Use_MT': [
+                'red', 'firebrick', 'darkorange', 'lightcoral',
+                'crimson', 'indianred', 'darksalmon', 'darkred',
+                ],
+            'Use_IVT': [
+                'deepskyblue', 'dodgerblue', 'lightblue',
+                'mediumblue', 'royalblue', 'powderblue',
+                'skyblue', 'slateblue', 'steelblue',
+                'cornflowerblue', 'lightskyblue', 'navy', 'cyan', 'blue',
+                ],
+        }
+        masks_dict = {
+            'Use_MT': df_unit_services['Use_MT'] == 1,
+            'Use_IVT': df_unit_services['Use_MT'] != 1,
+        }
+        # Duplicate colours if necessary (shouldn't be!):
+        while ((df_unit_services.loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1) >
+               len(colours_dict['Use_MT'])):
+            colours_dict['Use_MT'] += colours_dict['Use_MT']
+        while ((df_unit_services.loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1) >
+                len(colours_dict['Use_IVT'])):
+            colours_dict['Use_IVT'] += colours_dict['Use_IVT']
+
+        # Assign reds to MT units and blues to IVT units:
+        for t in ['Use_MT', 'Use_IVT']:
+            m = masks_dict[t]
+            c = colours_dict[t]
+            max_ind = df_unit_services.loc[m, 'colour_ind'].max()
+            if max_ind == -1:
+                # No units here.
+                pass
+            else:
+                for i in range(max_ind+1):
+                    mask = m & (df_unit_services['colour_ind'] == i)
+                    df_unit_services.loc[mask, 'colour'] = c[i]
+
+    # Set up unit --> number --> colour lookup.
+    mask_colours = df_unit_services['colour'].notna()
+    colour_scale = df_unit_services.loc[
+        mask_colours, [unit_number_column, 'colour']].copy().sort_values(unit_number_column).values
+    colour_scale = [list(i) for i in colour_scale]
+
+    # The actual map:
+    catch_trace = go.Heatmap(
+        z=arr,
+        transpose=False,
+        x0=transform_dict_here['xmin'],
+        dx=transform_dict_here['pixel_size'],
+        y0=transform_dict_here['ymin'],
+        dy=transform_dict_here['pixel_size'],
+        zmin=0,
+        zmax=1,
+        showscale=False,
+        colorscale=colour_scale,
+        hoverinfo='skip',
+    )
+    # Delete temporary data:
+    df_unit_services = df_unit_services.drop(
+        unit_number_column, axis='columns')
+    return catch_trace, transform_dict_here, df_unit_services
+
+
+#MARK: Figure setup
+# ########################
+# ##### FIGURE SETUP #####
+# ########################
+def get_map_config():
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
     plotly_config = {
@@ -237,324 +709,14 @@ def plotly_blank_maps(subplot_titles: list = None, n_blank: int = 2):
         # Options when the image is saved:
         'toImageButtonOptions': {'height': None, 'width': None},
         }
-
-    # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+    return plotly_config
 
 
-def plotly_unit_maps(
-        traces_units: dict = None,
-        unit_subplot_dict: dict = {},
-        gdf_catchment_lhs: geopandas.GeoDataFrame = None,
-        gdf_catchment_rhs: geopandas.GeoDataFrame = None,
-        outline_names_col: str = '',
-        outline_name: str = '',
-        subplot_titles: list = [],
-        ):
-    """
-    Create England outline with unit locations.
-
-    Inputs
-    ------
-    traces_units      - dict. Plotly traces of scatter markers for
-                        stroke units.
-    unit_subplot_dict - dict. Which unit traces should be shown on
-                        which subplots (by number).
-    """
-    # Don't replace this with stroke-maps!
-    # This uses the same simplified LSOA shapes as plotted.
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
-
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=2,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(1.0, 1.0, 1.0, 0.2)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), col='all', row='all')
-
-    gdf_roads = load_roads_gdf()
-
-    for i in gdf_roads.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_roads.loc[i, 'x'],
-            y=gdf_roads.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            line_width=0.5,
-            showlegend=False,
-            hoverinfo='skip',
-            ), col='all', row='all')
-
-    def draw_outline(fig, gdf_catchment, col='all'):
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_catchment.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_catchment.loc[i, 'x'],
-                y=gdf_catchment.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_catchment.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_catchment.loc[i, 'outline_type'],
-                text=gdf_catchment.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col=col
-                )
-
-    if gdf_catchment_lhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_lhs, col=1)
-
-    if gdf_catchment_rhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_rhs, col=2)
-
-    fig.update_traces(
-        hoverlabel=dict(
-            bgcolor='grey',
-            font_color='white'),
-        selector={'name': outline_name}
-    )
-
-    # --- Stroke unit scatter markers ---
-    if len(unit_subplot_dict) > 0:
-        if gdf_catchment_lhs is None:
-            pass
-        else:
-            # # Add a blank trace to put a gap in the legend.
-            # Stupid? Yes. Works? Also yes.
-            # Make sure the name isn't the same as any other blank name
-            # already set, e.g. in combo_colour_dict.
-            fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                marker={'color': 'rgba(0,0,0,0)'},
-                name=' ' * 10
-            ))
-
-        # Create the scatter traces for the stroke units in advance
-        # and then add traces to the subplots.
-        for service, grid_lists in unit_subplot_dict.items():
-            for grid_list in grid_lists:
-                row = grid_list[0]
-                col = grid_list[1]
-                fig.add_trace(traces_units[service], row=row, col=col)
-
+def england_map_setup(fig):
 
     # Remove repeat legend names:
     # (e.g. multiple sets of IVT unit, MT unit)
-    # from https://stackoverflow.com/a/62162555
-    names = set()
-    fig.for_each_trace(
-        lambda trace:
-            trace.update(showlegend=False)
-            if (trace.name in names) else names.add(trace.name))
-    # This makes sure that if multiple maps use the exact same
-    # colours and labels, the labels only appear once in the legend.
-
-    fig.update_layout(
-        legend=dict(
-            title_text='',
-            bordercolor='grey',
-            borderwidth=2
-        )
-    )
-
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(col=2, scaleanchor='x', scaleratio=1)
-
-    # Shared pan and zoom settings:
-    fig.update_xaxes(matches='x')
-    fig.update_yaxes(matches='y')
-
-    # Remove axis ticks:
-    fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
-
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=600,
-        )
-
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
-
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
-
-
-def plotly_unit_map(
-        traces_units: dict = None,
-        unit_subplot_dict: dict = {},
-        gdf_catchment_lhs: geopandas.GeoDataFrame = None,
-        outline_names_col: str = '',
-        outline_name: str = '',
-        subplot_titles: list = [],
-        ):
-    """
-    Create England outline with unit locations.
-
-    Inputs
-    ------
-    traces_units      - dict. Plotly traces of scatter markers for
-                        stroke units.
-    unit_subplot_dict - dict. Which unit traces should be shown on
-                        which subplots (by number).
-    """
-    # Don't replace this with stroke-maps!
-    # This uses the same simplified LSOA shapes as plotted.
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
-
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=1,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(1.0, 1.0, 1.0, 0.2)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), col='all', row='all')
-
-    gdf_roads = load_roads_gdf()
-
-    for i in gdf_roads.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_roads.loc[i, 'x'],
-            y=gdf_roads.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            line_width=0.5,
-            showlegend=False,
-            hoverinfo='skip',
-            ), col='all', row='all')
-
-    def draw_outline(fig, gdf_catchment, col='all'):
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_catchment.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_catchment.loc[i, 'x'],
-                y=gdf_catchment.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_catchment.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_catchment.loc[i, 'outline_type'],
-                text=gdf_catchment.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col=col
-                )
-
-    if gdf_catchment_lhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_lhs, col=1)
-
-    fig.update_traces(
-        hoverlabel=dict(
-            bgcolor='grey',
-            font_color='white'),
-        selector={'name': outline_name}
-    )
-
-    # --- Stroke unit scatter markers ---
-    if len(unit_subplot_dict) > 0:
-        if gdf_catchment_lhs is None:
-            pass
-        else:
-            # # Add a blank trace to put a gap in the legend.
-            # Stupid? Yes. Works? Also yes.
-            # Make sure the name isn't the same as any other blank name
-            # already set, e.g. in combo_colour_dict.
-            fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                marker={'color': 'rgba(0,0,0,0)'},
-                name=' ' * 10
-            ))
-
-        # Create the scatter traces for the stroke units in advance
-        # and then add traces to the subplots.
-        for service, grid_lists in unit_subplot_dict.items():
-            for grid_list in grid_lists:
-                row = grid_list[0]
-                col = grid_list[1]
-                fig.add_trace(traces_units[service], row=row, col=col)
-
-
-    # Remove repeat legend names:
-    # (e.g. multiple sets of IVT unit, MT unit)
-    # from https://stackoverflow.com/a/62162555
+    # # from https://stackoverflow.com/a/62162555
     names = set()
     fig.for_each_trace(
         lambda trace:
@@ -575,364 +737,20 @@ def plotly_unit_map(
         )
     )
 
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-
     # Remove axis ticks:
     fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False)
     fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False)
 
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=600,
-        margin_t=25,
-        )
-
     # Disable clicking legend to remove trace:
     fig.update_layout(legend_itemclick=False)
     fig.update_layout(legend_itemdoubleclick=False)
 
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+    return fig
 
 
-def plotly_many_heatmaps(
-        burned_lhs: geopandas.GeoDataFrame,
-        burned_rhs: geopandas.GeoDataFrame,
-        burned_pop: geopandas.GeoDataFrame,
-        gdf_catchment_lhs: geopandas.GeoDataFrame = None,
-        gdf_catchment_rhs: geopandas.GeoDataFrame = None,
-        gdf_catchment_pop: geopandas.GeoDataFrame = None,
-        outline_names_col: str = '',
-        outline_name: str = '',
-        traces_units: dict = None,
-        unit_subplot_dict: dict = {},
-        subplot_titles: list = [],
-        legend_title: str = '',
-        dict_colours: dict = {},
-        dict_colours_diff: dict = {},
-        dict_colours_pop: dict = {},
-        transform_dict: dict = {},
-        cmaps: list = [],
-        ):
-    """
-    Main map-drawing function.
-
-    UPDATE ME for heatmaps ok
-
-    Inputs
-    ------
-    gdf_lhs           - geopandas.GeoDataFrame. Data for left-hand
-                        side.
-    gdf_rhs           - geopandas.GeoDataFrame. Data for right-hand
-                        side.
-    gdf_catchment_lhs - geopandas.GeoDataFrame. Optional. Data to
-                        plot over the top of the other gdf, for example
-                        catchment area outlines. For left-hand map.
-    gdf_catchment_rhs - geopandas.GeoDataFrame. Optional. Same but for
-                        right-hand map.
-    outline_names_col - str. Name of the column in gdf_catchment that
-                        contains data to show on the hover text.
-    outline_name      - str. One value from the 'outcome_type' column
-                        in gdf_catchment. (Should all be same values).
-    traces_units      - dict. Plotly traces of scatter markers for
-                        stroke units.
-    unit_subplot_dict - dict. Which unit traces should be shown on
-                        which subplots (by number).
-    subplot_titles    - list. Title appearing above each subplot.
-    legend_title      - str. Title for the legend.
-    colour_dict       - dict. Colour band labels to hex colour lookup
-                        for the left-hand-side map.
-    colour_diff_dict  - dict. Same for the right-hand-side map.
-    """
-    # ----- Plotting -----
-    fig = make_subplots(
-        rows=1, cols=3,
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
-
-    # Add a blank outline of England:
-    # Don't replace this with stroke-maps! This one matches
-    # the simplified LSOA shapes.
-    path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
-
-    x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
-    gdf_ew['x'] = x_list
-    gdf_ew['y'] = y_list
-
-    # Add each row of the dataframe separately.
-    # Scatter the edges of the polygons and use "fill" to colour
-    # within the lines.
-    for i in gdf_ew.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_ew.loc[i, 'x'],
-            y=gdf_ew.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            showlegend=False,
-            hoverinfo='skip',
-            ), row='all', col='all'
-            )
-
-    # Draw the outcome maps:
-    fig.add_trace(go.Heatmap(
-        z=burned_lhs,
-        transpose=False,
-        x0=transform_dict['xmin'],
-        dx=transform_dict['pixel_size'],
-        y0=transform_dict['ymin'],
-        dy=transform_dict['pixel_size'],
-        zmin=dict_colours['vmin'],
-        zmax=dict_colours['vmax'],
-        colorscale=dict_colours['cmap'],
-        colorbar=dict(
-            thickness=20,
-            # tickmode='array',
-            # tickvals=tick_locs,
-            # ticktext=tick_names,
-            # ticklabelposition='outside top'
-            title=dict_colours['title']
-            ),
-        name='lhs',
-        hoverinfo='skip',
-    ), row='all', col=1)
-
-    fig.add_trace(go.Heatmap(
-        z=burned_rhs,
-        transpose=False,
-        x0=transform_dict['xmin'],
-        dx=transform_dict['pixel_size'],
-        y0=transform_dict['ymin'],
-        dy=transform_dict['pixel_size'],
-        zmin=dict_colours_diff['vmin'],
-        zmax=dict_colours_diff['vmax'],
-        colorscale=dict_colours_diff['cmap'],
-        colorbar=dict(
-            thickness=20,
-            # tickmode='array',
-            # tickvals=tick_locs,
-            # ticktext=tick_names,
-            # ticklabelposition='outside top'
-            title=dict_colours_diff['title']
-            ),
-        name='rhs',
-        hoverinfo='skip',
-    ), row='all', col=2)
-
-    fig.add_trace(go.Heatmap(
-        z=burned_pop,
-        transpose=False,
-        x0=transform_dict['xmin'],
-        dx=transform_dict['pixel_size'],
-        y0=transform_dict['ymin'],
-        dy=transform_dict['pixel_size'],
-        zmin=dict_colours_pop['vmin'],
-        zmax=dict_colours_pop['vmax'],
-        colorscale=dict_colours_pop['cmap'],
-        colorbar=dict(
-            thickness=20,
-            # tickmode='array',
-            # tickvals=tick_locs,
-            # ticktext=tick_names,
-            # ticklabelposition='outside top'
-            title=dict_colours_pop['title']
-            ),
-        name='pop',
-        hoverinfo='skip',
-    ), row='all', col=3)
-
-    fig.update_traces(
-        {'colorbar': {
-            'orientation': 'h',
-            'x': 0.0,
-            'y': -0.2,
-            'len': 0.333,
-            'xanchor': 'left',
-            'title_side': 'bottom'
-            # 'xref': 'paper'
-            }},
-        selector={'name': 'lhs'}
-        )
-    fig.update_traces(
-        {'colorbar': {
-            'orientation': 'h',
-            'x': 0.5,
-            'y': -0.2,
-            'len': 0.333,
-            'xanchor': 'center',
-            'title_side': 'bottom'
-            # 'xref': 'paper'
-            }},
-        selector={'name': 'rhs'}
-        )
-    fig.update_traces(
-        {'colorbar': {
-            'orientation': 'h',
-            'x': 1.0,
-            'y': -0.2,
-            'len': 0.333,
-            'xanchor': 'right',
-            'title_side': 'bottom'
-            # 'xref': 'paper'
-            }},
-        selector={'name': 'pop'}
-        )
-
-    gdf_roads = load_roads_gdf()
-
-    for i in gdf_roads.index:
-        fig.add_trace(go.Scatter(
-            x=gdf_roads.loc[i, 'x'],
-            y=gdf_roads.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            line_width=0.5,
-            showlegend=False,
-            hoverinfo='skip',
-            ), col='all', row='all')
-
-    def draw_outline(fig, gdf_catchment, col='all'):
-        # I can't for the life of me get hovertemplate working here
-        # for mysterious reasons, so just stick to "text" for hover info.
-        for i in gdf_catchment.index:
-            fig.add_trace(go.Scatter(
-                x=gdf_catchment.loc[i, 'x'],
-                y=gdf_catchment.loc[i, 'y'],
-                mode='lines',
-                fill="toself",
-                fillcolor=gdf_catchment.loc[i, 'colour'],
-                line_color='grey',
-                name=gdf_catchment.loc[i, 'outline_type'],
-                text=gdf_catchment.loc[i, outline_names_col],
-                hoverinfo="text",
-                hoverlabel=dict(bgcolor='red'),
-                ), row='all', col=col
-                )
-
-    if gdf_catchment_lhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_lhs, col=1)
-
-    if gdf_catchment_rhs is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_rhs, col=2)
-
-    if gdf_catchment_pop is None:
-        pass
-    else:
-        draw_outline(fig, gdf_catchment_pop, col=3)
-
-    fig.update_traces(
-        hoverlabel=dict(
-            bgcolor='grey',
-            font_color='white'),
-        selector={'name': outline_name}
-    )
-    # Equivalent to pyplot set_aspect='equal':
-    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
-    fig.update_yaxes(col=2, scaleanchor='x2', scaleratio=1)
-    fig.update_yaxes(col=3, scaleanchor='x3', scaleratio=1)
-
-    # Shared pan and zoom settings:
-    fig.update_xaxes(matches='x')
-    fig.update_yaxes(matches='y')
-
-    # Remove axis ticks.
-    fig.update_xaxes(tickvals=[], showticklabels=False,
-                     showgrid=False, zeroline=False)
-    fig.update_yaxes(tickvals=[], showticklabels=False,
-                     showgrid=False, zeroline=False)
-
-    # --- Stroke unit scatter markers ---
-    if len(unit_subplot_dict) > 0:
-        if gdf_catchment_lhs is None:
-            pass
-        else:
-            # # Add a blank trace to put a gap in the legend.
-            # Stupid? Yes. Works? Also yes.
-            # Make sure the name isn't the same as any other blank name
-            # already set, e.g. in combo_colour_dict.
-            fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                marker={'color': 'rgba(0,0,0,0)'},
-                name=' ' * 10
-            ))
-
-        # Create the scatter traces for the stroke units in advance
-        # and then add traces to the subplots.
-        for service, grid_lists in unit_subplot_dict.items():
-            for grid_list in grid_lists:
-                row = grid_list[0]
-                col = grid_list[1]
-                fig.add_trace(traces_units[service], row=row, col=col)
-
-    # Remove repeat legend names:
-    # (e.g. multiple sets of IVT unit, MT unit)
-    # from https://stackoverflow.com/a/62162555
-    names = set()
-    fig.for_each_trace(
-        lambda trace:
-            trace.update(showlegend=False)
-            if (trace.name in names) else names.add(trace.name))
-    # This makes sure that if multiple maps use the exact same
-    # colours and labels, the labels only appear once in the legend.
-
-    fig.update_layout(
-        legend=dict(
-            title_text=legend_title,
-            bordercolor='grey',
-            borderwidth=2
-        )
-    )
-
-    # Figure setup.
-    fig.update_layout(
-        # width=1200,
-        height=700,
-        margin_t=40,
-        margin_b=0
-        )
-
-    # Disable clicking legend to remove trace:
-    fig.update_layout(legend_itemclick=False)
-    fig.update_layout(legend_itemdoubleclick=False)
-
+def draw_cmap_buttons(fig, colour_dicts, cmaps):
     # BUTTONS TEST - https://plotly.com/python/custom-buttons/
-    # Colour scales dict:
-    dict_colourscales_lhs = {}
-    dict_colourscales_rhs = {}
-    dict_colourscales_pop = {}
+
     if len(cmaps) > 0:
         pass
     else:
@@ -940,27 +758,19 @@ def plotly_many_heatmaps(
         cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
         # Add the reverse option after each entry. Remove any double reverse
         # reverse _r_r. Result is flat list.
-        cmaps = sum([[c, (c + '_r').replace('_r_r', '')]
-                        for c in cmaps], [])
-    for c in cmaps:
-        dict_colourscales_lhs[c] = (
-            colour_setup.make_colour_list_for_plotly_button(
-                c,
-                vmin=dict_colours['vmin'],
-                vmax=dict_colours['vmax']
-                ))
-        dict_colourscales_rhs[c] = (
-            colour_setup.make_colour_list_for_plotly_button(
-                c,
-                vmin=dict_colours_diff['vmin'],
-                vmax=dict_colours_diff['vmax']
-                ))
-        dict_colourscales_pop[c] = (
-            colour_setup.make_colour_list_for_plotly_button(
-                c,
-                vmin=dict_colours_pop['vmin'],
-                vmax=dict_colours_pop['vmax']
-                ))
+        cmaps = sum(
+            [[c, (c + '_r').replace('_r_r', '')] for c in cmaps], [])
+    # Colour scales dict:
+    keys = list(colour_dicts.keys())
+    dicts_colourscales = dict([(k, {}) for k in keys])
+    for i, c in enumerate(cmaps):
+        for k in keys:
+            dicts_colourscales[k][c] = (
+                make_colour_list_for_plotly_button(
+                    c,
+                    vmin=colour_dicts[k]['vmin'],
+                    vmax=colour_dicts[k]['vmax']
+                    ))
 
     fig.update_layout(
         updatemenus=[
@@ -968,9 +778,9 @@ def plotly_many_heatmaps(
                 buttons=list([
                     dict(
                         args=[{'colorscale': [
-                                dict_colourscales_lhs[c],
-                                dict_colourscales_rhs[c],
-                                dict_colourscales_pop[c]
+                                dicts_colourscales[keys[0]][c],
+                                dicts_colourscales[keys[1]][c],
+                                dicts_colourscales[keys[2]][c]
                                 ]},
                               {'traces': ['lhs', 'rhs', 'pop']}],
                         label=c,
@@ -1005,26 +815,676 @@ def plotly_many_heatmaps(
             ),  # keep this comma
     )
     fig['layout']['annotations'] += annotations
+    return fig
 
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            # 'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
+
+def generate_node_coordinates(df_unit_services, all_units):
+    # Generate coordinates for nodes.
+    # Stroke units use their real coordinates:
+    df_units_here = df_unit_services.loc[all_units]
+    gdf_units = load_units_gdf(df_units_here)
+    return gdf_units
+
+
+def load_region_outline_here(region_type, region):
+    # Place catchment units outside the bounding box of the selected region
+    # _and_ all transfer units.
+    # n.b. this would be hideous for large enough regions...!
+    if region_type in ['isdn', 'icb', 'ambo22']:
+        # Get region geography:
+        region_dicts = {
+            'isdn': {
+                'display_name': 'ISDN',
+                'file': './data/outline_isdns.geojson',
+                'trace_dict_name': 'isdn_outlines',
+            },
+            'icb': {
+                'display_name': 'ICB',
+                'file':  './data/outline_icbs.geojson',
+                'trace_dict_name': 'icb_outlines',
+            },
+            'ambo22': {
+                'display_name': 'Ambulance service',
+                'file':  './data/outline_ambo22s.geojson',
+                'trace_dict_name': 'ambo22_outlines',
+            },
         }
+        reg_dict = region_dicts[region_type]
+        region_display_name = reg_dict['display_name']
+        # Convert to British National Grid:
+        f = reg_dict['file']
+        gdf_region = geopandas.read_file(f).to_crs('EPSG:27700')
+        # Only keep the selected region:
+        gdf_region = gdf_region.loc[gdf_region[region_type] == region]
+        gdf_region['x'], gdf_region['y'] = (
+            convert_shapely_polys_into_xy(gdf_region))
+    else:
+        # TO DO - create nearest unit geography
+        gdf_region = None
+        region_display_name = 'to do'
+    return gdf_region, region_display_name
+
+
+def set_network_map_bounds(gdf_units, gdf_region=None, transform_dict_units=None):
+    bounds_lists = [gdf_units.total_bounds]
+    if gdf_region is not None:
+        bounds_lists.append(gdf_region.total_bounds)
+    if transform_dict_units is not None:
+        bounds_units_raster = [
+            transform_dict_units['xmin'],
+            transform_dict_units['im_ymin'],
+            transform_dict_units['im_xmax'],
+            transform_dict_units['ymax'],
+        ]
+        bounds_lists.append(bounds_units_raster)
+    bounds = [
+        min([b[0] for b in bounds_lists]),
+        min([b[1] for b in bounds_lists]),
+        max([b[2] for b in bounds_lists]),
+        max([b[3] for b in bounds_lists]),
+    ]
+
+    # Add breathing room to region bounding box:
+    x_buffer = (bounds[2] - bounds[0]) * 0.1
+    y_buffer = (bounds[3] - bounds[1]) * 0.1
+    bounds = [
+        bounds[0] - x_buffer,
+        bounds[1] - y_buffer,
+        bounds[2] + x_buffer,
+        bounds[3] + y_buffer,
+        ]
+
+    return bounds, x_buffer, y_buffer
+
+
+def make_coords_nearest_unit_catchment(
+        gdf_units,
+        df_net_u,
+        bounds,
+        nearest_units,
+        x_buffer,
+        y_buffer,
+        ):
+    box_centre = [0.5*(bounds[0]+bounds[2]), 0.5*(bounds[1]+bounds[3])]
+
+    gdf = gdf_units.copy()
+    # Make coordinates for each unit in the region's "nearest unit"
+    # anchor. Find the angle between the centre of the region and
+    # each unit.
+    gdf['x_off'] = gdf['BNG_E'] - box_centre[0]
+    gdf['y_off'] = gdf['BNG_N'] - box_centre[1]
+    gdf['angle'] = np.arctan2(gdf['y_off'], gdf['x_off'])
+    gdf['angle_deg'] = gdf['angle'] * 180.0 / np.pi
+
+    # Limit to units in the region:
+    gdf['nearest_unit'] = 'nearest_' + gdf.index.astype(str)
+    gdf = gdf.loc[
+        gdf['nearest_unit'].isin(nearest_units)]
+
+    anch_top = bounds[3] + (2.0 * y_buffer)
+    anch_left = bounds[0] - (2.0 * x_buffer)
+    anch_bottom = bounds[1] - (2.0 * y_buffer)
+    anch_right = bounds[2] + (2.0 * x_buffer)
+
+    angle_to_top_right = np.arctan2(
+        (bounds[3] - box_centre[1]), (bounds[2] - box_centre[0]))
+    angle_to_top_left = np.arctan2(
+        (bounds[3] - box_centre[1]), (bounds[0] - box_centre[0]))
+    angle_to_bottom_left = np.arctan2(
+        (bounds[1] - box_centre[1]), (bounds[0] - box_centre[0]))
+    angle_to_bottom_right = np.arctan2(
+        (bounds[1] - box_centre[1]), (bounds[2] - box_centre[0]))
+
+    mask_top = (
+        (gdf['angle'] >= angle_to_top_right) &
+        (gdf['angle'] < angle_to_top_left)
+    )
+    mask_left = (
+        (gdf['angle'] >= angle_to_top_left) |
+        (gdf['angle'] < angle_to_bottom_left)
+    )
+    mask_bottom = (
+        (gdf['angle'] >= angle_to_bottom_left) &
+        (gdf['angle'] < angle_to_bottom_right)
+    )
+    mask_right = (
+        (gdf['angle'] >= angle_to_bottom_right) &
+        (gdf['angle'] < angle_to_top_right)
+    )
+
+    gdf.loc[mask_top, 'side'] = 'top'
+    gdf.loc[mask_left, 'side'] = 'left'
+    gdf.loc[mask_bottom, 'side'] = 'bottom'
+    gdf.loc[mask_right, 'side'] = 'right'
+
+    gdf.loc[mask_top, 'y_anchor'] = anch_top
+    gdf.loc[mask_left, 'x_anchor'] = anch_left
+    gdf.loc[mask_bottom, 'y_anchor'] = anch_bottom
+    gdf.loc[mask_right, 'x_anchor'] = anch_right
+
+    gdf.loc[mask_top, 'x_anchor'] = box_centre[0] + (
+        (bounds[3] - box_centre[1]) /
+        np.tan(gdf.loc[mask_top, 'angle'])
+        )
+    gdf.loc[mask_bottom, 'x_anchor'] = box_centre[0] + (
+        (bounds[1] - box_centre[1]) /
+        np.tan(gdf.loc[mask_bottom, 'angle'])
+        )
+    gdf.loc[mask_left, 'y_anchor'] = box_centre[1] + (
+        (bounds[0] - box_centre[0]) *
+        np.tan(gdf.loc[mask_left, 'angle'])
+        )
+    gdf.loc[mask_right, 'y_anchor'] = box_centre[1] + (
+        (bounds[2] - box_centre[0]) *
+        np.tan(gdf.loc[mask_right, 'angle'])
+        )
+
+    cols_to_keep = ['nearest_unit', 'side', 'x_anchor', 'y_anchor',
+                    'ssnap_name', 'Use_MT', 'colour']
+    gdf = gdf[cols_to_keep]
+    gdf = pd.merge(
+        gdf.reset_index(),
+        df_net_u[['first_unit', 'admissions']],
+        left_on='Postcode', right_on='first_unit', how='left'
+        ).set_index('Postcode').drop('first_unit', axis='columns')
+    return gdf
+
+
+#MARK: Plot figures
+# ########################
+# ##### PLOT FIGURES #####
+# ########################
+def draw_units_map(map_traces, outline_name='none'):
+    fig = go.Figure()
+
+    # Only draw the "nearest unit has MT" raster if we're not
+    # drawing all the unit catchments anyway.
+    if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
+        pass
+    else:
+        fig.add_trace(map_traces['raster_nearest_csc']['trace'])
+    # Always draw the "nearest unit has MT" legend cheat:
+    fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+    # Region outline or unit catchment raster:
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'])
+    else:
+        if f'{outline_name}_outlines' in map_traces.keys():
+            for t in map_traces[f'{outline_name}_outlines']:
+                fig.add_trace(t)
+        else:
+            fig.add_trace(map_traces[f'raster_{outline_name}'])
+
+    for r in map_traces['roads']:
+        fig.add_trace(r)
+    fig.add_trace(map_traces['units']['ivt'])
+    fig.add_trace(map_traces['units']['mt'])
+
+    fig = england_map_setup(fig)
+    # Figure setup.
+    fig.update_layout(
+        width=500,
+        height=600,
+        margin_t=25,
+        margin_b=0
+        )
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(scaleanchor='x', scaleratio=1)
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    plotly_config = get_map_config()
+
+    st.plotly_chart(
+        fig,
+        width='content',
+        config=plotly_config,
+        key='pants'
+        )
+
+
+def draw_units_msu_map(map_traces, outline_name='none'):
+    fig = make_subplots(
+        rows=1, cols=2,
+        horizontal_spacing=0.0,
+        subplot_titles=['Usual care', 'MSU available'],
+        )
+
+    # Only draw the "nearest unit has MT" raster if we're not
+    # drawing all the unit catchments anyway.
+    if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
+        pass
+    else:
+        fig.add_trace(map_traces['raster_nearest_csc']['trace'], row='all', col='all')
+    # Always draw the "nearest unit has MT" legend cheat:
+    fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+    # Region outline or unit catchment raster:
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'], row='all', col='all')
+    else:
+        if f'{outline_name}_outlines' in map_traces.keys():
+            for t in map_traces[f'{outline_name}_outlines']:
+                fig.add_trace(t, row='all', col='all')
+        else:
+            fig.add_trace(map_traces[f'raster_{outline_name}'], row='all', col='all')
+    for r in map_traces['roads']:
+        fig.add_trace(r, row='all', col='all')
+    fig.add_trace(map_traces['units']['msu'], row='all', col=2)
+    fig.add_trace(map_traces['units']['ivt'], row='all', col=1)
+    fig.add_trace(map_traces['units']['mt'], row='all', col='all')
+
+    fig = england_map_setup(fig)
+    # Figure setup.
+    fig.update_layout(
+        width=500,
+        height=600,
+        margin_t=25,
+        margin_b=0
+        )
+
+    # Equivalent to pyplot set_aspect='equal':
+    fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, scaleanchor='x', scaleratio=1)
+
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="top",
+        y=0.0,
+        xanchor="center",
+        x=0.5,
+    ))
+    plotly_config = get_map_config()
+
+    st.plotly_chart(
+        fig,
+        width='stretch',
+        config=plotly_config
+        )
+
+
+def plot_outcome_maps(
+        map_traces, map_order, colour_dicts,
+        all_cmaps, outline_name='none', show_msu_bases=False,
+        title=''
+        ):
+    """"""
+    # Map labels:
+    subplot_titles = [colour_dicts[m]['title'] for m in map_order]
+    fig = make_subplots(
+        rows=1, cols=len(map_order),
+        horizontal_spacing=0.0,
+        subplot_titles=subplot_titles
+        )
+
+    cbar_len = 1.0 / len(map_order)
+    for i, m in enumerate(map_order):
+        fig.add_trace(map_traces[m], row=1, col=i+1)
+        fig.update_traces(
+            {'colorbar': {
+                'orientation': 'h',
+                'x': i * cbar_len,
+                'y': -0.2,
+                'len': cbar_len,
+                'xanchor': 'left',
+                'title_side': 'bottom'
+                # 'xref': 'paper'
+                }},
+            selector={'name': m}
+            )
+
+    if outline_name == 'none':
+        fig.add_trace(map_traces['england_outline'], row='all', col='all')
+    else:
+        for t in map_traces[f'{outline_name}_outlines']:
+            fig.add_trace(t, row='all', col='all')
+    for r in map_traces['roads']:
+        fig.add_trace(r, row='all', col='all')
+    if show_msu_bases:
+        fig.add_trace(map_traces['units']['msu'], row='all', col=2)
+    fig.add_trace(map_traces['units']['ivt'], row='all', col='all')
+    fig.add_trace(map_traces['units']['mt'], row='all', col='all')
+
+    fig = england_map_setup(fig)
+    # Figure setup.
+    fig.update_layout(
+        # width=1200,
+        height=600,
+        margin_t=80,
+        margin_b=0,
+        )
+    fig = draw_cmap_buttons(fig, colour_dicts, all_cmaps)
+    for i in range(len(map_order)):
+        # Equivalent to pyplot set_aspect='equal':
+        x = 'x' if i == 0 else f'x{i+1}'
+        fig.update_yaxes(col=i+1, scaleanchor=x, scaleratio=1)
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text=title)
 
     return fig
+
+
+def plot_networks(
+        df_net_u,
+        df_net_r,
+        df_unit_services,
+        gdf_nearest_units,
+        gdf_units,
+        bounds,
+        catch_trace,
+        gdf_region=None,
+        region_display_name=None,
+        subplot_titles=[]
+        ):
+    fig = make_subplots(
+        rows=2, cols=2,
+        horizontal_spacing=0.0,
+        vertical_spacing=0.0,
+        subplot_titles=subplot_titles,
+        )
+
+    # Border:
+    fig.add_shape(
+        type="rect",
+        x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
+        fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
+        line=dict(color='grey', width=4,),
+        layer='between',  # below other traces
+        col=[1, 2, 2], row=[1, 1, 2],
+    )
+
+    # ----- Country outline -----
+    gdf_eng = load_england_outline(bounds)
+    # Add each row of the dataframe separately.
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    fig.add_trace(go.Scatter(
+        x=gdf_eng['x'],
+        y=gdf_eng['y'],
+        mode='lines',
+        fill="toself",
+        fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
+        # fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
+        # fillcolor='rgba(0.573, 0.573, 0.573, 1)',  # grey
+        line_color='rgba(0, 0, 0, 0)',
+        showlegend=False,
+        hoverinfo='skip',
+        zorder=-1,
+        ),
+        col=[1, 2, 2], row=[1, 1, 2],
+    )
+
+    # Region catchment:
+    fig.add_trace(catch_trace, row=1, col=1)
+
+    # Selected region:
+    if isinstance(gdf_region, pd.DataFrame):
+        for i in gdf_region.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_region.loc[i, 'x'],
+                y=gdf_region.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor='rgba(0, 0, 0, 0)',
+                line_color='black',
+                name=region_display_name,
+                # text=gdf_region.loc[i, region_type],
+                hoverinfo='skip',
+                # hoverlabel=dict(bgcolor='#ff4b4b'),
+                ),
+                col=[1, 2, 2], row=[1, 1, 2]
+                )
+
+    # Links between units:
+    link_drawn_to_first = False
+    link_drawn_to_trans = False
+    for d, df_net in enumerate([df_net_u, df_net_r]):
+        for i in df_net.index:
+            s = df_net.loc[i]
+            name_catch = df_unit_services.loc[
+                df_unit_services.index == s['nearest_unit']
+                .replace('nearest_', ''), 'ssnap_name'
+                ].values[0]
+            name_first = df_unit_services.loc[
+                df_unit_services.index == s['first_unit'], 'ssnap_name'
+                ].values[0]
+            # Catchment to first unit:
+            m = gdf_nearest_units['nearest_unit'] == s['nearest_unit']
+            x_nearest = gdf_nearest_units.loc[m, 'x_anchor'].values[0]
+            y_nearest = gdf_nearest_units.loc[m, 'y_anchor'].values[0]
+            colour = gdf_nearest_units.loc[m, 'colour'].values[0]
+            m = gdf_units.index == s['first_unit']
+            x_first = gdf_units.loc[m, 'BNG_E'].values[0]
+            y_first = gdf_units.loc[m, 'BNG_N'].values[0]
+            a = s['admissions_catchment_to_first_unit']
+            w = np.log(a)  # / 75.0
+            w = 1.0 if w < 1.0 else w
+            aw = w * 5 if w < 3 else w*2
+            standoff = 5
+            # Setup for sneaking:
+            bw = w * 1.3
+            baw = aw * 1.0
+            bcolour = 'black'
+            # Sneaky background arrow for outline effect:
+            fig.add_trace(go.Scatter(
+                x=[x_nearest, x_first],
+                y=[y_nearest, y_first],
+                mode='lines+markers',
+                marker=dict(size=baw, symbol='arrow-up', angleref='previous',
+                            standoff=standoff, line=dict(color='black', width=2)),
+                line_color=bcolour,
+                line_width=bw,
+                # text=[a],
+                hoverinfo='skip',
+                name=None,
+            ), col=2, row=d+1)
+            # The actual arrow:
+            fig.add_trace(go.Scatter(
+                x=[x_nearest, x_first],
+                y=[y_nearest, y_first],
+                mode='lines+markers',
+                marker=dict(size=aw, symbol='arrow-up', angleref='previous',
+                            standoff=standoff),
+                line_color=colour,
+                line_width=w,
+                # text=[a],
+                hoverinfo='skip',
+                name=(None if link_drawn_to_first else 'Admissions to first unit'),
+            ), col=2, row=d+1)
+            # Add a sneaky trace halfway along the line for a hoverlabel:
+            fig.add_trace(go.Scatter(
+                x=[0.5*(x_nearest+x_first)],
+                y=[0.5*(y_nearest+y_first)],
+                mode='markers',
+                marker=dict(color='rgba(0, 0, 0, 0)'),
+                # text=[a],
+                customdata=np.stack(
+                    [[name_catch]*2,
+                     [name_first]*2,
+                     [a]*2],
+                    axis=-1
+                    ),
+                hovertemplate=(
+                    '%{customdata[2]:.1f} patients from catchment area of ' +
+                    '<br>' +
+                    '%{customdata[0]}' +
+                    '<br>' +
+                    'go to' +
+                    '<br>' +
+                    '%{customdata[1]}.' +
+                    '<br>' +
+                    # Need the following line to remove default "trace" bit
+                    # in second "extra" box:
+                    '<extra></extra>'
+                    ),
+                hoverlabel=dict(bordercolor=colour),
+            ), col=2, row=d+1)
+
+        # First unit to transfer unit:
+        df_net_trans = df_net.copy()
+        df_net_trans = df_net_trans.drop('nearest_unit', axis='columns')
+        df_net_trans = df_net_trans.groupby(
+            ['first_unit', 'transfer_unit']).sum().reset_index()
+        colour = 'rgba(0.9, 0.9, 0.9, 1.0)'
+        for i in df_net_trans.index:
+            s = df_net_trans.loc[i]
+            name_first = df_unit_services.loc[
+                df_unit_services.index == s['first_unit'], 'ssnap_name'
+                ].values[0]
+            name_trans = df_unit_services.loc[
+                df_unit_services.index == s['transfer_unit'], 'ssnap_name'
+                ].values[0]
+            if s['first_unit'] != s['transfer_unit']:
+                m = gdf_units.index == s['first_unit']
+                x_first = gdf_units.loc[m, 'BNG_E'].values[0]
+                y_first = gdf_units.loc[m, 'BNG_N'].values[0]
+                m = gdf_units.index == s['transfer_unit']
+                x_trans = gdf_units.loc[m, 'BNG_E'].values[0]
+                y_trans = gdf_units.loc[m, 'BNG_N'].values[0]
+                a = s['admissions_first_unit_to_transfer']
+                w = np.log(a)  #  / 75.0
+                w = 1.0 if w < 1.0 else w
+                aw = w * 5 if w < 3 else w*2
+                # Setup for sneaking:
+                bw = w * 1.3
+                baw = aw * 1.0
+                bcolour = 'black'
+                # Sneaky background arrow for outline effect:
+                fig.add_trace(go.Scatter(
+                    x=[x_first, x_trans],
+                    y=[y_first, y_trans],
+                    mode='lines+markers',
+                    marker=dict(size=baw, symbol='arrow-up', angleref='previous',
+                                standoff=standoff, line=dict(color='black', width=2)),
+                    line_color=bcolour,
+                    line_width=bw,
+                    # text=[a],
+                    hoverinfo='skip',
+                    name=None,
+                ), col=2, row=d+1)
+                # The actual arrow:
+                fig.add_trace(go.Scatter(
+                    x=[x_first, x_trans],
+                    y=[y_first, y_trans],
+                    mode='lines+markers',
+                    marker=dict(size=aw, symbol='arrow-up', angleref='previous',
+                                standoff=standoff),
+                    line_color=colour,
+                    line_width=w,
+                    hoverinfo='skip',
+                    name=(None if link_drawn_to_trans else 'Transfers for thrombectomy'),
+                ), col=2, row=d+1)
+                # Add a sneaky trace halfway along the line for a hoverlabel:
+                fig.add_trace(go.Scatter(
+                    x=[0.5*(x_first+x_trans)],
+                    y=[0.5*(y_first+y_trans)],
+                    mode='markers',
+                    marker=dict(color='rgba(0, 0, 0, 0)'),
+                    # text=[a],
+                    customdata=np.stack(
+                        [[name_first]*2,
+                         [name_trans]*2,
+                         [a]*2],
+                        axis=-1
+                        ),
+                    hovertemplate=(
+                        '%{customdata[2]:.1f} patients transfer from ' +
+                        '<br>' +
+                        '%{customdata[0]}' +
+                        '<br>' +
+                        'to' +
+                        '<br>' +
+                        '%{customdata[1]}' +
+                        '<br>' +
+                        'for thrombectomy.' +
+                        '<br>' +
+                        # Need the following line to remove default "trace" bit
+                        # in second "extra" box:
+                        '<extra></extra>'
+                        ),
+                    hoverlabel=dict(bordercolor=colour),
+                ), col=2, row=d+1)
+
+    # Stroke units:
+    unit_traces = make_units_traces(gdf_units)
+    fig.add_trace(go.Scatter(unit_traces['ivt']), 
+        col=[1, 2, 2], row=[1, 1, 2],)
+    fig.add_trace(go.Scatter(unit_traces['mt']), 
+        col=[1, 2, 2], row=[1, 1, 2],)
+
+    # Catchment anchors:
+    fig.add_trace(go.Scatter(
+        x=gdf_nearest_units['x_anchor'],
+        y=gdf_nearest_units['y_anchor'],
+        mode='markers',
+        text=gdf_nearest_units.index,
+        marker={
+            'symbol': 'square',
+            'color': gdf_nearest_units['colour'],
+            'line': {'color': 'black', 'width': 1},
+            'size': 25
+        },
+        # name=s_dict['label'],
+        customdata=np.stack(
+            [gdf_nearest_units['ssnap_name'],
+             gdf_nearest_units['admissions']],
+            axis=-1
+            ),
+        hovertemplate=(
+            'Catchment area of<br>%{customdata[0]}' +
+            '<br>' +
+            '%{customdata[1]:.1f} patients' +
+            # Need the following line to remove default "trace" bit
+            # in second "extra" box:
+            '<extra></extra>'
+            ),
+        hoverlabel=dict(bordercolor=gdf_nearest_units['colour']),
+    ), row='all', col=2)
+
+    fig.update_layout(hovermode='closest')
+
+    fig = england_map_setup(fig)
+    fig.update_yaxes(col=1, row=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, row=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, row=2, scaleanchor='x', scaleratio=1)
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text=region_display_name)
+
+    # Calculate height based on aspect ratio:
+    width = 800
+    height = width
+    # height = (
+    #     (0.25 * width) +  # space for subplot gaps
+    #     (2.0 * 0.4 * width * (bounds[3] - bounds[1]) / (bounds[2] - bounds[0]))
+    # )
+    # Figure setup.
+    fig.update_layout(
+        width=width,
+        height=height,
+        margin_t=50,
+        margin_b=0,
+        margin_l=0,
+        margin_r=0,
+        )
+    fig.update_layout(legend=dict(
+        # orientation="h",
+        yanchor='middle',
+        y=0.25,
+        xanchor='center',
+        x=0.25,
+    ))
+    plotly_config = get_map_config()
+    st.plotly_chart(fig, width='stretch', config=plotly_config)

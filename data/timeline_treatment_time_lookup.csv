@@ -1,0 +1,15 @@
+scenario,treatment,source_time,optimist,muster
+usual_care_transfer,ivt,usual_care_time_to_ivt,1,1
+usual_care_transfer,mt,usual_care_time_to_mt_transfer,1,1
+usual_care_no_transfer,ivt,usual_care_time_to_ivt,1,1
+usual_care_no_transfer,mt,usual_care_time_to_mt_no_transfer,1,1
+redir_rejected_transfer,ivt,prehospdiag_time_to_ivt,1,0
+redir_rejected_transfer,mt,usual_care_time_to_mt_transfer,1,0
+redir_rejected_no_transfer,ivt,prehospdiag_time_to_ivt,1,0
+redir_rejected_no_transfer,mt,prehospdiag_time_to_mt_transfer,1,0
+redir_approved,ivt,prehospdiag_time_to_ivt,1,0
+redir_approved,mt,prehospdiag_time_to_mt_no_transfer,1,0
+msu_ivt,ivt,msu_time_to_ivt,0,1
+msu_ivt,mt,msu_time_to_mt_after_ivt,0,1
+msu_no_ivt,ivt,none,0,1
+msu_no_ivt,mt,msu_time_to_mt_no_ivt,0,1

@@ -1,0 +1,15 @@
+pathway_type,name,label,default,min_value,max_value,step,optimist,muster
+Shared,process_time_call_ambulance,Time to call ambulance,79,0,1440,1,1,1
+Standard pathway,process_time_ambulance_response,Ambulance response time,18,0,1440,1,1,1
+Standard pathway,process_ambulance_on_scene_duration,Time ambulance is on scene,29,0,1440,1,1,1
+Standard pathway,process_ambulance_on_scene_diagnostic_duration,Extra time on scene for diagnostic,10,0,1440,1,1,0
+Standard pathway,process_time_arrival_to_needle,Hospital arrival to IVT time,30,0,1440,1,1,1
+Standard pathway,process_time_arrival_to_puncture,Hospital arrival to MT time (for in-hospital IVT+MT),60,0,1440,1,1,1
+Transfer required,transfer_time_delay,Door-in to door-out (for transfer to MT),60,0,1440,1,1,1
+Transfer required,process_time_transfer_arrival_to_puncture,Hospital arrival to MT time (for transfers),60,0,1440,1,1,1
+Mobile Stroke Unit,process_msu_dispatch,MSU dispatch time,15,0,1440,1,0,1
+Mobile Stroke Unit,process_msu_thrombolysis,MSU IVT time,30,0,1440,1,0,1
+Mobile Stroke Unit,process_msu_on_scene_post_thrombolysis,MSU on scene post-IVT time,15,0,1440,1,0,1
+Mobile Stroke Unit,process_msu_on_scene_no_thrombolysis,MSU on scene (no thrombolysis given),15,0,1440,1,0,1
+Mobile Stroke Unit,process_time_msu_arrival_to_puncture,Hospital arrival to MT time (for MSU arrivals),60,0,1440,1,0,1
+Mobile Stroke Unit,scale_msu_travel_times,Scale factor for MSU travel speed,1,0,10,0.1,0,1

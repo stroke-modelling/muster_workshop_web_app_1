@@ -1,7 +1,6 @@
 import streamlit as st
 
-from utilities.fixed_params import page_setup
-from utilities.inputs import write_text_from_file
+from utilities.utils import page_setup, write_text_from_file
 
 page_setup()
 

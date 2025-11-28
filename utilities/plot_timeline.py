@@ -9,383 +9,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-# from outcome_utilities.fixed_params import emoji_text_dict, plotly_colours
-
-
-def build_data_for_timeline(
-        params_dict,
-        use_drip_ship=True,
-        use_mothership=True,
-        use_msu=False
-        ):
-    """
-    params_dict keys include:
-    # Travel times:
-    'nearest_ivt_time', 'nearest_mt_time', 'transfer_time',
-    'nearest_msu_time',
-    # Actual values for reference:
-    'drip_ship_ivt_time', 'drip_ship_mt_time',
-    'mothership_ivt_time', 'mothership_mt_time',
-    'msu_ivt_time', 'msu_mt_time',
-    # Input dict:
-    'process_time_call_ambulance'
-    'process_time_ambulance_response',
-    'process_ambulance_on_scene_duration',
-    'process_msu_dispatch',
-    'process_msu_thrombolysis',
-    'process_msu_on_scene_post_thrombolysis',
-    'process_time_arrival_to_needle',
-    'transfer_time_delay',
-    'process_time_arrival_to_puncture',
-    'process_time_transfer_arrival_to_puncture',
-    'process_time_msu_arrival_to_puncture'
-    """
-    times_dicts = {}
-    # times_cum_dicts = {}
-    # times_cum_label_dicts = {}
-    # Onset time:
-    time_dict = {'onset': 0}
-
-    if use_drip_ship:
-        times_keys_drip_ship = [
-            'process_time_call_ambulance',
-            'process_time_ambulance_response',
-            'process_ambulance_on_scene_duration',
-            'nearest_ivt_time',
-            'process_time_arrival_to_needle',
-            'transfer_time_delay',
-            'transfer_time',
-            'process_time_transfer_arrival_to_puncture',
-        ]
-        times_values_drip_ship = [params_dict[k] for k in times_keys_drip_ship]
-        times_dict_drip_ship = time_dict | dict(
-            zip(times_keys_drip_ship, times_values_drip_ship))
-        times_dicts['drip_ship'] = times_dict_drip_ship
-
-        # times_cum_drip_ship = build_cumulative_times(list(times_dict_drip_ship.values()))
-        # keys_cum_drip_ship = [
-        #     'Onset',
-        #     'Call<br>ambulance',
-        #     'Ambulance<br>arrives on scene',
-        #     'Ambulance<br>leaves scene',
-        #     'IVT unit<br>arrival',
-        #     'IVT',
-        #     'IVT unit<br>departure',
-        #     'MT unit<br>arrival',
-        #     'MT',
-        # ]
-        # # Convert to dict:
-        # times_cum_dict_drip_ship = dict(
-        #     zip(keys_cum_drip_ship, times_cum_drip_ship))
-        # # Special case in drip-and-ship -
-        # # the time delay for transfer is counted from arrival at unit, not
-        # # from time to IVT which is the result of build_cumulative_times().
-        # times_cum_dict_drip_ship['IVT unit<br>departure'] = (
-        #         times_cum_dict_drip_ship['IVT unit<br>arrival'] +
-        #         times_dict_drip_ship['transfer_time_delay']
-        #     )
-        # times_cum_dict_drip_ship['MT unit<br>arrival'] = (
-        #         times_cum_dict_drip_ship['IVT unit<br>departure'] +
-        #         times_dict_drip_ship['transfer_time']
-        #     )
-        # times_cum_dict_drip_ship['MT'] = (
-        #         times_cum_dict_drip_ship['MT unit<br>arrival'] +
-        #         times_dict_drip_ship['process_time_transfer_arrival_to_puncture']
-        #     )
-        # times_cum_dicts['drip_ship'] = times_cum_dict_drip_ship
-
-        # times_cum_label_dict_drip_ship = (
-        #     build_formatted_time_str_lists_for_scenarios(times_cum_dict_drip_ship))
-        # times_cum_label_dicts['drip_ship'] = times_cum_label_dict_drip_ship
-
-    if use_mothership:
-        times_keys_mothership = [
-            'process_time_call_ambulance',
-            'process_time_ambulance_response',
-            'process_ambulance_on_scene_duration',
-            'nearest_mt_time',
-            'process_time_arrival_to_needle',
-            'process_time_arrival_to_puncture',
-        ]
-        times_values_mothership = [
-            params_dict[k] for k in times_keys_mothership]
-        times_dict_mothership = time_dict | dict(zip(
-            times_keys_mothership, times_values_mothership))
-        times_dicts['mothership'] = times_dict_mothership
-
-        # times_cum_mothership = build_cumulative_times(list(times_dict_mothership.values()))
-        # keys_cum_mothership = [
-        #     'Onset',
-        #     'Call<br>ambulance',
-        #     'Ambulance<br>arrives on scene',
-        #     'Ambulance<br>leaves scene',
-        #     'MT unit<br>arrival',
-        #     'IVT',
-        #     'MT',
-        # ]
-        # # Convert to dict:
-        # times_cum_dict_mothership = dict(
-        #     zip(keys_cum_mothership, times_cum_mothership))
-        # # Special case in mothership -
-        # # the time to MT is counted from arrival at unit, not
-        # # from time to IVT which is the result of build_cumulative_times().
-        # times_cum_dict_mothership['MT'] = (
-        #     times_cum_dict_mothership['MT unit<br>arrival'] +
-        #     times_dict_mothership['process_time_arrival_to_puncture']
-        # )
-        # times_cum_dicts['mothership'] = times_cum_dict_mothership
-
-        # times_cum_label_dict_mothership = (
-        #     build_formatted_time_str_lists_for_scenarios(times_cum_dict_mothership))
-        # times_cum_label_dicts['mothership'] = times_cum_label_dict_mothership
-
-    if use_msu:
-        times_keys_msu = [
-            'process_time_call_ambulance',
-            'process_msu_dispatch',
-            'nearest_msu_time',
-            'process_msu_thrombolysis',
-            'process_msu_on_scene_post_thrombolysis',
-            'nearest_mt_time',
-            'process_time_msu_arrival_to_puncture',
-        ]
-        times_values_msu = [params_dict[k] for k in times_keys_msu]
-        times_dict_msu = time_dict | dict(zip(
-            times_keys_msu, times_values_msu))
-        times_dicts['msu'] = times_dict_msu
-
-        # times_cum_msu = build_cumulative_times(list(times_dict_msu.values()))
-
-        # keys_cum_msu = [
-        #     'Onset',
-        #     'Call<br>ambulance',
-        #     'MSU<br>leaves base',
-        #     'MSU<br>arrives on scene',
-        #     'IVT',
-        #     'MSU<br>leaves scene',
-        #     'MT unit<br>arrival',
-        #     'MT',
-        # ]
-        # # Convert to dict:
-        # times_cum_dict_msu = dict(
-        #     zip(keys_cum_msu, times_cum_msu))
-        # times_cum_dicts['msu'] = times_cum_dict_msu
-
-        # times_cum_label_dict_msu = (
-        #     build_formatted_time_str_lists_for_scenarios(times_cum_dict_msu))
-        # times_cum_label_dicts['msu'] = times_cum_label_dict_msu
-
-    return (times_dicts
-            # times_cum_dicts,
-            # times_cum_label_dicts
-            )
-
-
-def build_cumulative_times(time_list):
-    # Current time t:
-    t = 0
-    times_cum = []
-    for time in time_list:
-        if np.isnan(time):
-            # Overwrite.
-            time = 0
-        t += time
-        times_cum.append(t)
-    return times_cum
-
-
-def build_formatted_time_str_lists_for_scenarios(
-        times_dict
-        ):
-    keys = list(times_dict.keys())
-    values = make_formatted_time_str_list(list(times_dict.values()))
-    new_dict = dict(zip(keys, values))
-    return new_dict
-
-
-def make_formatted_time_str_list(times):
-    new_times = []
-    for t in times:
-        try:
-            t_new = (f'{int(60*(t/60)//60):2d}hr ' +
-                     f'{int(60*(t/60)%60):2d}min')
-        except ValueError:
-            # t is NaN.
-            t_new = '~'
-        new_times.append(t_new)
-    return new_times
-
-
-def draw_timeline(times_cum_dicts, times_cum_label_dicts):
-    # Emoji unicode reference:
-    # 🔧 \U0001f527
-    # 🏥 \U0001f3e5
-    # 🚑 \U0001f691
-    # 💉 \U0001f489
-    emoji_dict = {
-        'Onset': '',
-        'Call<br>ambulance': '\U0000260E',
-        'Ambulance<br>arrives on scene': '\U0001f691',
-        'Ambulance<br>leaves scene': '\U0001f691',
-        'IVT unit<br>arrival': '\U0001f3e5',
-        'IVT': '\U0001f489',
-        'IVT unit<br>departure': '\U0001f691',
-        'MT unit<br>arrival': '\U0001f3e5',
-        'MT': '\U0001f527',
-        'MSU<br>leaves base': '\U0001f691',
-        'MSU<br>arrives on scene': '\U0001f691',
-        'MSU<br>leaves scene': '\U0001f691',
-        }
-
-    emoji_offset = 0.0
-    label_offset = 0.3
-
-    fig = go.Figure()
-    y_max = 0.0
-
-    axis_labels = ['Drip & ship', 'Mothership', 'MSU']
-    axis_values = np.array([0, 1, 2]) * 0.9
-    for i, times_cum_dict in enumerate(times_cum_dicts):
-        time_cum_list = list(times_cum_dict.values())
-        # Convert from minutes to hours:
-        time_cum_list = np.array(time_cum_list) / 60.0
-
-        time_cum_str_list = list(times_cum_label_dicts[i].values())
-        labels = list(times_cum_dict.keys())
-        emoji_list = [emoji_dict[k] for k in list(times_cum_dict.keys())]
-
-        # --- Plot ---
-        # Make new labels list with line breaks removed
-        # (for use in the hover label):
-        labels_plain = [l.replace('<br>', ' ') for l in labels]
-        # Draw straight line along the time axis:
-        fig.add_trace(go.Scatter(
-            y=time_cum_list,
-            x=[axis_values[i]] * len(time_cum_list),
-            mode='lines+markers',
-            marker=dict(size=6, symbol='line-ew-open'),
-            line=dict(color='grey'),    # OK in light and dark mode.
-            showlegend=False,
-            customdata=np.stack((time_cum_str_list, labels_plain), axis=-1)
-        ))
-        # "customdata" is not directly plotted in the line above,
-        # but the values are made available for the hover label.
-
-        # Update the hover text for the lines:
-        fig.update_traces(
-            hovertemplate=(
-                '%{customdata[1]}'          # Name of this checkpoint
-                '<br>' +                    # (line break)
-                'Time: %{customdata[0]}' +  # Formatted time string
-                '<extra></extra>'           # Remove secondary box.
-                )
-            )
-
-        # # Add label for each scatter marker
-        # for t, time_cum in enumerate(time_cum_list):
-        #     # Only show it if it's moved on from the previous:
-        #     if t == 0 or time_cum_list[t] > time_cum_list[t-1] or input_type == 'Simple':
-        #         if write_under_list[t] is True:
-        #             # Add formatted time string to the label.
-        #             # (plus a line break, <br>)
-        #             text = labels[t] + '<br>'+time_cum_str_list[t]
-        #         else:
-        #             text = labels[t]
-
-        # Add emoji for each scatter marker
-        for t, time in enumerate(time_cum_list):
-            label = labels[t]
-            time_label = time_cum_str_list[t]
-            if labels[t] in ['IVT', 'MT']:
-                colour = 'red'
-                # label = f'<b>{label}'  # bold
-                label += f': {time_label}'  # time
-            else:
-                colour = None
-            # Write the label:
-            fig.add_annotation(
-                y=time,
-                x=axis_values[i] + label_offset,
-                text=label,
-                showarrow=False,
-                font=dict(
-                    color=colour,
-                    size=14),
-                )
-            fig.add_annotation(
-                y=time,
-                x=axis_values[i] + emoji_offset,
-                text=emoji_list[t],
-                showarrow=False,
-                font=dict(
-                    # color=time_colour_list[t],
-                    size=24),
-                # font=dict(color=time_colour_list[t])
-                )
-
-        # Update y-axis limit value if necessary:
-        if np.max(time_cum_list) > y_max:
-            y_max = np.max(time_cum_list)
-
-    # # Set y range:
-    fig.update_yaxes(range=[y_max * 1.05, 0 - y_max * 0.025])
-    # Set y-axis label
-    fig.update_yaxes(title_text='Time since onset (hours)')
-    # Change y-axis title font size:
-    fig.update_yaxes(title_font_size=10)
-
-    # Set x range:
-    fig.update_xaxes(range=[-0.1, 2.5])
-    # Set x-axis labels
-    fig.update_layout(
-        xaxis=dict(
-            tickmode='array',
-            tickvals=axis_values,
-            ticktext=[f'<b>{x}' for x in axis_labels],   # <b> for bold
-            side='top'  # Moves the labels to the top of the grid
-        ),
-    )
-
-    # Remove y=0 and x=0 lines (zeroline) and grid lines:
-    fig.update_xaxes(zeroline=False, showgrid=False)
-    fig.update_yaxes(zeroline=False, showgrid=False)
-
-    fig_height = 200 * y_max
-    fig.update_layout(
-        # autosize=False,
-        # width=500,
-        height=fig_height
-    )
-
-    # Reduce size of figure by adjusting margins:
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-
-    # Disable zoom and pan:
-    fig.update_layout(xaxis=dict(fixedrange=True),
-                      yaxis=dict(fixedrange=True))
-
-    # Turn off legend click events
-    # (default is click on legend item, remove that item from the plot)
-    fig.update_layout(legend_itemclick=False)
-
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            'zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    # Write to streamlit:
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config)
+from utilities.utils import update_plotly_font_sizes, \
+    update_plotly_font_sizes, make_formatted_time_str
 
 
 def build_time_dicts_muster(pathway_dict):
@@ -466,269 +91,6 @@ def build_time_dicts_muster(pathway_dict):
     return time_dicts
 
 
-def build_time_dicts_optimist(pathway_dict):
-    # Pre-hospital "usual care":
-    prehosp_keys = [
-        'process_time_call_ambulance',
-        'process_time_ambulance_response',
-        'process_ambulance_on_scene_diagnostic_duration',
-        'process_ambulance_on_scene_duration',
-        ]
-    time_dict_prehosp_usual_care = {'onset': 0}
-    for key in prehosp_keys:
-        if 'diagnostic' not in key:
-            time_dict_prehosp_usual_care[key] = pathway_dict[key]
-    time_dict_prehosp_prehospdiag = {'onset': 0}
-    for key in prehosp_keys:
-        time_dict_prehosp_prehospdiag[key] = pathway_dict[key]
-
-    # IVT-only unit:
-    time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
-    time_dict_ivt_only_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_only_unit['needle_to_door_out'] = (
-        pathway_dict['transfer_time_delay'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    # MT transfer unit:
-    time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
-    time_dict_mt_transfer_unit['arrival_to_puncture'] = (
-        pathway_dict['process_time_transfer_arrival_to_puncture'])
-
-    # IVT and MT unit:
-    time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
-    time_dict_ivt_mt_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_mt_unit['needle_to_puncture'] = (
-        pathway_dict['process_time_arrival_to_puncture'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    time_dicts = {
-        'prehosp_usual_care': time_dict_prehosp_usual_care,
-        'prehosp_prehospdiag': time_dict_prehosp_prehospdiag,
-        'ivt_only_unit': time_dict_ivt_only_unit,
-        'mt_transfer_unit': time_dict_mt_transfer_unit,
-        'ivt_mt_unit': time_dict_ivt_mt_unit,
-    }
-    return time_dicts
-
-
-def get_timeline_display_dict():
-
-    # Emoji unicode reference:
-    # 🔧 \U0001f527
-    # 🏥 \U0001f3e5
-    # 🚑 \U0001f691
-    # 💉 \U0001f489
-    # ☎ \U0000260E
-    # 📈 \U0001F4C8
-    timeline_display_dict = {
-        'onset': {
-            'emoji': '',
-            'text': 'Onset',
-        },
-        'process_time_call_ambulance': {
-            'emoji': '\U0000260E',
-            'text': 'Call<br>ambulance',
-        },
-        'process_time_ambulance_response': {
-            'emoji': '\U0001f691',
-            'text': 'Ambulance<br>arrives on scene',
-        },
-        'process_ambulance_on_scene_duration': {
-            'emoji': '\U0001f691',
-            'text': 'Ambulance<br>leaves',
-        },
-        'process_ambulance_on_scene_diagnostic_duration': {
-            'emoji': '\U0001F4C8',
-            'text': 'Pre-hospital<br>diagnostic',
-        },
-        'arrival_ivt_only': {
-            'emoji': '\U0001f3e5',
-            'text': 'Arrival<br>IVT unit',
-        },
-        'arrival_ivt_mt': {
-            'emoji': '\U0001f3e5',
-            'text': 'Arrival<br>MT unit',
-        },
-        'arrival_to_needle': {
-            'emoji': '\U0001f489',
-            'text': '<b><span style="color:red">IVT</span></b>',
-        },
-        'needle_to_door_out': {
-            'emoji': '\U0001f691',
-            'text': 'Ambulance<br>transfer<br>begins',
-        },
-        'needle_to_puncture': {
-            'emoji': '\U0001f527',
-            'text': '<b><span style="color:red">MT</span></b>',
-        },
-        'arrival_to_puncture': {
-            'emoji': '\U0001f527',
-            'text': '<b><span style="color:red">MT</span></b>',
-        },
-        'process_msu_dispatch': {
-            'emoji': '\U0001f691',
-            'text': 'MSU<br>leaves base'
-        },
-        'msu_arrival_on_scene': {
-            'emoji': '\U0001f691',
-            'text': 'MSU arrives<br>on scene'
-        },
-        'process_msu_thrombolysis': {
-            'emoji': '\U0001f489',
-            'text': '<b><span style="color:red">IVT</span></b>',
-        },
-        'process_msu_on_scene_post_thrombolysis': {
-            'emoji': '\U0001f691',
-            'text': 'MSU<br>leaves scene'
-        },
-        'process_msu_on_scene_no_thrombolysis': {
-            'emoji': '\U0001f691',
-            'text': 'MSU<br>leaves scene'
-        },
-        'nearest_ivt_time': {
-            'emoji': '',
-            'text': '',
-        },
-        'nearest_mt_time': {
-            'emoji': '',
-            'text': '',
-        },
-        'transfer_time': {
-            'emoji': '',
-            'text': '',
-        },
-        }
-    return timeline_display_dict
-
-
-def plot_timeline(
-        time_dicts,
-        timeline_display_dict,
-        y_vals,
-        time_offsets=[],
-        tmax=None,
-        tmin=None,
-        ):
-    if len(time_offsets) == 0:
-        time_offsets = [0] * len(time_dicts.keys())
-
-    # Pre-hospital timelines
-    fig = go.Figure()
-
-    # Assume the keys are in the required order:
-    time_names = list(time_dicts.keys())
-
-    for i, time_name in enumerate(time_names):
-        # Pick out this dict:
-        time_dict = time_dicts[time_name]
-        # Convert the discrete times into cumulative times:
-        cum_times = np.cumsum(list(time_dict.values()))
-        # Pick out the emoji and text labels to plot:
-        emoji_here = [timeline_display_dict[key]['emoji']
-                      for key in list(time_dict.keys())]
-        labels_here = [f'{timeline_display_dict[key]["text"]}'  #<br><br><br>'
-                       for key in list(time_dict.keys())]
-        time_offset = time_offsets[time_name]
-
-        fig.add_trace(go.Scatter(
-            y=time_offset + cum_times,
-            x=[y_vals[i]]*len(cum_times),
-            mode='lines+markers+text',
-            text=emoji_here,
-            marker=dict(symbol='line-ew', size=10,
-                        line_width=2, line_color='grey'),
-            line_color='grey',
-            textposition='middle center',
-            textfont=dict(size=24),
-            name=time_name,
-            showlegend=False,
-            hoverinfo='skip'  # 'y'
-        ))
-        fig.add_trace(go.Scatter(
-            y=time_offset + cum_times,
-            x=[y_vals[i] + 0.2]*len(cum_times),
-            mode='text',
-            text=labels_here,
-            textposition='middle right',
-            # textfont=dict(size=24)
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-
-        # Sneaky extra scatter marker for hover text:
-        y_sneaky = np.array([np.mean([cum_times[i], cum_times[i+1]])
-                             for i in range(len(cum_times) - 1)])
-        y_diffs = [f'{d}    ' for d in np.diff(cum_times)]
-        fig.add_trace(go.Scatter(
-            y=time_offset + y_sneaky,
-            x=[y_vals[i]]*len(y_sneaky),
-            mode='text',
-            text=y_diffs,
-            line_color='grey',
-            textposition='middle left',
-            textfont=dict(size=18),
-            showlegend=False,
-            hoverinfo='skip'  # 'y'
-        ))
-
-    fig.update_layout(xaxis=dict(
-        tickmode='array',
-        tickvals=[],  # y_vals,
-        # ticktext=y_labels
-    ))
-    fig.update_layout(yaxis=dict(
-        tickmode='array',
-        tickvals=[],
-        zeroline=False
-    ))
-    fig.update_layout(xaxis_range=[min(y_vals) - 0.5, max(y_vals) + 1.0])
-    # fig.update_layout(yaxis_title='Time (minutes)')
-
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-
-    fig.update_layout(
-        # autosize=False,
-        # width=500,
-        height=tmax*2.0,
-        yaxis=dict(
-            range=[tmax, tmin],  # Default x-axis zoom.
-        ),
-        # Make the default cursor setting pan instead of zoom box:
-        dragmode='pan'
-    )
-    # fig.update_yaxes(autorange="reversed")
-    # Options for the mode bar.
-    # (which doesn't appear on touch devices.)
-    plotly_config = {
-        # Mode bar always visible:
-        # 'displayModeBar': True,
-        # Plotly logo in the mode bar:
-        'displaylogo': False,
-        # Remove the following from the mode bar:
-        'modeBarButtonsToRemove': [
-            'zoom',
-            # 'pan',
-            'select',
-            # 'zoomIn',
-            # 'zoomOut',
-            'autoScale',
-            'lasso2d'
-            ],
-        # Options when the image is saved:
-        'toImageButtonOptions': {'height': None, 'width': None},
-        }
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config=plotly_config
-        )
-
-
 def make_treatment_time_df_msu(treatment_times_without_travel):
     # Add strings to show travel times:
     usual_care_time_to_ivt_str = ' '.join([
@@ -771,57 +133,70 @@ def make_treatment_time_df_msu(treatment_times_without_travel):
 
 
 def make_treatment_time_df_optimist(treatment_times_without_travel):
-    # Add strings to show travel times:
-    usual_care_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
-        '+ 🚑 travel to nearest unit',
-        '+ 🚑 travel between units'
-        ])
+    t_near = '\n\+ 🚑 travel to nearest unit'
+    t_mt = '\n\+ 🚑 travel to MT unit'
+    t_trans = '\+ 🚑 travel between units'
 
-    prehospdiag_rej_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    prehospdiag_rej_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    prehospdiag_rej_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_mt_transfer"]}',
-        '+ 🚑 travel to nearest unit',
-        '+ 🚑 travel between units'
-        ])
+    t_dict = {
+        'usual_care_time_to_ivt': {
+            'tre': 'usual_care_time_to_ivt',
+            'trav': [t_near],
+        },
+        'usual_care_mt_no_transfer': {
+            'tre': 'usual_care_time_to_mt_no_transfer',
+            'trav': [t_near],
+        },
+        'usual_care_mt_transfer': {
+            'tre': 'usual_care_time_to_mt_transfer',
+            'trav': [t_near, t_trans],
+        },
+        'prehospdiag_rej_time_to_ivt': {
+            'tre': 'prehospdiag_time_to_ivt',
+            'trav': [t_near],
+        },
+        'prehospdiag_rej_mt_no_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_near],
+        },
+        'prehospdiag_rej_mt_transfer': {
+            'tre': 'prehospdiag_time_to_mt_transfer',
+            'trav': [t_near, t_trans],
+        },
+        'prehospdiag_app_time_to_ivt': {
+            'tre': 'prehospdiag_time_to_ivt',
+            'trav': [t_mt],
+        },
+        'prehospdiag_app_mt_no_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_mt],
+        },
+        'prehospdiag_app_mt_transfer': {
+            'tre': 'prehospdiag_time_to_mt_no_transfer',
+            'trav': [t_mt],
+        },
+    }
+    s_dict = {}
+    for key, t_dict in t_dict.items():
+        t = treatment_times_without_travel[t_dict['tre']]
+        s = make_formatted_time_str(t)
+        s = f"__{s.replace(' ', '__ __')}__"
+        s_dict[key] = '  '.join([s] + t_dict['trav'])
 
-    prehospdiag_app_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_time_to_ivt"]}',
-        '+ 🚑 travel to MT unit'
-        ])
-    prehospdiag_app_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-        '+ 🚑 travel to MT unit'
-        ])
-    prehospdiag_app_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["prehospdiag_mt_no_transfer"]}',
-        '+ 🚑 travel to MT unit',
-        ])
+    # Manually update the last one:
+    s_dict['prehospdiag_app_mt_transfer'] = '\-'
 
     # Place these into a dataframe:
-    r1 = [usual_care_time_to_ivt_str, prehospdiag_rej_time_to_ivt_str,
-          prehospdiag_app_time_to_ivt_str]
-    r2 = [usual_care_mt_no_transfer_str, prehospdiag_rej_mt_no_transfer_str,
-          prehospdiag_app_mt_no_transfer_str]
-    r3 = [usual_care_mt_transfer_str, prehospdiag_rej_mt_transfer_str,
-          prehospdiag_app_mt_transfer_str]
-    cols = ['Standard pathway', 'Redirection rejected', 'Redirection approved']
-    ind = ['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
+    r1 = [s_dict['usual_care_time_to_ivt'],
+          s_dict['prehospdiag_rej_time_to_ivt'],
+          s_dict['prehospdiag_app_time_to_ivt']]
+    r2 = [s_dict['usual_care_mt_no_transfer'],
+          s_dict['prehospdiag_rej_mt_no_transfer'],
+          s_dict['prehospdiag_app_mt_no_transfer']]
+    r3 = [s_dict['usual_care_mt_transfer'],
+          s_dict['prehospdiag_rej_mt_transfer'],
+          s_dict['prehospdiag_app_mt_transfer']]
+    cols = ['Usual care', 'Redirection rejected', 'Redirection approved']
+    ind = ['Time to IVT 💉', 'Time to MT 🔧  \n(fast)', 'Time to MT 🔧  \n(slow)']
     df_treatment_times = pd.DataFrame([r1, r2, r3], columns=cols, index=ind)
     return df_treatment_times
 
@@ -867,47 +242,426 @@ def build_time_dicts_for_plot_msu(time_dicts, gap_between_chunks=45):
     return time_offsets, tmax
 
 
-def build_time_dicts_for_plot_optimist(time_dicts, gap_between_chunks=45):
-    # Setup for timeline plot.
-    # Leave this gap in minutes between separate chunks of pathway:
-    gap_between_chunks = 45
-    # Start each chunk at these offsets:
-    time_offsets = {
-        'prehosp_usual_care': 0,
-        'prehosp_prehospdiag': 0,
-        'ivt_only_unit': (
-            gap_between_chunks + 
-            max([
-                sum(time_dicts['prehosp_usual_care'].values()),
-                sum(time_dicts['prehosp_prehospdiag'].values()),
-            ])
-            ),
-        'mt_transfer_unit': (
-            gap_between_chunks * 2.0 +
-            max([
-                sum(time_dicts['prehosp_usual_care'].values()),
-                sum(time_dicts['prehosp_prehospdiag'].values()),
-            ]) +
-            sum(time_dicts['ivt_only_unit'].values())
-        ),
-        'ivt_mt_unit': (
-            gap_between_chunks + 
-            max([
-                sum(time_dicts['prehosp_usual_care'].values()),
-                sum(time_dicts['prehosp_prehospdiag'].values()),
-            ])
-        ),
-    }
-    # Find shared max time for setting same size across multiple plots
-    # so that 1 minute always spans the same number of pixels.
-    tmax = max(
-        [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
-    ) + gap_between_chunks
-    return time_offsets, tmax
+def load_timeline_setup(use_col):
+    # Columns of emoji, label, and sub-timeline order:
+    df_time = pd.read_csv('./data/timeline_display.csv', index_col='name')
+    # Limit to the keys we need:
+    df_time = df_time[df_time[use_col] == 1]
+    df_time = df_time.drop(['optimist', 'muster'], axis='columns')
+    return df_time
 
 
-def subset_time_dicts(time_dicts, time_offsets, time_keys):
-    # Separate the standard and MSU pathway data.
-    time_dicts_here = dict([(k, time_dicts[k]) for k in time_keys])
-    time_offsets_here = dict([(k, time_offsets[k]) for k in time_keys])
-    return time_dicts_here, time_offsets_here
+def load_timeline_chunks(use_col):
+    # Columns of emoji, label, and sub-timeline order:
+    df_chunks = pd.read_csv('./data/timeline_chunks.csv', index_col='scenario')
+    # Limit to the keys we need:
+    df_chunks = df_chunks[df_chunks[use_col] == 1]
+    df_chunks = df_chunks.drop(['optimist', 'muster'], axis='columns')
+    # Limit to the columns we need:
+    if use_col == 'optimist':
+        cols_drop = ['preambo', 'onscene']
+    else:
+        cols_drop = ['prehosp']
+    df_chunks = df_chunks.drop(cols_drop, axis='columns')
+    return df_chunks
+
+
+def set_up_fig_chunks(df_times, chunks_to_keep, t_travel=20, gap=20):
+    # Set up chunk widths and spacing:
+    cols_preambo = [c for c in df_times if c.startswith('times_preambo')]
+    cols_onscene = [c for c in df_times if c.startswith('times_onscene')]
+    cols_prehosp = [c for c in df_times if c.startswith('times_prehospital')]
+    cols_first = [c for c in df_times if
+                  (c.startswith('times_ivt') | c.startswith('times_mt_unit'))]
+    cols_second = ['times_mt_unit_transfer']
+
+    t_max_preambo = df_times[cols_preambo].max().max()
+    t_max_onscene = df_times[cols_onscene].max().max()
+    t_max_prehosp = df_times[cols_prehosp].max().max()
+    t_max_first = df_times[cols_first].max().max()
+    t_max_second = df_times[cols_second].max().max()
+
+    # Set up figure-wide chunk locations:
+    tups = (
+        ('preambo', 'Before ambulance dispatch'),
+        ('travel_to_scene', 'Travel to<br>patient'),
+        ('onscene', 'On scene'),
+        ('prehosp', 'Pre-hospital'),
+        ('travel_to_first', 'Travel to<br>first unit'),
+        ('first_unit', 'First unit'),
+        ('travel_transfer', 'Transfer to<br>second unit'),
+        ('second_unit', 'Transfer unit'),
+        ('treat_times', 'Treatment times<br>without travel'),
+    )
+    df_chunk_coords = (
+        pd.DataFrame(tups, columns=['chunk', 'label']).set_index('chunk'))
+    # Size of each chunk:
+    df_chunk_coords.loc['preambo', 'width'] = t_max_preambo
+    df_chunk_coords.loc['travel_to_scene', 'width'] = t_travel
+    df_chunk_coords.loc['onscene', 'width'] = t_max_onscene
+    df_chunk_coords.loc['prehosp', 'width'] = t_max_prehosp
+    df_chunk_coords.loc['travel_to_first', 'width'] = t_travel
+    df_chunk_coords.loc['first_unit', 'width'] = t_max_first
+    df_chunk_coords.loc['travel_transfer', 'width'] = t_travel
+    df_chunk_coords.loc['second_unit', 'width'] = t_max_second
+    df_chunk_coords.loc['treat_times', 'width'] = t_travel * 2.0
+
+    # Limit to the chunks we need for OPTIMIST or MUSTER:
+    mask = df_chunk_coords.index.isin(chunks_to_keep)
+    df_chunk_coords = df_chunk_coords[mask].copy()
+
+    # Start time of each chunk:
+    chunk_order = df_chunk_coords.index
+    for i, chunk in enumerate(chunk_order):
+        if i == 0:
+            df_chunk_coords.loc[chunk, 'offset'] = 0
+        else:
+            last_chunk = chunk_order[i-1]
+            df_chunk_coords.loc[chunk, 'offset'] = (
+                df_chunk_coords.loc[last_chunk, 'offset'] +
+                df_chunk_coords.loc[last_chunk, 'width'] +
+                gap
+            )
+
+    # Spans of background grouping rectangles:
+    df_chunk_coords['min'] = df_chunk_coords['offset'].copy()
+    df_chunk_coords['max'] = (
+        df_chunk_coords['min'] + df_chunk_coords['width']).copy()
+    # Alter spans for breathing room:
+    df_chunk_coords['min'] -= gap*0.25
+    df_chunk_coords['max'] += gap*0.25
+
+    return df_chunk_coords
+
+
+def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
+    """Optimist."""
+    # Load emoji and labels:
+    if use_msu:
+        project = 'muster'
+        order_cols = [
+            # Usual care:
+            'order_preambo_usual_care', 'order_onscene_usual_care',
+            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_mt_unit_transfer',
+            # MSU:
+            'order_preambo_msu', 'order_onscene_msu_ivt',
+            'order_onscene_msu_no_ivt', 'order_mt_unit_msu'
+        ]
+        chunks_to_keep = ['preambo', 'travel_to_scene', 'onscene',
+                          'travel_to_first', 'first_unit', 'travel_transfer',
+                          'second_unit', 'treat_times']
+        t_travel = 30
+    else:
+        project = 'optimist'
+        order_cols = [
+            'order_prehospital_usual_care', 'order_prehospital_prehospdiag',
+            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_mt_unit_transfer'
+        ]
+        chunks_to_keep = ['prehosp',
+                          'travel_to_first', 'first_unit', 'travel_transfer',
+                          'second_unit', 'treat_times']
+        t_travel = 20
+    df_times = load_timeline_setup(project)
+    df_times = pd.merge(df_times, df_pathway_steps,
+                        left_index=True, right_index=True, how='left')
+
+    # Calculate cumulative times for each chunk:
+    for col in order_cols:
+        df = df_times[[col, 'value']]
+        df = df[df[col].notna()].sort_values(col)
+        new_col = col.replace('order_', 'times_')
+        df[new_col] = np.cumsum(df['value'])
+        df_times = pd.concat((df_times, df[new_col]), axis='columns')
+
+    # Chunk setup for each scenario.
+    # Use these to work out which chunk is used in each scenario,
+    # e.g. whether first unit is the IVT unit or the MT unit:
+    df_chunks = load_timeline_chunks(project)
+    # Use these to make coordinates for plotting:
+    df_chunk_coords = set_up_fig_chunks(
+        df_times, chunks_to_keep, t_travel=t_travel, gap=20)
+
+    # Use this to pick out the right times for each scenario:
+    def get_times(df_times, col):
+        """Pick out valid times for a chunk/scenario combo."""
+        mask = df_times[col].notna()
+        df = df_times.loc[mask].sort_values(col)
+        df = df[[col, 'emoji', 'label_timeline', 'value']]
+        df = df.rename(columns={col: 'cumulative_time'})
+        return df
+
+    # ----- Plot setup -----
+    # Hover labels for pathway data:
+    hovertemplate = (
+        '%{customdata[1]}'          # Name of this checkpoint
+        '<br>' +                    # (line break)
+        'Time since last step: %{customdata[0]}min' +  # Formatted time string
+        '<br>' +
+        'Time in this section: %{customdata[2]}min' +
+        '<extra></extra>'           # Remove secondary box.
+        )
+    # Hover labels for travel time bits
+    # (because incomplete time info here):
+    hovertemplate_travel = (
+        '%{customdata[1]}'          # Name of this checkpoint
+        '<br>' +                    # (line break)
+        'Time since last step: %{customdata[0]}' +  # Formatted time string
+        '<extra></extra>'           # Remove secondary box.
+        )
+
+    def plot_chunk_emoji(df, offset, hovertemplate):
+        fig.add_trace(go.Scatter(
+            x=df['cumulative_time'] + offset,
+            y=[axis_ticklabel] * len(df),
+            text=df['emoji'],
+            mode='text+lines',
+            showlegend=False,
+            line=dict(color='grey', width=3),
+            textfont=dict(size=24),
+            customdata=np.stack((
+                df['value'],
+                df['label_timeline'],
+                df['cumulative_time'],
+            ), axis=-1),
+            hovertemplate=hovertemplate,
+        ))
+
+    def draw_arrow(x_list, arrow_colour):
+        fig.add_trace(go.Scatter(
+            x=x_list,
+            y=[axis_ticklabel] * len(x_list),
+            **arrow_kwargs,
+            line=dict(color=arrow_colour, width=10),
+        ))
+
+    def draw_unit(x, marker_unit_kwargs, unit_time, unit_label,):
+        fig.add_trace(go.Scatter(
+            x=[x],
+            y=[axis_ticklabel],
+            mode='markers',
+            showlegend=False,
+            marker=marker_unit_kwargs,
+            customdata=np.stack((
+                [unit_time],
+                [unit_label],
+            ), axis=-1),
+            hovertemplate=hovertemplate_travel,
+        ))
+
+    def draw_start_location(x, time='0min', label='Leave starting location'):
+        fig.add_trace(go.Scatter(
+            x=[x],
+            y=[axis_ticklabel],
+            mode='text',
+            text=['🏠'],
+            showlegend=False,
+            textfont=dict(size=24),
+            customdata=np.stack((
+                [time],
+                [label],
+            ), axis=-1),
+            hovertemplate=hovertemplate_travel,
+        ))
+
+    def draw_ambo(x, time='0min', label='Ambulance dispatch'):
+        fig.add_trace(go.Scatter(
+            x=[x],
+            y=[axis_ticklabel],
+            mode='text',
+            text=['🚑'],
+            showlegend=False,
+            textfont=dict(size=24),
+            customdata=np.stack((
+                [time],
+                [label],
+            ), axis=-1),
+            hovertemplate=hovertemplate_travel,
+        ))
+
+    arrow_kwargs = dict(
+        mode='lines+markers',
+        marker=dict(size=20, symbol='arrow-up', angleref='previous',
+                    standoff=10),
+        showlegend=False,
+        hoverinfo='skip',
+    )
+    marker_ivt_unit_kwargs = dict(size=15, symbol='circle', color='white',
+                                  line={'color': 'black', 'width': 1},)
+    marker_mt_unit_kwargs = dict(size=18, symbol='star', color='white',
+                                 line={'color': 'black', 'width': 1},)
+
+    # ----- Begin plot -----
+    fig = go.Figure()
+
+    # Draw background rectangle for each chunk and label them.
+    for chunk in df_chunk_coords.index:
+        s = df_chunk_coords.loc[chunk]
+        if 'treat' in chunk:
+            pass
+        else:
+            fig.add_vrect(
+                x0=s['min'], x1=s['max'],
+                line_width=0, fillcolor='silver', opacity=0.2
+                )
+        fig.add_annotation(
+            y=1.0,
+            x=0.5 * (s['min'] + s['max']),
+            text=s['label'],
+            showarrow=False,
+            yref='paper',
+            yanchor='bottom'
+        )
+    step_chunks = [c for c in df_chunks.columns if c != 'label']
+    # Draw the scatter data.
+    for i, scenario in enumerate(df_chunks.index):
+        s = df_chunks.loc[scenario]
+        if isinstance(s['second_unit'], str):
+            use_second_unit = True
+        else:
+            use_second_unit = False
+        # Pick out info for each chunk:
+        axis_ticklabel = s['label']
+        for sc in step_chunks:
+            if isinstance(s[sc], str):
+                if sc == 'prehosp':
+                    col = f'times_prehospital_{s[sc]}'
+                elif sc == 'preambo':
+                    col = f'times_preambo_{s[sc]}'
+                elif sc == 'onscene':
+                    col = f'times_onscene_{s[sc]}'
+                else:
+                    col = f'times_{s[sc]}'
+                df_here = get_times(df_times, col)
+                plot_chunk_emoji(
+                    df_here,
+                    df_chunk_coords.loc[sc, 'offset'],
+                    hovertemplate
+                    )
+
+        # Draw travel times:
+        travel_chunks_dict = {
+            'travel_to_scene': {
+                'start': {'type': 'ambo', 'time': '0min', 'label':'Ambulance dispatch'},
+                'end': {'type': 'patient', 'time': 'Depends', 'label':'Arrive at patient'},
+            },
+            'travel_to_first': {
+                'start': {'type': 'patient', 'time': '0min', 'label':'Ambulance leaves scene'},
+                'end': {'type': 'first', 'time': 'Depends', 'label':''},
+            },
+            'travel_transfer': {
+                'start': {'type': 'first', 'time': '0min', 'label':'Ambulance leaves IVT-only unit'},
+                'end': {'type': 'mt', 'time': 'Depends', 'label':'Arrive at MT unit'},
+            },
+            }
+
+        for travel_chunk, t_dict in travel_chunks_dict.items():
+            draw_travel = True
+            if ('transfer' in travel_chunk) & (not use_second_unit):
+                draw_travel = False
+            else:
+                try:
+                    x_travel = [
+                        df_chunk_coords.loc[travel_chunk, 'offset'],
+                        df_chunk_coords.loc[travel_chunk, ['offset', 'width']].sum()
+                        ]
+                except KeyError:
+                    # This chunk doesn't exist in this project.
+                    draw_travel = False
+            if draw_travel:
+                # Check where we're going from and to.
+
+                # Is the first unit the MT unit?
+                if ('first' in travel_chunk) & (not use_second_unit):
+                    marker_unit_kwargs = marker_mt_unit_kwargs
+                    arrow_colour = '#ff4b4b'
+                    unit_label = 'Arrive at MT unit'
+                else:
+                    # The first unit is the IVT-only unit.
+                    marker_unit_kwargs = marker_ivt_unit_kwargs
+                    arrow_colour = 'grey'
+                    unit_label = 'Arrive at IVT-only unit'
+
+                # Connecting arrow:
+                draw_arrow(x_travel, arrow_colour)
+                i = 0
+                for start_or_end, t_kwargs in t_dict.items():
+                    t = t_kwargs['type']
+                    if t == 'patient':
+                        if i == 1:
+                            if 'msu' in scenario:
+                                label = 'Depends'
+                            else:
+                                p = 'process_time_ambulance_response'
+                                label = df_times.loc[p, 'value']
+                                label = f'{label:.0f}min'
+                        else:
+                            label = t_kwargs['time']
+                        draw_start_location(x_travel[i], time=label, label=t_kwargs['label'])
+                    elif t == 'ambo':
+                        if 'msu' in scenario:
+                            label = 'MSU dispatch'
+                        else:
+                            label = t_kwargs['label']
+                        draw_ambo(x_travel[i], label=label)
+                    elif t == 'first':
+                        time = '0min' if i == 0 else 'Depends'
+                        unit_label = ('Leave IVT-only unit' if i == 0
+                                      else unit_label)
+                        draw_unit(x_travel[i], marker_unit_kwargs,
+                                  unit_time=time, unit_label=unit_label)
+                    else:
+                        draw_unit(x_travel[i], marker_mt_unit_kwargs, 'Depends',
+                                  'Arrive at MT unit')
+                    i += 1
+
+        # Treatment times:
+        m = df_treats['scenario'] == scenario
+        m_ivt = m & (df_treats['treatment'] == 'ivt')
+        m_mt = m & (df_treats['treatment'] == 'mt')
+        time_ivt = df_treats.loc[m_ivt, 'hr_min'].values[0]
+        time_mt = df_treats.loc[m_mt, 'hr_min'].values[0]
+        s = f'💉 <b>IVT</b>: {time_ivt}<br>🔧 <b>MT</b>: {time_mt}'
+        x = np.mean([df_chunk_coords.loc['treat_times', 'min'],
+                     df_chunk_coords.loc['treat_times', 'max']])
+        fig.add_annotation(
+            y=axis_ticklabel,
+            x=x,
+            text=s,
+            showarrow=False,
+        )
+
+    # Axis ranges:
+    fig.update_layout(xaxis_range=[
+        df_chunk_coords['min'].min() - 2,
+        df_chunk_coords['max'].max() + 2
+        ])
+    fig.update_layout(xaxis=dict(tickmode='array', tickvals=[]))
+    fig.update_yaxes(autorange="reversed")  # Flip veritcally
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='Treatment pathways')
+    fig.update_layout(width=2000, height=400, margin_b=0, margin_t=75)
+    fig.update_layout(dragmode=False)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, config=plotly_config, width='content')

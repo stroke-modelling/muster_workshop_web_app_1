@@ -1,11 +1,14 @@
 """
 Set up colour bars for maps.
 """
+import streamlit as st
 import numpy as np
 import os
 import pandas as pd
 from matplotlib.pyplot import get_cmap
 import cmasher as cmr
+
+from utilities.utils import set_rerun_map
 
 
 def load_colour_limits(outcome):
@@ -159,98 +162,114 @@ def make_colour_list_for_plotly_button(*args, **kwargs):
     return c
 
 
-# #####################################
-# ##### CONTOUR MAPS COLOUR SETUP #####
-# #####################################
-
-def make_contour_edge_values(v_min, v_max, step_size):
-    # Make a new column for the colours.
-    v_bands = np.arange(v_min, v_max + step_size, step_size)
-
-    # If there are negative and positive values,
-    # make an extra contour around zero that's really small.
-    if ((np.sign(v_min) == -1) & (np.sign(v_max) == 1)):
-        # Remove existing zero if it exists:
-        ind_z = np.where(abs(v_bands) < step_size * 0.01)[0]
-        if len(ind_z) > 0:
-            ind_z = ind_z[0]
-            v_bands = np.append(v_bands[:ind_z], v_bands[ind_z+1:])
-        # Add a zero-ish band.
-        ind = np.where(v_bands >= -0.0)[0][0]
-        zero_size = step_size * 0.01
-        v_bands_z = np.append(v_bands[:ind], [-zero_size, zero_size])
-        v_bands_z = np.append(v_bands_z, v_bands[ind:])
-        v_bands = v_bands_z
-    else:
-        pass
-    return v_bands
-
-
-def make_v_bands_str(v_bands, v_name='v'):
-    """Turn contour ranges into formatted strings."""
-    v_min = v_bands[0]
-    v_max = v_bands[-1]
-
-    v_bands_str = [f'{v_name} < {v_min:.3f}']
-    for i, band in enumerate(v_bands[:-1]):
-        if band != v_bands[i+1]:
-            b = f'{band:.3f} <= {v_name} < {v_bands[i+1]:.3f}'
-        else:
-            # Update zeroish name:
-            b = f'{band:.3f}'
-        v_bands_str.append(b)
-    v_bands_str.append(f'{v_max:.3f} <= {v_name}')
-
-    v_bands_str = np.array(v_bands_str)
-    return v_bands_str
-
-
-def make_colour_map_dict(v_bands_str, cmap_name='viridis'):
-    # Get colour values:
-    colour_list = make_colour_list(
-        cmap_name, n_colours=len(v_bands_str), remove_white=False)
-
-    # # Sample the colour list:
-    # colour_map = [(c, colour_list[i]) for i, c in enumerate(v_bands_str)]
-
-    # # # Set over and under colours:
-    # # colour_list[0] = 'black'
-    # # colour_list[-1] = 'LimeGreen'
-
-    # Return as dict to track which colours are for which bands:
-    colour_map = dict(zip(v_bands_str, colour_list))
-    return colour_map
-
-
-def add_infinity_bounds(v_bands, v_min, v_max, step_size):
-    # Add an extra bound at either end (for the "to infinity" bit):
-    v_bands_for_cs = np.append(v_min - step_size, v_bands)
-    v_bands_for_cs = np.append(v_bands_for_cs, v_max + step_size)
-    return v_bands_for_cs
-
-
-def normalise_bounds(v_bands_for_cs):
-    # Normalise the data bounds:
-    bounds = (
-        (np.array(v_bands_for_cs) - np.min(v_bands_for_cs)) /
-        (np.max(v_bands_for_cs) - np.min(v_bands_for_cs))
+def select_map_colour_limits(vmin, vmax, label):
+    vmin_s = st.number_input(
+        f'{label}: minimum value',
+        value=vmin,
+        help=f'Default value: {vmin}',
     )
-    # Need separate data values and colourbar values.
-    # e.g. translate 32 in the data means colour 0.76 on the colourmap.
+    vmax_s = st.number_input(
+        f'{label}: maximum value',
+        value=vmax,
+        help=f'Default value: {vmax}',
+    )
+    # Sanity checks:
+    if (vmax_s <= vmin_s):
+        st.error(
+            'Maximum value must be less than the minimum value.', icon='❗')
+        st.stop()
+    return vmin_s, vmax_s
 
-    return bounds
+
+def select_colour_maps():
+    """
+    User inputs.
+    """
+    # ----- Colourmap selection -----
+    cmap_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
+    # Add the reverse option after each entry. Remove any double reverse
+    # reverse _r_r. Result is flat list.
+    cmap_names = sum(
+        [[c, (c + '_r').replace('_r_r', '')] for c in cmap_names], [])
+
+    cmap_displays = [
+        make_colourbar_display_string(cmap_name, char_line='█', n_lines=15)
+        for cmap_name in cmap_names
+        ]
+
+    try:
+        cmap_name = st.session_state['cmap_name']
+    except KeyError:
+        cmap_name = cmap_names[0]
+    cmap_ind = cmap_names.index(cmap_name)
+
+    cmap_selected = st.radio(
+        'Default colour display for maps',
+        cmap_names,
+        captions=cmap_displays,
+        index=cmap_ind,
+        key='cmap_diff_name',
+        horizontal=True
+    )
+
+    return cmap_selected, cmap_names
 
 
-def create_colour_scale_for_plotly(colours, bounds_for_cs):
-    # Create a colour scale from these colours.
-    # To get the discrete colourmap (i.e. no continuous gradient of
-    # colour made between the defined colours),
-    # double up the bounds so that colour A explicitly ends where
-    # colour B starts.
-    colourscale = []
-    for i in range(len(colours)):
-        colourscale += [
-            [bounds_for_cs[i], colours[i]],
-            [bounds_for_cs[i+1], colours[i]]
-            ]
-    return colourscale
+def select_colour_limits(map_outcome, vlim_dict,
+                         scenario_name='redir', scenario_label='redirection'):
+
+    outcome_label_dict = {
+        'utility_shift': 'Utility shift',
+        'mrs_0-2': 'mRS <= 2',
+        }
+    map_outcome_label = outcome_label_dict[map_outcome]
+
+    d = {}
+    d['usual_care'] = {
+        'title': f'Usual care: {map_outcome_label}',
+        }
+    diff_name = f'{scenario_name}_minus_usual_care'
+    d[diff_name] = {
+        'title': (
+            f'Benefit of {scenario_label} over usual care: {map_outcome_label}'),
+        }
+    d['pop'] = {
+        'title': 'Population density (people per square kilometre)',
+        }
+
+    # Default colour limits:
+    dict_colours, dict_colours_diff = load_colour_limits(map_outcome)
+    d['usual_care']['vmin'] = dict_colours['vmin']
+    d['usual_care']['vmax'] = dict_colours['vmax']
+    d[diff_name]['vmin'] = dict_colours_diff['vmin']
+    d[diff_name]['vmax'] = dict_colours_diff['vmax']
+    d['pop']['vmin'] = 0.0
+    d['pop']['vmax'] = 100.0
+
+    # Copy over data min/max values:
+    for c in d.keys():
+        d[c] = d[c] | vlim_dict[c]
+
+    # Set up display:
+    st.markdown('__Edit the limits of the colour scales:__')
+    i = 0
+    cols = st.columns(3)
+    for c, c_dict in d.items():
+        arr = np.array([
+            [c_dict['data_min'], c_dict['vmin']],
+            [c_dict['data_max'], c_dict['vmax']]
+            ])
+        df = pd.DataFrame(arr, columns=['Map data', 'Colour scale'],
+                          index=['Minimum', 'Maximum'])
+        with cols[i]:
+            st.markdown(c_dict['title'])
+            df = st.data_editor(
+                df, disabled=['Map data'],
+                key=f'{c}_colour_setup',
+                on_change=set_rerun_map
+                )
+        d[c]['vmin'] = df.loc['Minimum', 'Colour scale']
+        d[c]['vmax'] = df.loc['Maximum', 'Colour scale']
+        i += 1
+
+    return d

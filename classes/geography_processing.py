@@ -89,7 +89,8 @@ class Geoprocessing(object):
         """
         self.find_nearest_ivt_unit()
         self.find_nearest_mt_unit()
-        self.find_nearest_msu_unit()
+        if self.use_msu:
+            self.find_nearest_msu_unit()
         self.find_nearest_transfer_mt_unit()
         self.collate_data()
         # self.save_processed_data()
@@ -98,7 +99,6 @@ class Geoprocessing(object):
         """
         Combine data
         """
-
         self.combined_data = pd.DataFrame()
         self.combined_data['nearest_ivt_unit'] = self.nearest_ivt_unit['unit']
         self.combined_data['nearest_ivt_time'] = self.nearest_ivt_unit['time']
@@ -106,10 +106,16 @@ class Geoprocessing(object):
         self.combined_data['nearest_mt_time'] = self.nearest_mt_unit['time']
         self.combined_data = self.combined_data.merge(
             self.transfer_mt_unit, how='left', left_on='nearest_ivt_unit', right_index=True)
-        self.combined_data['nearest_msu_unit'] = self.nearest_msu_unit['unit']
-        self.combined_data['nearest_msu_time'] = self.nearest_msu_unit['time']
+        # Reset dtype for some reason:
+        self.combined_data['nearest_ivt_unit'] = self.combined_data['nearest_ivt_unit'].astype('string')
+        if self.use_msu:
+            self.combined_data['nearest_msu_unit'] = self.nearest_msu_unit['unit']
+            self.combined_data['nearest_msu_time'] = self.nearest_msu_unit['time']
         self.combined_data = self.combined_data.merge(
             self.admissions, how='left', left_index=True, right_index=True)
+
+        self.combined_data.index = self.combined_data.index.astype('string')
+
 
     def find_nearest_ivt_unit(self):
         """
@@ -123,7 +129,7 @@ class Geoprocessing(object):
         travel_matrix = self.lsoa_travel_time[self.IVT_hospitals]
         # Find the value and index for the lowest travel time for each LSOA
         self.nearest_ivt_unit = pd.DataFrame()
-        self.nearest_ivt_unit['unit'] = travel_matrix.idxmin(axis=1)
+        self.nearest_ivt_unit['unit'] = travel_matrix.idxmin(axis=1).astype('string')
         self.nearest_ivt_unit['time'] = travel_matrix.min(axis=1)
 
     def find_nearest_msu_unit(self):
@@ -138,7 +144,7 @@ class Geoprocessing(object):
         travel_matrix = self.lsoa_travel_time[self.MSU_hospitals]
         # Find the value and index for the lowest travel time for each LSOA
         self.nearest_msu_unit = pd.DataFrame()
-        self.nearest_msu_unit['unit'] = travel_matrix.idxmin(axis=1)
+        self.nearest_msu_unit['unit'] = travel_matrix.idxmin(axis=1).astype('string')
         self.nearest_msu_unit['time'] = travel_matrix.min(axis=1)
 
     def find_nearest_mt_unit(self):
@@ -153,7 +159,7 @@ class Geoprocessing(object):
         travel_matrix = self.lsoa_travel_time[self.MT_hospitals]
         # Find the value and index for the lowest travel time for each LSOA
         self.nearest_mt_unit = pd.DataFrame()
-        self.nearest_mt_unit['unit'] = travel_matrix.idxmin(axis=1)
+        self.nearest_mt_unit['unit'] = travel_matrix.idxmin(axis=1).astype('string')
         self.nearest_mt_unit['time'] = travel_matrix.min(axis=1)
 
     def find_nearest_transfer_mt_unit(self):
@@ -165,7 +171,7 @@ class Geoprocessing(object):
         travel_matrix = self.inter_hospital_time[self.MT_hospitals]
         # Find the value and index for the lowest travel time for each LSOA
         self.transfer_mt_unit = pd.DataFrame()
-        self.transfer_mt_unit['transfer_unit'] = travel_matrix.idxmin(axis=1)
+        self.transfer_mt_unit['transfer_unit'] = travel_matrix.idxmin(axis=1).astype('string')
         self.transfer_mt_unit['transfer_required'] = \
             self.transfer_mt_unit['transfer_unit'] != travel_matrix.index.tolist(
         )
@@ -192,13 +198,21 @@ class Geoprocessing(object):
         self.admissions = pd.read_csv(
             './data/admissions_2017-2019.csv', index_col='area')
         self.admissions.sort_index(inplace=True)
+        self.admissions = self.admissions.round(4)
 
         self.inter_hospital_time = pd.read_csv(
             './data/inter_hospital_time_calibrated.csv', index_col='from_postcode')
+        # Round all values to nearest minute:
+        # (plus small amount to make 0.5 round up to next value)
+        self.inter_hospital_time = (self.inter_hospital_time + 1e-5).round(0)
+        self.inter_hospital_time = self.inter_hospital_time.astype('int16')
+        # Largest possible inter-hospital time is 921 minutes.
 
         self.lsoa_travel_time = pd.read_csv(
             './data/lsoa_travel_time_matrix_calibrated.csv', index_col='LSOA')
+        # One Welsh LSOA has missing values for some reason.
         self.lsoa_travel_time.sort_index(inplace=True)
+        # Largest possible travel time is 1090 minutes.
 
         if self.limit_to_england:
             # Find names of English LSOA:
@@ -209,6 +223,10 @@ class Geoprocessing(object):
             self.lsoa_travel_time = self.lsoa_travel_time.loc[
                 self.lsoa_travel_time.index.isin(lsoa_eng)].copy()
             # self.geodata = self.geodata.loc[mask].copy(deep=True)
+            # Convert times to int now that the single problem Welsh
+            # LSOA with missing data has gone:
+            self.lsoa_travel_time = (
+                self.lsoa_travel_time.round(0).astype('int16'))
 
             # Remove the "England" column:
             self.admissions = self.admissions.drop('England', axis='columns')

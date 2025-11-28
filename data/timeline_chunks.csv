@@ -1,0 +1,8 @@
+scenario,label,preambo,onscene,prehosp,first_unit,second_unit,optimist,muster
+usual_care_transfer,Usual care<br>(transfer),usual_care,usual_care,usual_care,ivt_only_unit,mt_unit_transfer,1,1
+usual_care_no_transfer,Usual care<br>(no transfer),usual_care,usual_care,usual_care,mt_unit_no_transfer,,1,1
+redir_approved,Redirection<br>approved,usual_care,prehospdiag,prehospdiag,mt_unit_no_transfer,,1,0
+redir_rejected_transfer,Redirection<br>rejected<br>(transfer),usual_care,prehospdiag,prehospdiag,ivt_only_unit,mt_unit_transfer,1,0
+redir_rejected_no_transfer,Redirection<br>rejected<br>(no transfer),usual_care,prehospdiag,prehospdiag,mt_unit_no_transfer,,1,0
+msu_ivt,MSU<br>(IVT),msu,msu_ivt,none,mt_unit_msu,,0,1
+msu_no_ivt,MSU<br>(no IVT),msu,msu_no_ivt,none,mt_unit_msu,,0,1
