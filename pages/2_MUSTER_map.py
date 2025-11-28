@@ -634,28 +634,39 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             st.metric(n, f"{p:.1f}%")
 
+    try:
+        # Travel times
+        time_cols = ['usual_care_ivt', 'usual_care_mt',
+                        'msu_ivt_ivt']
+        time_bins, admissions_times = reg.gather_this_region_travel_times(
+            st.session_state['dict_highlighted_region_travel_times'],
+            lsoa_subset, region, time_cols)
+        # Average treatment times:
+        s_treats = st.session_state[
+            'dict_highlighted_region_average_treatment_times'][
+                lsoa_subset].loc[region]
+        df_treats = reg.make_average_treatment_time_df(s_treats)
+        selected_region_is_mt_unit = False
+    except KeyError:
+        # This is an MT unit and the LSOA subset excludes patients
+        # nearest MT units.
+        selected_region_is_mt_unit = True
+
     with containers['region_times']:
         c = st.container(width=400, border=True)
         with c:
             st.subheader(region_label)
-            # Travel times
-            time_cols = ['usual_care_ivt', 'usual_care_mt',
-                         'msu_ivt_ivt']
-            time_bins, admissions_times = reg.gather_this_region_travel_times(
-                st.session_state['dict_highlighted_region_travel_times'],
-                lsoa_subset, region, time_cols)
-            subplot_titles = ['To nearest unit', 'To nearest then MT unit',
-                              'From MSU base']
-            reg.plot_travel_times(time_bins, admissions_times,
-                                  subplot_titles)
-
-            # Average treatment times:
-            s_treats = st.session_state[
-                'dict_highlighted_region_average_treatment_times'][
-                    lsoa_subset].loc[region]
-            df_treats = reg.make_average_treatment_time_df(s_treats)
-            st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
-            st.table(df_treats)
+            if selected_region_is_mt_unit:
+                st.markdown('No data to display.')
+            else:
+                # Travel times
+                subplot_titles = ['To nearest unit', 'To nearest then MT unit',
+                                  'From MSU base']
+                reg.plot_travel_times(time_bins, admissions_times,
+                                      subplot_titles)
+                # Average treatment times:
+                st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+                st.table(df_treats)
 
     # Outcomes:
     for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
@@ -674,12 +685,20 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with c:
             st.subheader(region_label)
             df_u = st.session_state['dict_highlighted_region_outcomes'][
-                subgroup]['usual_care'][lsoa_subset].loc[region]
+                subgroup]['usual_care'][lsoa_subset]
             df_r = st.session_state['dict_highlighted_region_outcomes'][
-                subgroup]['msu'][lsoa_subset].loc[region]
-
-            if df_u.isna().all() & df_r.isna().all():
+                subgroup]['msu'][lsoa_subset]
+            try:
+                df_u = df_u.loc[region]
+                df_r = df_r.loc[region]
+                selected_region_is_mt_unit = False
+            except KeyError:
                 st.markdown('No data available.')
+                # This is an MT unit and the LSOA subset excludes patients
+                # nearest MT units.
+                selected_region_is_mt_unit = True
+            if selected_region_is_mt_unit:
+                pass
             else:
                 cc = st.container(horizontal=True)
                 with cc:
