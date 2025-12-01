@@ -585,7 +585,7 @@ else:
 # Display chosen results:
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
-        'Use only patients whose nearest unit does not provide MT.',
+        'Exclude patients whose nearest unit provides MT.',
         value=True,
         )
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
@@ -619,25 +619,45 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.subheader(region_label)
         st.write('summary summary summary bits')
 
+    # Admissions
+    s_admissions = (
+        st.session_state['df_highlighted_region_admissions']
+        .loc[region]
+        )
+    n_admissions_total = s_admissions['admissions_all_patients']
+    n_patients_nearest_mt = (s_admissions['admissions_all_patients'] -
+                             s_admissions['admissions_nearest_unit_no_mt'])
+    if lsoa_subset == 'all_patients':
+        n_admissions = s_admissions['admissions_all_patients']
+        prop_nearest_mt = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
+        extra_str = ''
+    else:
+        # Only patients whose nearest unit does not have MT.
+        n_admissions = s_admissions['admissions_nearest_unit_no_mt']
+        prop_nearest_mt = 100.0
+        extra_str = f'''
+        Excluding {n_patients_nearest_mt:.1f} patients whose nearest unit
+        has MT.
+        '''
+
     with containers['region_treat_stats']:
         c = st.container(width=400, border=True)
         with c:
-            st.subheader(region_label)
-            # Admissions
-            s_admissions = (
-                st.session_state['df_highlighted_region_admissions']
-                .loc[region]
-                )
             st.metric('Annual stroke admissions',
-                      f"{s_admissions['admissions_all_patients']:.1f}")
+                      f"{n_admissions:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
-            p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
-            st.metric(n, f"{p:.1f}%")
+            st.metric(n, f"{prop_nearest_mt:.1f}%")
+            st.markdown(extra_str)
 
+    scens_all_labels = {
+        'usual_care': 'Usual care',
+        'msu_ivt': 'MSU (IVT)',
+        'msu_no_ivt': 'MSU (no IVT)',
+        }
     try:
         # Travel times
         time_cols = ['usual_care_ivt', 'usual_care_mt',
-                        'msu_ivt_ivt']
+                     'msu_ivt_ivt']
         time_bins, admissions_times = reg.gather_this_region_travel_times(
             st.session_state['dict_highlighted_region_travel_times'],
             lsoa_subset, region, time_cols)
@@ -645,7 +665,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         s_treats = st.session_state[
             'dict_highlighted_region_average_treatment_times'][
                 lsoa_subset].loc[region]
-        df_treats = reg.make_average_treatment_time_df(s_treats)
+        df_treats = reg.make_average_treatment_time_df(
+            s_treats, scens_all_labels)
         selected_region_is_mt_unit = False
     except KeyError:
         # This is an MT unit and the LSOA subset excludes patients
@@ -895,7 +916,7 @@ if generate_full_data:
                 st.dataframe(df_full)
         else:
             use_lsoa_subset_full = st.toggle(
-                'Use only patients whose nearest unit does not provide MT.',
+                'Exclude patients whose nearest unit provides MT.',
                 value=True,
                 key='full_lsoa_subset'
                 )

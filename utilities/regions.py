@@ -1558,16 +1558,19 @@ def calculate_average_treatment_times(
     return df_out
 
 
-def make_average_treatment_time_df(s_treats):
-    scens_all_labels = {
-        'usual_care': 'Usual care',
-        'redirection_approved': 'Redirection approved',
-        'redirection_rejected': 'Redirection rejected',
-        }
+def make_average_treatment_time_df(s_treats, scens_all_labels=None):
     treats_labels = {
         'ivt': 'IVT',
         'mt': 'MT'
         }
+    if scens_all_labels is None:
+        scens_all_labels = {
+            'usual_care': 'Usual care',
+            'redirection_approved': 'Redirection approved',
+            'redirection_rejected': 'Redirection rejected',
+            }
+    else:
+        pass
     scens_to_use = [s for s in scens_all_labels.keys()
                     if any([v.startswith(s) for v in s_treats.keys()])]
     scens_labels = dict([(k, scens_all_labels[k]) for k in scens_to_use])
@@ -1575,14 +1578,17 @@ def make_average_treatment_time_df(s_treats):
     for scen in scens_labels.keys():
         scen_treats = []
         for treat in treats_labels.keys():
-            t_mean = s_treats[f'{scen}_{treat}']
-            t_mean = make_formatted_time_str(t_mean)
-            t_std = s_treats[f'{scen}_{treat}_std']
-            if t_std >= 60.0:
-                t_std = make_formatted_time_str(t_std)
-            else:
-                t_std = f'{t_std:02.0f}min'
-            t_str = (f"{t_mean}" + r' $\pm$ ' + f"{t_std}")
+            try:
+                t_mean = s_treats[f'{scen}_{treat}']
+                t_mean = make_formatted_time_str(t_mean)
+                t_std = s_treats[f'{scen}_{treat}_std']
+                if t_std >= 60.0:
+                    t_std = make_formatted_time_str(t_std)
+                else:
+                    t_std = f'{t_std:02.0f}min'
+                t_str = (f"{t_mean}" + r' $\pm$ ' + f"{t_std}")
+            except KeyError:
+                t_str = '\-'
             scen_treats.append(t_str)
         arr_treats.append(scen_treats)
     df_treats = pd.DataFrame(
@@ -1677,18 +1683,17 @@ def find_unit_admissions_by_region(
                      df_lsoa_regions.loc[mask_combo, 'Admissions'].sum() *
                      prop_of_all_stroke
                      )
-            # TO DO - also calculate this for the LSOA subset whose nearest unit does not provide MT.
-            # TO DO -------------------------------------------------------------------------        TO DO
-            # How many people go to each combination of stroke units?
-            # First unit, nearest MT unit, transfer unit combos.
-            df_unit_admissions = (
-                df_lsoa_regions.loc[mask_reg, unit_cols + ['Admissions']].
-                groupby(unit_cols).sum() *
-                prop_of_all_stroke
-            )
-            df_unit_admissions = df_unit_admissions.rename(
-                columns={'Admissions': region})
-            dfs_to_concat.append(df_unit_admissions)
+                # How many people go to each combination of stroke units?
+                # First unit, nearest MT unit, transfer unit combos.
+                df_unit_admissions = (
+                    df_lsoa_regions.loc[
+                        mask_combo, unit_cols + ['Admissions']
+                        ].groupby(unit_cols).sum() *
+                    prop_of_all_stroke
+                )
+                df_unit_admissions = df_unit_admissions.rename(
+                    columns={'Admissions': f'{region}_{mask_label}'})
+                dfs_to_concat.append(df_unit_admissions)
     df_unit_admissions = pd.concat(dfs_to_concat, axis='columns').reset_index()
 
     df_admissions['prop_nearest_unit_no_mt'] = (
@@ -1833,6 +1838,10 @@ def calculate_region_treat_stats(dict_pops_u, dict_pops_r, s_admissions):
     # Number of thrombectomies:
     d['n_mt'] = (
         d['prop_mt_usual_care'] * s_admissions['admissions_all_patients'])
+    d['n_mt_nearest_unit_no_mt'] = (
+        d['prop_mt_usual_care'] *
+        s_admissions['admissions_nearest_unit_no_mt']
+        )
     # Usual care:
     d['n_mt_nearest_unit_has_mt_usual_care'] = (
         d['prop_mt_usual_care'] *
@@ -1857,6 +1866,10 @@ def calculate_region_treat_stats(dict_pops_u, dict_pops_r, s_admissions):
     d['n_ivt_only'] = (
         d['prop_ivt_only_usual_care'] *
         s_admissions['admissions_all_patients']
+        )
+    d['n_ivt_only_nearest_unit_no_mt'] = (
+        d['prop_ivt_only_usual_care'] *
+        s_admissions['admissions_nearest_unit_no_mt']
         )
     # Usual care:
     d['n_ivt_only_nearest_unit_has_mt_usual_care'] = (

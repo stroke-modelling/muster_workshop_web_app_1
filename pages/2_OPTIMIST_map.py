@@ -236,13 +236,14 @@ We calculate six base outcomes. These can be combined in different proportions t
 ''')
 with containers['region_unit_admissions_top']:
     st.markdown('''
-:red-background[NOTE, November 2025, currently these admissions are always
-for all patients rather than toggled onto
-"only nearest unit has no MT" if requested]
-
 Total patients from this catchment area
 directly admitted to (and transferred "t" to or from)
 each unit:
+''')
+with containers['region_unit_maps_top']:
+    st.markdown('''
+Catchment areas are shown for any unit that contains patients in the
+selected region and for the selected subset.
 ''')
 
 #MARK: Setup
@@ -578,7 +579,7 @@ else:
 # Display chosen results:
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
-        'Use outcomes for only patients whose nearest unit does not provide MT.',
+        'Exclude patients whose nearest unit provides MT.',
         value=True,
         )
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
@@ -612,7 +613,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         ch = st.container(border=True, width=500)
     with ch:
         st.subheader(region_label)
-        st.write('summary summary summary bits')
+        st.write('Placeholder for most important summary results.')
 
     # ----- Treatment numbers -----
     s_admissions = (
@@ -660,6 +661,33 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         (c, st.column_config.NumberColumn(width='small', format='%.1f'))
         for c in df_ivt.columns
         ])
+
+    # Pick out the data needed depending on the subset chosen:
+    n_patients = s_admissions[f'admissions_{lsoa_subset}']
+    n_patients_nearest_mt = (s_admissions['admissions_all_patients'] -
+                             s_admissions['admissions_nearest_unit_no_mt'])
+    n_mt_not_subset = (  # same for usual care and redir
+        dict_region_treat_stats['n_mt_nearest_unit_has_mt_usual_care'])
+    n_ivt_only_not_subset = (  # same for usual care and redir
+        dict_region_treat_stats['n_ivt_only_nearest_unit_has_mt_usual_care'])
+    if lsoa_subset == 'all_patients':
+        n_mt = dict_region_treat_stats['n_mt']
+        n_ivt_only = dict_region_treat_stats['n_ivt_only']
+        prop_nearest_mt = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
+        extra_str = ''
+    else:
+        n_mt = dict_region_treat_stats['n_mt_nearest_unit_no_mt']
+        n_ivt_only = dict_region_treat_stats['n_ivt_only_nearest_unit_no_mt']
+        df_mt = df_mt.drop('Nearest unit has MT', axis='columns')
+        df_ivt = df_ivt.drop('Nearest unit has MT', axis='columns')
+        prop_nearest_mt = 100.0
+        extra_str = f'''
+        Excluding {n_patients_nearest_mt:.1f} patients whose nearest unit
+        has MT, including
+        {n_mt_not_subset:.1f} patients who receive thrombectomy
+        and {n_ivt_only_not_subset:.1f} receieving thrombolysis only.
+        '''
+
     with containers['region_treat_stats']:
         c = st.container(width=500, border=True)
         with c:
@@ -667,20 +695,24 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             cols = st.columns(2)
             with cols[0]:
                 st.metric('Annual stroke admissions  \nin this population',
-                          f"{s_admissions['admissions_all_patients']:.1f}")
+                          f"{n_patients:.1f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
-            p = 100.0*(1.0 - s_admissions['prop_nearest_unit_no_mt'])
             with cols[1]:
-                st.metric(n, f"{p:.1f}%")
+                st.metric(n, f"{prop_nearest_mt:.1f}%")
 
-            st.markdown(f'''Of the {dict_region_treat_stats['n_mt']:.1f}
-                        patients who receive thrombectomy
-                        (with or without thrombolysis):''')
+            st.markdown(f'''
+                Of the {n_mt:.1f} patients who receive thrombectomy
+                (with or without thrombolysis):
+                ''')
             st.dataframe(df_mt, column_config=column_config_mt)
 
-            st.markdown(f'''Of the {dict_region_treat_stats['n_ivt_only']:.1f}
-                        patients who receive thrombolysis only:''')
+            st.markdown(f'''
+                Of the {n_ivt_only:.1f}
+                patients who receive thrombolysis only:
+                ''')
             st.dataframe(df_ivt, column_config=column_config_ivt_only)
+
+            st.markdown(extra_str)
 
     # ----- Travel and treatment times -----
     try:
@@ -718,8 +750,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                   'transfer_unit']
     df_network = (
         st.session_state['df_region_unit_admissions']
-        [cols_units + [region]])
-    df_network = df_network.rename(columns={region: 'admissions'})
+        [cols_units + [f'{region}_{lsoa_subset}']])
+    df_network = df_network.rename(columns={
+        f'{region}_{lsoa_subset}': 'admissions'})
     # Only keep units that have admissions from selected region:
     df_network = df_network.dropna(subset=['admissions'])
     # Usual care proportions:
@@ -1121,7 +1154,7 @@ if generate_full_data:
                 st.dataframe(df_full)
         else:
             use_lsoa_subset_full = st.toggle(
-                'Use only patients whose nearest unit does not provide MT.',
+                'Exclude patients whose nearest unit provides MT.',
                 value=True,
                 key='full_lsoa_subset'
                 )
