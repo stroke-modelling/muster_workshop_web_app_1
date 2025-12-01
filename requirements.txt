@@ -15,4 +15,4 @@ rasterio==1.3.6
 # yaml is temporary - should have been included in stroke-maps package
 # Don't give a version for streamlit 
 # to ensure the app has the latest security updates. 
-streamlit>=1.51
+streamlit
