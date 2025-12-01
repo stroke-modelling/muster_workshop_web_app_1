@@ -122,7 +122,8 @@ def select_onion_population(df_pops):
         on_change=set_inputs_changed,
         )
     # Pick out variables for this layer:
-    series_chosen_pops = df_pops.loc[df_pops['population'] == layer_key].squeeze()
+    series_chosen_pops = df_pops.loc[
+        df_pops['population'] == layer_key].squeeze()
 
     # Sanity check added row props:
     # (do this now because it's irritating to do it sooner before the
@@ -165,7 +166,8 @@ def calculate_population_subgroups(d, _log=True, _log_loc=None):
         st.error(f'Check proportions for {occ}: {s}.')
 
     if _log:
-        p = 'Calculated proportions of patients with each stroke type in each redirection category.'
+        p = '''Calculated proportions of patients with each stroke type
+        in each redirection category.'''
         print_progress_loc(p, _log_loc)
     return d
 
@@ -344,7 +346,8 @@ def calculate_population_subgroup_grid(
             df[sub_name] = df[sub_name] / df[sub_name].sum()
 
     if _log:
-        p = 'Calculated proportions of patients with each stroke type and treatment combo in each redirection category.'
+        p = '''Calculated proportions of patients with each stroke type
+        and treatment combo in each redirection category.'''
         print_progress_loc(p, _log_loc)
     return dict_of_dfs
 
@@ -456,7 +459,8 @@ def calculate_population_subgroup_grid_muster(
             df[sub_name] = df[sub_name] / df[sub_name].sum()
 
     if _log:
-        p = 'Calculated proportions of patients with each stroke type and treatment combo in each scenario.'
+        p = '''Calculated proportions of patients with each stroke type
+        and treatment combo in each scenario.'''
         print_progress_loc(p, _log_loc)
     return dict_of_dfs
 
@@ -644,7 +648,7 @@ def calculate_unique_outcomes_onion(
         for scenario in scenarios:
             props = dict_scenario_props[scenario]
             for base_scen in base_outcome_keys_here:
-                occ = base_scen.split('_')[0]
+                # occlusion type is base_scen.split('_')[0].
                 treat = '_'.join(base_scen.split('_')[1:])
 
                 if props.loc[base_scen, s] > 0.0:
@@ -669,12 +673,12 @@ def calculate_unique_outcomes_onion(
                         # Have to check against the time to IVT and the
                         # time to MT.
                         treat_times = [f'{time_lookup[scenario]}_ivt',
-                                    f'{time_lookup[scenario]}_mt']
+                                       f'{time_lookup[scenario]}_mt']
                         time_tos = ['time_to_ivt', 'time_to_mt']
 
                         rename_dict = dict(zip(time_tos, treat_times))
                         df_out = (dict_base_outcomes[base_scen].reset_index()
-                                .rename(columns=rename_dict))
+                                  .rename(columns=rename_dict))
                         df_outcomes = pd.merge(
                             df,
                             df_out,
@@ -683,8 +687,10 @@ def calculate_unique_outcomes_onion(
                         )
                         # Drop unwanted columns with no counterparts in the
                         # other outcome data.
-                        cols_ivt_mt = ['ivt_better', 'mrs_0-2_ivt', 'mrs_0-2_mt']
-                        df_outcomes = df_outcomes.drop(cols_ivt_mt, axis='columns')
+                        cols_ivt_mt = [
+                            'ivt_better', 'mrs_0-2_ivt', 'mrs_0-2_mt']
+                        df_outcomes = df_outcomes.drop(
+                            cols_ivt_mt, axis='columns')
                     else:
                         # IVT only or MT only.
                         treat_time = f'{time_lookup[scenario]}_{treat}'
@@ -701,7 +707,7 @@ def calculate_unique_outcomes_onion(
                         # Convert mRS distributions to non-cumulative:
                         mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
                         mrs_noncum_cols = [c.replace('dists_', 'dists_noncum_')
-                                        for c in mrs_cols]
+                                           for c in mrs_cols]
                         df_outcomes[mrs_noncum_cols] = np.diff(
                             df_outcomes[mrs_cols], prepend=0.0)
 
@@ -866,8 +872,10 @@ def plot_onion():
         ybox -= 3
 
     # Set axes properties
-    fig.update_xaxes(range=[-14, 5.1], zeroline=False, showgrid=False, showticklabels=False)
-    fig.update_yaxes(range=[-5.5, 5.5], zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_xaxes(range=[-14, 5.1], zeroline=False, showgrid=False,
+                     showticklabels=False)
+    fig.update_yaxes(range=[-5.5, 5.5], zeroline=False, showgrid=False,
+                     showticklabels=False)
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
     # Set figure size
     fig.update_layout(width=400, height=400, margin_t=0, margin_b=0,

@@ -324,16 +324,18 @@ def make_shared_map_traces(
             ['colour_ind', 'colour'], axis='columns')
     except KeyError:
         pass
-    map_traces['raster_nearest_mt_unit'], _, df_unit_services = make_unit_catchment_raster(
-        df_lsoa_units_times,
-        df_unit_services,
-        df_raster,
-        transform_dict,
-        # unit_number_column='unit_number',
-        nearest_unit_column='nearest_mt_unit',
-        redo_transform=False,
-        create_colour_scale=True,
-        )
+    map_traces['raster_nearest_mt_unit'], _, df_unit_services = (
+        make_unit_catchment_raster(
+            df_lsoa_units_times,
+            df_unit_services,
+            df_raster,
+            transform_dict,
+            # unit_number_column='unit_number',
+            nearest_unit_column='nearest_mt_unit',
+            redo_transform=False,
+            create_colour_scale=True,
+            )
+    )
 
     # ----- Nearest IVT units -----
     map_traces['raster_nearest_ivt_unit'], _, df_unit_services = (
@@ -512,8 +514,7 @@ def make_unit_catchment_raster(
     for k, v in transform_dict.items():
         transform_dict_here[k] = v
     if redo_transform:
-        width_before = arr.shape[1]
-        height_before = arr.shape[0]
+        height_before = arr.shape[0]  # width is arr.shape[1]
         # Crop the array to non-NaN values:
         mask0 = np.all(np.isnan(arr), axis=0)
         min0 = np.where(mask0 == False)[0][0]
@@ -616,9 +617,9 @@ def make_unit_catchment_raster(
         # not the temporary df_units dataframe.
         for unit in df_units.index:
             if unit not in units_with_colours:
-                ind = df_colours_allowed[df_colours_allowed[unit] == 1].index.values[0]
+                ind = df_colours_allowed[
+                    df_colours_allowed[unit] == 1].index.values[0]
                 df_unit_services.loc[unit, 'colour_ind'] = int(ind)
-        # df_unit_services['colour_ind'] = df_unit_services['colour_ind'].astype(int)
         # Use these indexes to pick out the colour for each unit.
         # Setup for picking:
         colours_dict = {
@@ -638,11 +639,15 @@ def make_unit_catchment_raster(
             'Use_IVT': df_unit_services['Use_MT'] != 1,
         }
         # Duplicate colours if necessary (shouldn't be!):
-        while ((df_unit_services.loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1) >
-               len(colours_dict['Use_MT'])):
+        while (
+            df_unit_services
+            .loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1
+                ) > len(colours_dict['Use_MT']):
             colours_dict['Use_MT'] += colours_dict['Use_MT']
-        while ((df_unit_services.loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1) >
-                len(colours_dict['Use_IVT'])):
+        while (
+            df_unit_services
+            .loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1
+                ) > len(colours_dict['Use_IVT']):
             colours_dict['Use_IVT'] += colours_dict['Use_IVT']
 
         # Assign reds to MT units and blues to IVT units:
@@ -661,7 +666,8 @@ def make_unit_catchment_raster(
     # Set up unit --> number --> colour lookup.
     mask_colours = df_unit_services['colour'].notna()
     colour_scale = df_unit_services.loc[
-        mask_colours, [unit_number_column, 'colour']].copy().sort_values(unit_number_column).values
+        mask_colours, [unit_number_column, 'colour']
+        ].copy().sort_values(unit_number_column).values
     colour_scale = [list(i) for i in colour_scale]
 
     # The actual map:
@@ -865,7 +871,11 @@ def load_region_outline_here(region_type, region):
     return gdf_region, region_display_name
 
 
-def set_network_map_bounds(gdf_units, gdf_region=None, transform_dict_units=None):
+def set_network_map_bounds(
+        gdf_units,
+        gdf_region=None,
+        transform_dict_units=None
+        ):
     bounds_lists = [gdf_units.total_bounds]
     if gdf_region is not None:
         bounds_lists.append(gdf_region.total_bounds)
@@ -1054,7 +1064,8 @@ def draw_units_msu_map(map_traces, outline_name='none'):
     if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
         pass
     else:
-        fig.add_trace(map_traces['raster_nearest_csc']['trace'], row='all', col='all')
+        fig.add_trace(
+            map_traces['raster_nearest_csc']['trace'], row='all', col='all')
     # Always draw the "nearest unit has MT" legend cheat:
     fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
     # Region outline or unit catchment raster:
@@ -1065,7 +1076,8 @@ def draw_units_msu_map(map_traces, outline_name='none'):
             for t in map_traces[f'{outline_name}_outlines']:
                 fig.add_trace(t, row='all', col='all')
         else:
-            fig.add_trace(map_traces[f'raster_{outline_name}'], row='all', col='all')
+            fig.add_trace(
+                map_traces[f'raster_{outline_name}'], row='all', col='all')
     for r in map_traces['roads']:
         fig.add_trace(r, row='all', col='all')
     fig.add_trace(map_traces['units']['msu'], row='all', col=2)
@@ -1279,7 +1291,8 @@ def plot_networks(
                 y=[y_nearest, y_first],
                 mode='lines+markers',
                 marker=dict(size=baw, symbol='arrow-up', angleref='previous',
-                            standoff=standoff, line=dict(color='black', width=2)),
+                            standoff=standoff,
+                            line=dict(color='black', width=2)),
                 line_color=bcolour,
                 line_width=bw,
                 # text=[a],
@@ -1297,7 +1310,8 @@ def plot_networks(
                 line_width=w,
                 # text=[a],
                 hoverinfo='skip',
-                name=(None if link_drawn_to_first else 'Admissions to first unit'),
+                name=(None if link_drawn_to_first
+                      else 'Admissions to first unit'),
             ), col=2, row=d+1)
             # Add a sneaky trace halfway along the line for a hoverlabel:
             fig.add_trace(go.Scatter(
@@ -1350,7 +1364,7 @@ def plot_networks(
                 x_trans = gdf_units.loc[m, 'BNG_E'].values[0]
                 y_trans = gdf_units.loc[m, 'BNG_N'].values[0]
                 a = s['admissions_first_unit_to_transfer']
-                w = np.log(a)  #  / 75.0
+                w = np.log(a)
                 w = 1.0 if w < 1.0 else w
                 aw = w * 5 if w < 3 else w*2
                 # Setup for sneaking:
@@ -1362,8 +1376,10 @@ def plot_networks(
                     x=[x_first, x_trans],
                     y=[y_first, y_trans],
                     mode='lines+markers',
-                    marker=dict(size=baw, symbol='arrow-up', angleref='previous',
-                                standoff=standoff, line=dict(color='black', width=2)),
+                    marker=dict(size=baw, symbol='arrow-up',
+                                angleref='previous',
+                                standoff=standoff,
+                                line=dict(color='black', width=2)),
                     line_color=bcolour,
                     line_width=bw,
                     # text=[a],
@@ -1375,12 +1391,13 @@ def plot_networks(
                     x=[x_first, x_trans],
                     y=[y_first, y_trans],
                     mode='lines+markers',
-                    marker=dict(size=aw, symbol='arrow-up', angleref='previous',
-                                standoff=standoff),
+                    marker=dict(size=aw, symbol='arrow-up',
+                                angleref='previous', standoff=standoff),
                     line_color=colour,
                     line_width=w,
                     hoverinfo='skip',
-                    name=(None if link_drawn_to_trans else 'Transfers for thrombectomy'),
+                    name=(None if link_drawn_to_trans
+                          else 'Transfers for thrombectomy'),
                 ), col=2, row=d+1)
                 # Add a sneaky trace halfway along the line for a hoverlabel:
                 fig.add_trace(go.Scatter(
@@ -1415,10 +1432,10 @@ def plot_networks(
 
     # Stroke units:
     unit_traces = make_units_traces(gdf_units)
-    fig.add_trace(go.Scatter(unit_traces['ivt']), 
-        col=[1, 2, 2], row=[1, 1, 2],)
-    fig.add_trace(go.Scatter(unit_traces['mt']), 
-        col=[1, 2, 2], row=[1, 1, 2],)
+    fig.add_trace(go.Scatter(unit_traces['ivt']),
+                  col=[1, 2, 2], row=[1, 1, 2],)
+    fig.add_trace(go.Scatter(unit_traces['mt']),
+                  col=[1, 2, 2], row=[1, 1, 2],)
 
     # Catchment anchors:
     fig.add_trace(go.Scatter(
@@ -1465,10 +1482,6 @@ def plot_networks(
     # Calculate height based on aspect ratio:
     width = 800
     height = width
-    # height = (
-    #     (0.25 * width) +  # space for subplot gaps
-    #     (2.0 * 0.4 * width * (bounds[3] - bounds[1]) / (bounds[2] - bounds[0]))
-    # )
     # Figure setup.
     fig.update_layout(
         width=width,

@@ -6,7 +6,6 @@ import numpy as np
 import os
 import pandas as pd
 from matplotlib.pyplot import get_cmap
-import cmasher as cmr
 
 from utilities.utils import set_rerun_map
 
@@ -230,8 +229,9 @@ def select_colour_limits(map_outcome, vlim_dict,
         }
     diff_name = f'{scenario_name}_minus_usual_care'
     d[diff_name] = {
-        'title': (
-            f'Benefit of {scenario_label} over usual care: {map_outcome_label}'),
+        'title': f'''
+        Benefit of {scenario_label} over usual care:
+        {map_outcome_label}''',
         }
     d['pop'] = {
         'title': 'Population density (people per square kilometre)',

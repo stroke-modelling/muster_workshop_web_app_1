@@ -2,7 +2,6 @@
 Useful functions.
 """
 import streamlit as st
-import plotly.graph_objs as go
 
 
 def print_progress(text):
@@ -69,7 +68,7 @@ def write_text_from_file(filename, head_lines_to_skip=0):
 
 def page_setup():
     # ----- Page setup -----
-    # The following options set up the display in the tab in your browser. 
+    # The following options set up the display in the tab in your browser.
     # Set page to widescreen must be first call to st.
     st.set_page_config(
         page_title='OPTIMIST & MUSTER',

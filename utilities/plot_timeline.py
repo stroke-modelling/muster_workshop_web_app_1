@@ -9,8 +9,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from utilities.utils import update_plotly_font_sizes, \
-    update_plotly_font_sizes, make_formatted_time_str
+from utilities.utils import update_plotly_font_sizes, make_formatted_time_str
 
 
 def build_time_dicts_muster(pathway_dict):
@@ -237,7 +236,8 @@ def build_time_dicts_for_plot_msu(time_dicts, gap_between_chunks=45):
     # Find shared max time for setting same size across multiple plots
     # so that 1 minute always spans the same number of pixels.
     tmax = max(
-        [time_offsets[k] + sum(time_dicts[k].values()) for k in time_dicts.keys()]
+        [time_offsets[k] + sum(time_dicts[k].values())
+         for k in time_dicts.keys()]
     ) + gap_between_chunks
     return time_offsets, tmax
 
@@ -543,16 +543,28 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
         # Draw travel times:
         travel_chunks_dict = {
             'travel_to_scene': {
-                'start': {'type': 'ambo', 'time': '0min', 'label':'Ambulance dispatch'},
-                'end': {'type': 'patient', 'time': 'Depends', 'label':'Arrive at patient'},
+                'start': {
+                    'type': 'ambo', 'time': '0min',
+                    'label': 'Ambulance dispatch'},
+                'end': {
+                    'type': 'patient', 'time': 'Depends',
+                    'label': 'Arrive at patient'},
             },
             'travel_to_first': {
-                'start': {'type': 'patient', 'time': '0min', 'label':'Ambulance leaves scene'},
-                'end': {'type': 'first', 'time': 'Depends', 'label':''},
+                'start': {
+                    'type': 'patient', 'time': '0min',
+                    'label': 'Ambulance leaves scene'},
+                'end': {
+                    'type': 'first', 'time': 'Depends',
+                    'label': ''},
             },
             'travel_transfer': {
-                'start': {'type': 'first', 'time': '0min', 'label':'Ambulance leaves IVT-only unit'},
-                'end': {'type': 'mt', 'time': 'Depends', 'label':'Arrive at MT unit'},
+                'start': {
+                    'type': 'first', 'time': '0min',
+                    'label': 'Ambulance leaves IVT-only unit'},
+                'end': {
+                    'type': 'mt', 'time': 'Depends',
+                    'label': 'Arrive at MT unit'},
             },
             }
 
@@ -564,7 +576,8 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                 try:
                     x_travel = [
                         df_chunk_coords.loc[travel_chunk, 'offset'],
-                        df_chunk_coords.loc[travel_chunk, ['offset', 'width']].sum()
+                        df_chunk_coords.loc[
+                            travel_chunk, ['offset', 'width']].sum()
                         ]
                 except KeyError:
                     # This chunk doesn't exist in this project.
@@ -598,7 +611,8 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                                 label = f'{label:.0f}min'
                         else:
                             label = t_kwargs['time']
-                        draw_start_location(x_travel[i], time=label, label=t_kwargs['label'])
+                        draw_start_location(x_travel[i], time=label,
+                                            label=t_kwargs['label'])
                     elif t == 'ambo':
                         if 'msu' in scenario:
                             label = 'MSU dispatch'
@@ -612,8 +626,8 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                         draw_unit(x_travel[i], marker_unit_kwargs,
                                   unit_time=time, unit_label=unit_label)
                     else:
-                        draw_unit(x_travel[i], marker_mt_unit_kwargs, 'Depends',
-                                  'Arrive at MT unit')
+                        draw_unit(x_travel[i], marker_mt_unit_kwargs,
+                                  'Depends', 'Arrive at MT unit')
                     i += 1
 
         # Treatment times:

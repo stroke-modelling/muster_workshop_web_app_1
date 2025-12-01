@@ -355,7 +355,8 @@ def draw_timeline(df_pathway_steps, series_treatment_times_without_travel,
     else:
         # Times for OPTIMIST:
         df_pathway_steps.loc['ambo_arrival_to_prehospdiag'] = (
-            df_pathway_steps.loc['process_ambulance_on_scene_duration', 'value']
+            df_pathway_steps.loc[
+                'process_ambulance_on_scene_duration', 'value']
         )
 
     df_treats = pd.read_csv('./data/timeline_treatment_time_lookup.csv')

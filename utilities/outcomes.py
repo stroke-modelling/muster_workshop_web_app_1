@@ -190,7 +190,8 @@ def flag_lvo_ivt_better_than_mt(
     df['ivt_better'] = (df[f'{out}_mt'] < df[f'{out}_ivt'])
 
     if _log:
-        p = 'Marked unique treatment time pairs where LVO with IVT is better than MT.'
+        p = '''Marked unique treatment time pairs where LVO with IVT
+        is better than MT.'''
         print_progress_loc(p, _log_loc)
     return df
 

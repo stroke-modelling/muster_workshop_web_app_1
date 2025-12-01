@@ -415,23 +415,27 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
         reg.find_unique_travel_times(
             df_lsoa_units_times, _log_loc=containers['log_units'])
         )
-    unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
-        series_treatment_times_without_travel,
-        unique_travel_for_ivt,
-        unique_travel_for_mt,
-        _log_loc=containers['log_pathway']
-        )
+    unique_treatment_ivt, unique_treatment_mt = (
+        pathway.calculate_treatment_times(
+            series_treatment_times_without_travel,
+            unique_travel_for_ivt,
+            unique_travel_for_mt,
+            _log_loc=containers['log_pathway']
+            )
+    )
     unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
         dict_unique_travel_pairs, series_treatment_times_without_travel,
         _log=True, _log_loc=containers['log_pathway'],
     )
 
     # LSOA-level treatment times:
-    df_lsoa_units_times = pathway.calculate_treatment_times_each_lsoa_scenarios(
-        df_lsoa_units_times,
-        series_treatment_times_without_travel,
-        _log_loc=containers['log_pathway']
-        )
+    df_lsoa_units_times = (
+        pathway.calculate_treatment_times_each_lsoa_scenarios(
+            df_lsoa_units_times,
+            series_treatment_times_without_travel,
+            _log_loc=containers['log_pathway']
+            )
+    )
     # Find the unique sets of treatment times:
     scens = ['usual_care', 'redirection_approved', 'redirection_rejected']
     treats = ['ivt', 'mt']
@@ -524,7 +528,8 @@ if st.session_state['rerun_region_summaries']:
         st.session_state['df_highlighted_region_admissions'] = pd.DataFrame()
         st.session_state['df_region_unit_admissions'] = pd.DataFrame()
         st.session_state['dict_highlighted_region_outcomes'] = {}
-        st.session_state['dict_highlighted_region_average_treatment_times'] = {}
+        st.session_state[
+            'dict_highlighted_region_average_treatment_times'] = {}
     else:
         st.session_state['dict_highlighted_region_travel_times'] = (
             reg.find_region_admissions_by_unique_travel_times(
@@ -568,7 +573,8 @@ if st.session_state['rerun_region_summaries']:
         )
         st.session_state['dict_highlighted_region_average_treatment_times'] = (
             reg.calculate_average_treatment_times_highlighted_regions(
-                st.session_state['dict_highlighted_region_unique_treatment_times'],
+                st.session_state[
+                    'dict_highlighted_region_unique_treatment_times'],
                 _log_loc=containers['log_regions']
                 )
         )
@@ -741,7 +747,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 reg.plot_travel_times(time_bins, admissions_times)
 
                 # Average treatment times:
-                st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+                st.markdown(
+                    r'Mean treatment times ($\pm$ 1 standard deviation):')
                 st.table(df_treats)
 
     # ----- Admissions by unit -----
@@ -890,7 +897,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         catch_trace, transform_dict_units, gdf_nearest_units = (
             plot_maps.make_unit_catchment_raster(
                 df_lsoa_units_times,
-                gdf_units.loc[[n.replace('nearest_', '') for n in nearest_units]],
+                gdf_units.loc[[n.replace('nearest_', '')
+                               for n in nearest_units]],
                 df_raster,
                 transform_dict,
                 nearest_unit_column='nearest_ivt_unit',

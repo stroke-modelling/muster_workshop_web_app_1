@@ -345,8 +345,7 @@ with containers['pathway_fig']:
 with containers['onion_setup']:
     df_onion_pops = pop.set_up_onion_parameters('muster', use_debug=False)
 dict_onion = df_onion_pops.loc[
-    df_onion_pops['population'] == 'muster'].squeeze()
-    # df_onion_pops['population'] == 'debug'].squeeze()
+    df_onion_pops['population'] == 'muster'].squeeze()  # 'debug'
 
 # ----- Subgroups (this onion layer) -----
 with containers['pop_plots']:
@@ -415,12 +414,14 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
             _log_loc=containers['log_units'])
         )
 
-    unique_treatment_ivt, unique_treatment_mt = pathway.calculate_treatment_times(
-        series_treatment_times_without_travel,
-        unique_travel_for_ivt,
-        unique_travel_for_mt,
-        _log_loc=containers['log_pathway']
-        )
+    unique_treatment_ivt, unique_treatment_mt = (
+        pathway.calculate_treatment_times(
+            series_treatment_times_without_travel,
+            unique_travel_for_ivt,
+            unique_travel_for_mt,
+            _log_loc=containers['log_pathway']
+            )
+    )
     unique_treatment_pairs = pathway.find_unique_treatment_time_pairs(
         dict_unique_travel_pairs, series_treatment_times_without_travel,
         _log=True, _log_loc=containers['log_pathway'],
@@ -438,7 +439,7 @@ if ('dict_outcomes' not in st.session_state.keys()) or rerun_results:
     treats = ['ivt', 'mt']
     cols_treat_scen = [f'{s}_{t}' for s in scens for t in treats]
     cols_treat_scen = [c for c in cols_treat_scen
-                    if c in df_lsoa_units_times.columns]
+                       if c in df_lsoa_units_times.columns]
     df_treat_times_sets_unique = (
         df_lsoa_units_times[cols_treat_scen].drop_duplicates())
     # Update index to normal range:
@@ -528,11 +529,12 @@ if st.session_state['rerun_region_summaries']:
         st.session_state['df_highlighted_region_admissions'] = pd.DataFrame()
         st.session_state['df_region_unit_admissions'] = pd.DataFrame()
         st.session_state['dict_highlighted_region_outcomes'] = {}
-        st.session_state['dict_highlighted_region_average_treatment_times'] = {}
+        st.session_state[
+            'dict_highlighted_region_average_treatment_times'] = {}
     else:
         st.session_state['dict_highlighted_region_travel_times'] = (
             reg.find_region_admissions_by_unique_travel_times(
-                df_lsoa_units_times, 
+                df_lsoa_units_times,
                 highlighted_region_types,
                 df_highlighted_regions,
                 project='muster',
@@ -567,14 +569,16 @@ if st.session_state['rerun_region_summaries']:
         st.session_state['dict_highlighted_region_outcomes'] = (
             reg.calculate_nested_average_outcomes(
                 st.session_state['dict_outcomes'],
-                st.session_state['dict_highlighted_region_unique_treatment_times'],
+                st.session_state[
+                    'dict_highlighted_region_unique_treatment_times'],
                 df_highlighted_regions,
                 _log_loc=containers['log_regions']
                 )
         )
         st.session_state['dict_highlighted_region_average_treatment_times'] = (
             reg.calculate_average_treatment_times_highlighted_regions(
-                st.session_state['dict_highlighted_region_unique_treatment_times'],
+                st.session_state[
+                    'dict_highlighted_region_unique_treatment_times'],
                 _log_loc=containers['log_regions']
                 )
         )
@@ -686,7 +690,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 reg.plot_travel_times(time_bins, admissions_times,
                                       subplot_titles)
                 # Average treatment times:
-                st.markdown(r'Mean treatment times ($\pm$ 1 standard deviation):')
+                st.markdown(
+                    r'Mean treatment times ($\pm$ 1 standard deviation):')
                 st.table(df_treats)
 
     # Outcomes:

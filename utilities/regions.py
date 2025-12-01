@@ -758,7 +758,7 @@ def calculate_nested_average_outcomes(
     If highlighted teams are given, calculate only the data for
     those teams and store the mixed region types in a single dataframe.
     If all regions are being calculated, then calculate the
-    data for all regions and store a separate df for each region type. 
+    data for all regions and store a separate df for each region type.
     """
     d = {}
     for subgroup, dict_subgroup_outcomes in dict_outcomes.items():
@@ -1330,12 +1330,12 @@ def plot_basic_travel_options_msu():
         yanchor='top',
         )
 
-
     # Set axes properties
     fig.update_xaxes(range=[-t-label_y_off, t*1.2+label_y_off],
                      zeroline=False, showgrid=False, showticklabels=False)
-    fig.update_yaxes(range=[-msu_offset-3.0*label_y_off, t_max+3.0*label_y_off],
-                     zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(
+        range=[-msu_offset-3.0*label_y_off, t_max+3.0*label_y_off],
+        zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
     # Set figure size
     fig.update_layout(width=400, height=400, margin_t=0, margin_b=0,
@@ -1671,7 +1671,8 @@ def find_unit_admissions_by_region(
                 mask_reg = df_lsoa_regions[region_type] == region
             for mask_label, mask_lsoa in masks.items():
                 # Pick out just these LSOA:
-                if (region_type == 'national') & (mask_label == 'all_patients'):
+                if ((region_type == 'national') &
+                        (mask_label == 'all_patients')):
                     mask_combo = slice(None)
                 elif (region_type == 'national'):
                     mask_combo = mask_lsoa
@@ -1723,7 +1724,8 @@ def calculate_network_usual_care(df_network, dict_pops_u):
                                 ).sum().reset_index()
     df_net_u.insert(0, 'nearest_unit', df_net_u['nearest_ivt_unit'])
     df_net_u = df_net_u.rename(columns={'nearest_ivt_unit': 'first_unit'})
-    df_net_u['admissions_catchment_to_first_unit'] = df_net_u['admissions'].copy()
+    df_net_u['admissions_catchment_to_first_unit'] = (
+        df_net_u['admissions'].copy())
     # Only include transfers for patients who receive MT
     # and who aren't already at an MT unit.
     df_net_u['admissions_first_unit_to_transfer'] = (
@@ -1732,7 +1734,8 @@ def calculate_network_usual_care(df_network, dict_pops_u):
         df_net_u['admissions_first_unit_to_transfer'].copy())
     mask_no_transfer = (df_net_u['first_unit'] == df_net_u['transfer_unit'])
     df_net_u.loc[mask_no_transfer, 'admissions_first_unit_to_transfer'] = 0.0
-    df_net_u['nearest_unit'] = 'nearest_' + df_net_u['nearest_unit'].astype(str)
+    df_net_u['nearest_unit'] = (
+        'nearest_' + df_net_u['nearest_unit'].astype(str))
     return df_net_u
 
 
@@ -1767,7 +1770,8 @@ def calculate_network_redir(df_network, dict_pops_r):
     df_net_no_redir = df_net_no_redir.drop('nearest_mt_unit', axis='columns')
     df_net_no_redir = df_net_no_redir.groupby(
         ['nearest_ivt_unit', 'transfer_unit']).sum().reset_index()
-    df_net_no_redir.insert(0, 'nearest_unit', df_net_no_redir['nearest_ivt_unit'])
+    df_net_no_redir.insert(0, 'nearest_unit',
+                           df_net_no_redir['nearest_ivt_unit'])
     df_net_no_redir = df_net_no_redir.rename(
         columns={'nearest_ivt_unit': 'first_unit'})
     df_net_no_redir['admissions_catchment_to_first_unit'] = (
@@ -1788,8 +1792,10 @@ def calculate_network_redir(df_network, dict_pops_r):
     df_net_redir['admissions'] *= (1.0 - prop_no_redir)
     df_net_redir['admissions_catchment_to_first_unit'] = (
         df_net_redir['admissions'].copy())
-    df_net_redir.insert(0, 'nearest_unit', df_net_redir['nearest_ivt_unit'])
-    df_net_redir = df_net_redir.rename(columns={'nearest_mt_unit': 'first_unit'})
+    df_net_redir.insert(0, 'nearest_unit',
+                        df_net_redir['nearest_ivt_unit'])
+    df_net_redir = df_net_redir.rename(
+        columns={'nearest_mt_unit': 'first_unit'})
     df_net_redir = df_net_redir.drop('transfer_unit', axis='columns')
     df_net_redir = df_net_redir.drop('nearest_ivt_unit', axis='columns')
     df_net_redir['thrombectomy'] = (
@@ -1804,7 +1810,8 @@ def calculate_network_redir(df_network, dict_pops_r):
     # Combine data for patients whose nearest unit is MT:
     df_net_r = df_net_r.groupby(
         ['nearest_unit', 'first_unit', 'transfer_unit']).sum().reset_index()
-    df_net_r['nearest_unit'] = 'nearest_' + df_net_r['nearest_unit'].astype(str)
+    df_net_r['nearest_unit'] = (
+        'nearest_' + df_net_r['nearest_unit'].astype(str))
     return df_net_r
 
 
