@@ -6,6 +6,7 @@ import numpy as np
 import os
 import pandas as pd
 from matplotlib.pyplot import get_cmap
+import cmasher as cmr
 
 from utilities.utils import set_rerun_map
 
