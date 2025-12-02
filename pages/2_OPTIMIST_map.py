@@ -840,10 +840,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     df_unit_admissions = df_unit_admissions.fillna(0.0)
     # Combine admissions and transfer values:
     for s in ['usual_care', 'redir']:
+        c0 = f'admissions_catchment_to_first_unit_{s}'
+        c1 = f'admissions_first_unit_to_transfer_{s}'
         df_unit_admissions[f'admissions_combo_{s}'] = (
-            df_unit_admissions[[f'admissions_catchment_to_first_unit_{s}',
-                                f'admissions_first_unit_to_transfer_{s}']]
-            .apply(lambda x: f'{x[0]:7.2f}   ({x[1]:+7.2f})', axis=1)
+            [f'{a:7.2f}    ({b:+7.2f})' for a, b in
+             zip(df_unit_admissions[c0], df_unit_admissions[c1])]
         )
     df_unit_admissions = df_unit_admissions.sort_values('first_unit')
     df_unit_admissions = df_unit_admissions.set_index('first_unit')
