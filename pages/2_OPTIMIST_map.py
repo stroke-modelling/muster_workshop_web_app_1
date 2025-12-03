@@ -597,7 +597,25 @@ with containers['region_summaries']:
             st.session_state['df_subgroups'].loc[subgroup, 'label'],
             expanded=(True if s == 0 else False)
             )
+        # Set up which bars to show on the mRS bar charts:
+        options_labels = {
+            'usual_care': 'Usual care',
+            'redir_allowed': 'Redirection available',
+            'redir_accept': 'Accept redirection',
+            'no_treatment': 'No treatment',
+        }
+
+        def f(label):
+            """Display subgroup with nice name instead of key."""
+            return options_labels[label]
         with containers[f'{subgroup}_top']:
+            st.multiselect(
+                'Scenarios to display on the bar chart',
+                options_labels.keys(),
+                format_func=f,
+                default=['usual_care', 'redir_allowed', 'no_treatment'],
+                key=f'mrs_dist_options_{subgroup}'
+            )
             containers[subgroup] = st.container(horizontal=True)
 
 cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
@@ -957,9 +975,12 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 subgroup]['usual_care'][lsoa_subset]
             df_r = st.session_state['dict_highlighted_region_outcomes'][
                 subgroup]['redir_allowed'][lsoa_subset]
+            df_a = st.session_state['dict_highlighted_region_outcomes'][
+                subgroup]['redir_accepted_only'][lsoa_subset]
             try:
                 df_u = df_u.loc[region]
                 df_r = df_r.loc[region]
+                df_a = df_a.loc[region]
                 selected_region_is_mt_unit = False
             except KeyError:
                 st.markdown('No data available.')
@@ -990,6 +1011,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         'colour': '#56b4e9',
                         'label': 'Redirection available'
                     },
+                    'redir_accept': {
+                        'noncum': df_a[cols_mrs_noncum],
+                        'cum': df_a[cols_mrs],
+                        'std': df_a[cols_mrs_std],
+                        'colour': '#009e73',
+                        'label': 'Accept redirection'
+                    },
                     'no_treatment': {
                         'noncum': df_no_treat[cols_mrs_noncum],
                         'cum': df_no_treat[cols_mrs],
@@ -997,7 +1025,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         'label': 'No treatment'
                     },
                 }
-                reg.plot_mrs_bars(mrs_lists_dict,
+                mrs_lists_dict_to_show = {}
+                for k in st.session_state[f'mrs_dist_options_{subgroup}']:
+                    mrs_lists_dict_to_show[k] = mrs_lists_dict[k]
+                reg.plot_mrs_bars(mrs_lists_dict_to_show,
                                   key='_'.join([region, subgroup]))
 
 

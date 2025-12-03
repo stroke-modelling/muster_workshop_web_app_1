@@ -214,7 +214,7 @@ def select_subgroups_for_results():
         'Subgroups to calculate outcomes for',
         dict_labels.keys(),
         format_func=f,
-        default='nlvo_lvo_ivt_mt_ivt_mt',
+        default='lvo_mt',
         on_change=set_inputs_changed
     )
     df_subgroups = df_subgroups.loc[list_selected_subgroups]
