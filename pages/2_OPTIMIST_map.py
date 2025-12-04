@@ -567,7 +567,7 @@ if st.session_state['rerun_region_summaries']:
                 st.session_state['dict_outcomes'],
                 st.session_state[
                     'dict_highlighted_region_unique_treatment_times'],
-                df_highlighted_regions,
+                use_highlighted_teams=True,
                 _log_loc=containers['log_regions']
                 )
         )
