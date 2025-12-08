@@ -319,7 +319,8 @@ df_lsoa_units_times = reg.calculate_extra_muster_travel_times(
 
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
-        df_pathway_steps, ['usual_care', 'msu'],
+        df_pathway_steps['value'],
+        ['usual_care', 'msu'],
         _log_loc=containers['log_pathway']
         )
     )

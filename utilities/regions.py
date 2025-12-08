@@ -121,7 +121,7 @@ def load_lsoa_region_lookups(keep_only_england=True):
         df_lsoa_regions, df_lsoa_ambo[['LSOA11NM', 'ambo22']],
         left_on='lsoa', right_on='LSOA11NM', how='left'
         ).drop('LSOA11NM', axis='columns')
-    
+
     if keep_only_england:
         # Only English regions are labelled SICBL.
         mask_eng = df_lsoa_regions['region_type'] == 'SICBL'
@@ -1061,11 +1061,17 @@ def plot_mrs_bars_plus_cumulative(
 
     Inputs
     ------
-    mrs_lists_dict - dict,
-    title_text -  str = '',
-    return_fig -  bool = False,
-    key - str = None
+    mrs_lists_dict - dict. Data and kwargs for each set of data
+                     to be plotted. Keys include 'noncum', 'cum',
+                     'std', 'label', 'colour', 'linestyle'.
+    title_text     - str. Top heading for the figure.
+    return_fig     - bool. Whether to call return the figure or
+                     call plotly_chart here.
+    key            - str. Key for plotly_chart widget.
 
+    Returns
+    -------
+    fig - go.Figure. Plotly figure object.
     """
     # fig = go.Figure()
     subplot_titles = [
@@ -1156,9 +1162,17 @@ def plot_mrs_bars_plus_cumulative(
             )
 
 
-def plot_mrs_bars(
-        mrs_lists_dict, key=None
-        ):
+def plot_mrs_bars(mrs_lists_dict: dict, key: str = None):
+    """
+    Plot mRS distribution bar chart.
+
+    Inputs
+    ------
+    mrs_lists_dict - dict. Data and kwargs for each set of data
+                     to be plotted. Keys include 'noncum', 'cum',
+                     'std', 'label', 'colour', 'linestyle'.
+    key            - str. Key for plotly_chart widget.
+    """
     fig = go.Figure()
 
     for label, mrs_dict in mrs_lists_dict.items():
@@ -1233,6 +1247,16 @@ def plot_mrs_bars(
 
 
 def select_full_data_type():
+    """
+    Wrapper to select "full results" region type.
+
+    This wrapper contains nicer display labels for the regions.
+
+    Returns
+    -------
+    full_data_type - str. User-selected column name of region type to
+                     gather the full results by.
+    """
     region_types = ['lsoa', 'national', 'icb', 'isdn', 'ambo22',
                     'nearest_ivt_unit']
     dict_labels = {
@@ -1259,8 +1283,20 @@ def select_full_data_type():
 
 
 def plot_basic_travel_options():
+    """
+    Simple flowchart of generic patient locations and arrows.
+
+    This version is for OPTIMIST. It shows the patient's starting
+    location, the IVT-only unit, and an MT unit.
+
+                       o IVT unit
+                     /  \\_
+                    /     \\_
+    Patient start 🏠 ------> * MT unit
+    """
     fig = go.Figure()
 
+    # Setup for marker locations and spacing:
     t = 2.0
     label_y_off = 0.5
     t_max = t*np.cos(45*np.pi/180.0)
@@ -1277,6 +1313,7 @@ def plot_basic_travel_options():
         hoverinfo='skip',
     )
 
+    # Arrows:
     fig.add_trace(go.Scatter(
         x=[coords_dict['patient'][0], coords_dict['psc'][0],
            coords_dict['csc'][0],],
@@ -1291,6 +1328,8 @@ def plot_basic_travel_options():
         **arrow_kwargs,
         line=dict(color='#ff4b4b', width=10),
     ))
+
+    # Units and start location markers:
     fig.add_trace(go.Scatter(
         x=[coords_dict['patient'][0]],
         y=[coords_dict['patient'][1]],
@@ -1322,6 +1361,7 @@ def plot_basic_travel_options():
         showlegend=False,
     ))
 
+    # Text labels:
     fig.add_annotation(
         y=coords_dict['patient'][1] - label_y_off,
         x=coords_dict['patient'][0],
@@ -1391,8 +1431,26 @@ def plot_basic_travel_options():
 
 
 def plot_basic_travel_options_msu():
+    """
+    Simple flowchart of generic patient locations and arrows with MSU.
+
+    This version is for MUSTER. It shows the patient's starting
+    location, the IVT-only unit, an MT unit, and the ambulance or MSU
+    starting location.
+
+                                    o IVT unit
+                                  /  \\_
+                                 /     \\_
+    Ambulance start 🚑 ------> 🏠 ------> * MT unit
+                         Patient location
+
+
+          MSU start 🚑 ------> 🏠 ------> * MT unit
+                         Patient location
+    """
     fig = go.Figure()
 
+    # Setup for marker locations and spacing:
     t = 2.0
     label_y_off = 0.5
     t_max = t*np.cos(45*np.pi/180.0)
@@ -1410,6 +1468,8 @@ def plot_basic_travel_options_msu():
         hoverinfo='skip',
     )
 
+    # ----- Top graph, usual care -----
+    # Arrows:
     fig.add_trace(go.Scatter(
         x=[coords_dict['ambo'][0], coords_dict['patient'][0],
            coords_dict['psc'][0], coords_dict['csc'][0],],
@@ -1424,6 +1484,7 @@ def plot_basic_travel_options_msu():
         **arrow_kwargs,
         line=dict(color='#ff4b4b', width=10),
     ))
+    # Location markers:
     fig.add_trace(go.Scatter(
         x=[coords_dict['ambo'][0]],
         y=[coords_dict['ambo'][1]],
@@ -1464,7 +1525,7 @@ def plot_basic_travel_options_msu():
         hoverinfo='skip',
         showlegend=False,
     ))
-
+    # Text labels:
     fig.add_annotation(
         y=coords_dict['ambo'][1] - label_y_off,
         x=coords_dict['ambo'][0],
@@ -1498,13 +1559,14 @@ def plot_basic_travel_options_msu():
         yanchor='top',
         )
 
-    # MSU version:
+    # ----- Bottom graph, MSU version -----
     msu_offset = 4
     coords_dict = {
         'msu': [-t*1.2, -msu_offset],
         'patient': [0, -msu_offset],
         'csc': [t*1.2, -msu_offset],
     }
+    # Arrows:
     # Separate arrow traces to break the line at the middle marker:
     fig.add_trace(go.Scatter(
         x=[coords_dict['patient'][0], coords_dict['csc'][0],],
@@ -1518,6 +1580,7 @@ def plot_basic_travel_options_msu():
         **arrow_kwargs,
         line=dict(color='#ff4b4b', width=10),
     ))
+    # Location markers:
     fig.add_trace(go.Scatter(
         x=[coords_dict['msu'][0]],
         y=[coords_dict['msu'][1]],
@@ -1548,7 +1611,7 @@ def plot_basic_travel_options_msu():
         hoverinfo='skip',
         showlegend=False,
     ))
-
+    # Text labels:
     fig.add_annotation(
         y=coords_dict['msu'][1] - label_y_off,
         x=coords_dict['msu'][0],
@@ -1619,33 +1682,66 @@ def plot_basic_travel_options_msu():
 
 
 def gather_this_region_travel_times(
-        dict_highlighted_region_travel_times,
-        lsoa_subset,
-        region,
-        time_cols=['usual_care_ivt', 'usual_care_mt', 'redirection_mt'],
+        d: dict,
+        lsoa_subset: str,
+        region: str,
+        time_cols: list = [
+            'usual_care_ivt', 'usual_care_mt', 'redirection_mt'],
         ):
+    """
+    Gather binned travel times for this region for the histogram.
+
+    Inputs
+    ------
+    d           - dict. Dict layers for LSOA subset, travel time.
+                  Bottom layer is a pd.DataFrame with one column per
+                  region.
+    lsoa_subset - str. Whether to use all patients or only patients
+                  whose nearest unit does not provide MT.
+    region      - str. Which highlighted region to pick out the times
+                  for.
+    time_cols   - list. Source columns for the travel time data.
+
+    Returns
+    -------
+    time_bins        - np.array. Bins that the times were sorted into.
+    admissions_times - list. One set of normalised binned times for
+                       each of the requested time columns for this
+                       region.
+    """
     time_bins = np.arange(0, 185, 5)
     admissions_times = []
     for t in time_cols:
-        times = dict_highlighted_region_travel_times[
-            lsoa_subset][t][region].dropna()
+        times = d[lsoa_subset][t][region].dropna()
         a_times, _ = np.histogram(
             times.index, bins=time_bins, weights=times.values)
+        # Normalise the bins here rather than with density kwarg
+        # to prevent unexpected result due to the weights.
         a_times /= a_times.sum()
         admissions_times.append(a_times)
     return time_bins, admissions_times
 
 
 def plot_travel_times(
-        times,
-        admissions_lists,
-        subplot_titles=[
-            'To nearest unit',
-            'To nearest then MT unit',
-            'To MT unit directly'
-            ]
+        times: list,
+        admissions_lists: list,
+        subplot_titles: list = []
         ):
-    fig = make_subplots(rows=3, cols=1, subplot_titles=subplot_titles)
+    """
+    Plot several histograms of travel times in a vertical stack.
+
+    Inputs
+    ------
+    times            - list. Bin edges.
+    admissions_lists - list. List of bin heights for each set of times.
+    subplot_titles   - list. Titles to display above the subplots.
+    """
+    if len(subplot_titles) < 1:
+        subplot_titles = ['To nearest unit', 'To nearest then MT unit',
+                          'To MT unit directly']
+
+    fig = make_subplots(rows=len(admissions_lists), cols=1,
+                        subplot_titles=subplot_titles)
     for i, admissions in enumerate(admissions_lists):
         fig.add_trace(go.Bar(
             x=times,
@@ -1654,6 +1750,7 @@ def plot_travel_times(
             marker_color='#0072b2',
             showlegend=False
         ), row=i+1, col=1)
+    # Layout:
     fig.update_yaxes(title_text='% patients', row=2, col=1)
     fig.update_xaxes(title_text='Travel time (minutes)', row=3, col=1)
     ticks = np.arange(0, 185, 30)
@@ -1685,75 +1782,28 @@ def plot_travel_times(
     st.plotly_chart(fig, config=plotly_config, width='content')
 
 
-# def calculate_average_treatment_times_highlighted_regions(
-#         dict_region_admissions_unique,
-#         region_types,
-#         df_highlight,
-#         _log=True, _log_loc=None,
-#         ):
-#     """
-#     dict_region_admissions_unique_treatment_times
-
-#     If highlighted teams are given, calculate only the data for
-#     those teams and store the mixed region types in a single dataframe.
-#     """
-#     d = {}
-#     for lsoa_subset, region_dicts in (
-#             dict_region_admissions_unique.items()
-#             ):
-#         list_df_h = []
-#         for region_type in region_types:
-#             admissions_df = region_dicts[region_type]
-#             # Limit to only the highlighted teams:
-#             mask = (df_highlight['region_type'] == region_type)
-#             teams_here = df_highlight.loc[mask, 'highlighted_region']
-#             sc = ((region_type == 'nearest_ivt_unit') &
-#                   (lsoa_subset == 'nearest_unit_no_mt'))
-#             if sc:
-#                 # Special case: expect that CSCs will be missing
-#                 # for the lsoa subset of only areas whose nearest
-#                 # unit does not provide MT. So drop CSCs here.
-#                 teams_removed = list(
-#                     set(teams_here) -
-#                     set(list(admissions_df.columns))
-#                     )
-#                 teams_here = [t for t in teams_here if t in
-#                               admissions_df.columns]
-#             else:
-#                 pass
-#             admissions_df = admissions_df[teams_here]
-
-#             # Gather weighted treatment times for these teams:
-#             df = calculate_average_treatment_times(admissions_df, _log=False)
-#             if sc:
-#                 # Placeholder data for CSCs.
-#                 for t in teams_removed:
-#                     df.loc[t] = pd.NA
-#             else:
-#                 pass
-#             list_df_h.append(df)
-
-#         # Combine all region types into one dataframe:
-#         df_h = pd.concat(list_df_h, axis='rows')
-#         d[lsoa_subset] = df_h
-#     if _log:
-#         p = 'Found average treatment times for each highlighted region.'
-#         print_progress_loc(p, _log_loc)
-#     return d
-
-
 def calculate_average_treatment_times_highlighted_regions(
-        dict_region_admissions_unique,
-        _log=True, _log_loc=None,
-        ):
+        d_in: dict, _log: bool = True, _log_loc: st.container = None):
     """
-    dict_region_admissions_unique_treatment_times
+    Wrapper for calculating all average treatment times in dict.
 
-    If highlighted teams are given, calculate only the data for
-    those teams and store the mixed region types in a single dataframe.
+    Inputs
+    ------
+    d_in     - dict. Contains keys for the LSOA subsets (all patients
+               and only patients whose nearest unit does not have MT),
+               and those values are pd.DataFrame of number of
+               admissions for each treatment time for the selected
+               regions.
+    _log     - bool. Whether to print log message.
+    _log_loc - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    d - dict. One key per LSOA subset, contents are pd.DataFrame of
+        average treatment times per region.
     """
     d = {}
-    for lsoa_subset, admissions_df in dict_region_admissions_unique.items():
+    for lsoa_subset, admissions_df in d_in.items():
         # Gather weighted treatment times for these teams:
         df = calculate_average_treatment_times(admissions_df, _log=False)
         d[lsoa_subset] = df
@@ -1764,12 +1814,26 @@ def calculate_average_treatment_times_highlighted_regions(
 
 
 def calculate_average_treatment_times(
-        df_in,
-        _log=True,
-        _log_loc=None
+        df_in: pd.DataFrame,
+        _log: bool = True,
+        _log_loc: st.container = None
         ):
     """
-    df_regions contains admission numbers for unique treatment times.
+    Weighted average of treatment times for LSOA in each region.
+
+    Inputs
+    ------
+    df_in    - pd.DataFrame. Each column is named for a region and
+               has values of number of admissions for each unique
+               treatment time in the index.
+    _log     - bool. Whether to print log message.
+    _log_loc - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    df_out - pd.DataFrame. Each row is one of the regions (columns)
+             in df_in. Columns for weighted mean and standard deviation
+             of mRS score across all LSOA in the region.
     """
     time_cols = list(df_in.index.names)
     regions = list(df_in.columns)
@@ -1802,7 +1866,21 @@ def calculate_average_treatment_times(
     return df_out
 
 
-def make_average_treatment_time_df(s_treats, scens_all_labels=None):
+def make_average_treatment_time_df(
+        s_treats: pd.Series, scens_all_labels: dict = None):
+    """
+    Gather average treatment times into a DataFrame for display.
+
+    Inputs
+    ------
+    s_treats         - pd.Series. Treatment times to show here.
+    scens_all_labels - dict. Keys for the scenarios to include here
+                       and values for the display names.
+
+    Returns
+    -------
+    df_treats - pd.DataFrame. The gathered data.
+    """
     treats_labels = {
         'ivt': 'IVT',
         'mt': 'MT'
@@ -1815,13 +1893,18 @@ def make_average_treatment_time_df(s_treats, scens_all_labels=None):
             }
     else:
         pass
+    # Check that all of the requested data exists:
     scens_to_use = [s for s in scens_all_labels.keys()
                     if any([v.startswith(s) for v in s_treats.keys()])]
     scens_labels = dict([(k, scens_all_labels[k]) for k in scens_to_use])
+    # Place results in here:
     arr_treats = []
     for scen in scens_labels.keys():
+        # Data for this row of dataframe will go in here:
         scen_treats = []
         for treat in treats_labels.keys():
+            # If the time exists, format it nicely.
+            # Otherwise store a placeholder string.
             try:
                 t_mean = s_treats[f'{scen}_{treat}']
                 t_mean = make_formatted_time_str(t_mean)
@@ -1835,6 +1918,7 @@ def make_average_treatment_time_df(s_treats, scens_all_labels=None):
                 t_str = '\-'
             scen_treats.append(t_str)
         arr_treats.append(scen_treats)
+    # Convert results to dataframe with labels for displaying:
     df_treats = pd.DataFrame(
         arr_treats,
         columns=treats_labels.values(),
@@ -1843,21 +1927,48 @@ def make_average_treatment_time_df(s_treats, scens_all_labels=None):
     return df_treats
 
 
-def calculate_no_treatment_mrs(pops, dict_no_treatment_outcomes):
+def calculate_no_treatment_mrs(pops: pd.DataFrame,
+                               dict_no_treatment_outcomes: dict):
+    """
+    Calculate no-treatment mRS distribution for this patient mix.
+
+    Combine the nLVO and LVO no-treatment distributions in the
+    proportions given in the population data.
+
+    Inputs
+    ------
+    pops                       - pd.DataFrame. Contains the numbers of
+                                 patients with nLVO and with LVO.
+    dict_no_treatment_outcomes - dict. Contains no-treatment mRS dists
+                                 for nLVO and LVO patients separately.
+
+    Returns
+    -------
+    df_no_treat - pd.Series. Mixed no-treatment mRS distribution.
+    """
     cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
     cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
 
+    # Pick out stroke type proportions:
     prop_nlvo = (
         pops[pops.index.str.startswith('nlvo')].sum())
+    prop_lvo = (
+        pops[pops.index.str.startswith('lvo')].sum())
+    prop_nlvo_lvo = (
+        pops[pops.index.str.startswith('lvo') |
+             pops.index.str.startswith('nlvo')].sum())
+
+    # Weighted sum of mRS distributions:
     df_no_treat = (
-        (prop_nlvo *
+        ((prop_nlvo / prop_nlvo_lvo) *
             dict_no_treatment_outcomes['nlvo_no_treatment']) +
-        ((1.0 - prop_nlvo) *
+        ((prop_lvo / prop_nlvo_lvo) *
             dict_no_treatment_outcomes['lvo_no_treatment'])
     )
     df_no_treat[cols_mrs_noncum] = np.diff(df_no_treat[cols_mrs], prepend=0.0)
     # Round values:
     df_no_treat[cols_mrs_noncum] = np.round(df_no_treat[cols_mrs_noncum], 3)
+    # Convert to series:
     df_no_treat = df_no_treat.squeeze()
     return df_no_treat
 
@@ -1872,7 +1983,34 @@ def find_unit_admissions_by_region(
         _log_loc=None
         ):
     """
-    region_types = ['national', 'icb', 'isdn', 'ambo22', 'nearest_ivt_unit']
+    Find number of admissions by selected region.
+
+    Inputs
+    ------
+    df_lsoa_units_times - pd.DataFrame. Each LSOA's chosen unit and
+                          annual admissions.
+    prop_of_all_stroke  - float. Scale factor for admissions numbers.
+                          e.g. if this onion layer contains 40% of all
+                          stroke, then scale admissions to 40%.
+    region_types        - list. Region types to include. Options are:
+                          'national', 'icb', 'isdn', 'ambo22',
+                          'nearest_ivt_unit'.
+    df_highlight        - pd.DataFrame or None. If given, only find
+                          admissions for highlighted regions. If None,
+                          find admissions for all regions for the
+                          selected region types.
+    keep_only_england   - bool. Whether to limit regions to England.
+    _log                - bool. Whether to print log message.
+    _log_loc            - st.container or None. Where to print log
+                          message.
+
+    Returns
+    -------
+    df_admissions      - pd.DataFrame. One row per region, columns for
+                         number of admissions for each LSOA subset.
+    df_unit_admissions - pd.DataFrame. Number of admissions to each
+                         stroke unit from each selected region. Columns
+                         are split by LSOA subset.
     """
     # Load in LSOA-region lookup:
     df_lsoa_regions = load_lsoa_region_lookups(keep_only_england)
@@ -1949,7 +2087,23 @@ def find_unit_admissions_by_region(
     return df_admissions, df_unit_admissions
 
 
-def calculate_network_usual_care(df_network, dict_pops_u):
+def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict):
+    """
+    Calculate tracked admissions across units in usual care.
+
+    Inputs
+    ------
+    df_network  - pd.DataFrame. How many patients go to each
+                  combination of stroke units for this region?
+    dict_pops_u - dict. Proportions of patients with each stroke type
+                  and treatment combination.
+
+    Returns
+    -------
+    df_net_u - pd.DataFrame. Tracked numbers of patients at each
+               combination of first and transfer units, split by
+               how many patients receive thrombectomy.
+    """
     prop_mt_usual_care = (
         dict_pops_u
         .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
@@ -1980,7 +2134,24 @@ def calculate_network_usual_care(df_network, dict_pops_u):
     return df_net_u
 
 
-def calculate_network_redir(df_network, dict_pops_r):
+def calculate_network_redir(df_network: pd.DataFrame, dict_pops_r: dict):
+    """
+    Calculate tracked admissions across units in redirection scenario.
+
+    Inputs
+    ------
+    df_network  - pd.DataFrame. How many patients go to each
+                  combination of stroke units for this region?
+    dict_pops_r - dict. Proportions of patients with each stroke type
+                  and treatment combination.
+
+    Returns
+    -------
+    df_net_r - pd.DataFrame. Tracked numbers of patients at each
+               combination of first, redirected, and transfer units,
+               split by how many patients receive thrombectomy.
+    """
+    # Pick out proportions:
     prop_no_redir = (
         dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
         ['full_population'].sum()
@@ -1999,11 +2170,12 @@ def calculate_network_redir(df_network, dict_pops_r):
         dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
         ['full_population'].sum()
     )
-    # Redirection scenario:
+    # Set up results df:
     df_net_r = df_network.copy()
     # Convert unit columns to generic strings:
     cols_units = [c for c in df_net_r.columns if 'unit' in c]
     df_net_r[cols_units] = df_net_r[cols_units].astype('string')
+
     # No redir, similar to usual care above:
     df_net_no_redir = df_net_r.copy()
     df_net_no_redir['admissions'] *= prop_no_redir
@@ -2028,6 +2200,7 @@ def calculate_network_redir(df_network, dict_pops_r):
     df_net_no_redir.loc[mask_no_transfer,
                         'admissions_first_unit_to_transfer'] = 0.0
     df_net_no_redir['redirected'] = 0
+
     # Redirected:
     df_net_redir = df_net_r.copy()
     df_net_redir['admissions'] *= (1.0 - prop_no_redir)
@@ -2046,6 +2219,7 @@ def calculate_network_redir(df_network, dict_pops_r):
     df_net_redir['transfer_unit'] = df_net_redir['first_unit']
     df_net_redir['admissions_first_unit_to_transfer'] = 0.0
     df_net_redir['redirected'] = 1
+
     # Combine redir and no redir:
     df_net_r = pd.concat((df_net_redir, df_net_no_redir), axis='rows')
     # Combine data for patients whose nearest unit is MT:
@@ -2056,7 +2230,23 @@ def calculate_network_redir(df_network, dict_pops_r):
     return df_net_r
 
 
-def calculate_region_treat_stats(dict_pops_u, dict_pops_r, s_admissions):
+def calculate_region_treat_stats(
+        dict_pops_u: dict, dict_pops_r: dict, s_admissions: pd.Series):
+    """
+    Calculate loads of statistics for displaying metrics.
+
+    Inputs
+    ------
+    dict_pops_u  - dict. Proportions of patients with each stroke type
+                   and treatment combination in usual care.
+    dict_pops_r  - dict. Proportions of patients with each stroke type
+                   and treatment combination in redirection scenario.
+    s_admissions - pd.Series. Numbers of admissions.
+
+    Returns
+    -------
+    d - dict. Stores the calculated proportions.
+    """
     d = {}
     # Numbers redirected:
     d['prop_mt_usual_care'] = (

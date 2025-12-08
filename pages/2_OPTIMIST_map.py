@@ -338,7 +338,8 @@ df_pathway_steps = pathway.select_pathway_timings(
     )
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
-        df_pathway_steps, ['usual_care', 'prehospdiag'],
+        df_pathway_steps['value'],
+        ['usual_care', 'prehospdiag'],
         _log_loc=containers['log_pathway']
         )
     )
