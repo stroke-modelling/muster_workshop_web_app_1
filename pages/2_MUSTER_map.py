@@ -184,25 +184,36 @@ with containers['units_text']:
 We assume that all of the MT units also provide IVT.
 
 In usual care:
-+ patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
-+ other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
++ patients whose nearest unit has MT always travel directly to an MT
+unit (:primary[red path]).
++ other patients travel first to the IVT unit and then if necessary are
+transferred to the MT unit (:grey[grey path]).
 
-With a Mobile Stroke Unit, the ambulance travels to the patient (:primary[red path]).
-The patient has a scan in the van, receives IVT if necessary, and is transported to the MT unit (:primary[red path]).
+With a Mobile Stroke Unit, the ambulance travels to the patient
+(:primary[red path]).
+The patient has a scan in the van, receives IVT if necessary, and is
+transported to the MT unit (:primary[red path]).
 
 The MSU can mean faster access to IVT when the travel time is reduced.
-It also means that patients who require MT can go directly to the MT unit instead of extra travel time and delays associated with the transfer.
+It also means that patients who require MT can go directly to the MT
+unit instead of extra travel time and delays associated with the
+transfer.
 ''')
 with containers['pathway_text']:
     st.markdown('''
-The time to treatment depends on the travel times and whether the MSU was used.
+The time to treatment depends on the travel times and whether the MSU
+was used.
 
 Assumptions:  
 1. The MSU is based at a stroke unit.
 1. The MSU always transfers patients to an MT unit.
-1. The MSU gives thrombolysis on scene and so spends longer on-scene than when IVT is not given.
-2. All stroke units share the same time from arrival to delivery of IVT.
-3. The time from arrival to delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
+1. The MSU gives thrombolysis on scene and so spends longer on-scene
+than when IVT is not given.
+2. All stroke units share the same time from arrival to delivery of
+IVT.
+3. The time from arrival to delivery of MT can be different for
+patients admitted directly to the MT unit and for patients who received
+a transfer.
 4. All other pathway timings are the same in every scenario.
 ''')
 with containers['onion_text']:
@@ -214,7 +225,8 @@ These proportions can be changed in the following table:
 ''')
 with containers['pop_plots']:
     st.markdown('''
-We calculate six base outcomes. These can be combined in different proportions to find the outcomes for a selected subgroup of patients.
+We calculate six base outcomes. These can be combined in different
+proportions to find the outcomes for a selected subgroup of patients.
 ''')
 
 #MARK: Setup

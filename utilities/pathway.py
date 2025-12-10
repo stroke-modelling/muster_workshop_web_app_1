@@ -5,7 +5,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from utilities.utils import print_progress_loc, set_inputs_changed
+from utilities.utils import print_progress_loc, set_inputs_changed, \
+    make_formatted_time_str
 import utilities.plot_timeline as timeline
 
 
@@ -481,9 +482,9 @@ def draw_timeline(
             t = series_treatment_times_without_travel[s]
             # Convert minutes to hour-minute strings:
             df_treats.loc[i, 'min'] = t
-            df_treats.loc[i, 'hr_min'] = timeline.make_formatted_time_str(t)
+            df_treats.loc[i, 'hr_min'] = make_formatted_time_str(t)
         else:
             df_treats.loc[i, 'min'] = np.NaN
             df_treats.loc[i, 'hr_min'] = '-'
 
-    timeline.draw_timeline(df_pathway_steps, df_treats, use_msu=use_msu)
+    timeline.make_timeline_fig(df_pathway_steps, df_treats, use_msu=use_msu)

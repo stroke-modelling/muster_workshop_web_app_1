@@ -6,16 +6,26 @@ import numpy as np
 import os
 import pandas as pd
 from matplotlib.pyplot import get_cmap
-import cmasher as cmr
+import cmasher as cmr  # for extra cmaps in plt.get_cmap()
 
 from utilities.utils import set_rerun_map
 
 
-def load_colour_limits(outcome):
+def load_colour_limits(outcome: str):
     """
-    Load in colour limits from file.
+    Load in colour limits for outcome maps from file.
 
-    Dictionary contents: vmin, vmax, step_size.
+    Inputs
+    ------
+    outcome - str. Name of the outcome type to load limits for.
+              Either 'utility_shift' or 'mrs_0-2'.
+
+    Returns
+    -------
+    dict_colours      - dict. Contains vmin and vmax for single
+                        outcome map.
+    dict_colours_diff - dict. Contains vmin and vmax for difference
+                        outcome map.
     """
     df = pd.read_csv(os.path.join('utilities', 'colour_limits.csv'),
                      index_col=0)
@@ -31,13 +41,26 @@ def load_colour_limits(outcome):
     return dict_colours, dict_colours_diff
 
 
-def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
+def make_colourbar_display_string(
+        cmap_name: str, char_line: str = '█', n_lines: int = 20):
     """
     Make a long string with LaTeX-formatted colours from a cmap.
 
     e.g. have a string of these blocks ████████████████████ with
     each block a different colour. Sample the colours from the
     colour map.
+
+    Inputs
+    ------
+    cmap_name - str. Name of the plt or cmasher colour map to draw.
+    char_line - str. The line or block character to draw, e.g. █
+    n_lines   - int. How many characters to draw.
+
+    Returns
+    -------
+    line_str - str. A string of length n_lines containing the char_line
+               character in a uniform sampling of colours from
+               cmap_name.
     """
     try:
         # Matplotlib colourmap:
@@ -63,14 +86,37 @@ def make_colourbar_display_string(cmap_name, char_line='█', n_lines=20):
 
 
 def make_colour_list(
-        cmap_name='viridis',
-        n_colours=101,
-        remove_white=False,
-        vmax=1,
-        vmin=-1
+        cmap_name: str = 'viridis',
+        n_colours: int = 101,
+        remove_white: bool = False,
+        vmax: float = 1.0,
+        vmin: float = -1.0
         ):
     """
-    Pick out a list of rgba strings from a colour map.
+    Pick out a list of rgba strings from part of a colour map.
+
+    The sanity checks here work best for diverging colour maps.
+    This function checks the relative values of vmin and vmax to
+    check whether to use: the full cmap; only the left side or only
+    the right side; or a portion of the cmap where the central value
+    of the full cmap is not the central value of the portion.
+    e.g. full cmap: █▓▒░░▒▓█, portion ▒░░▒▓██
+
+    Inputs
+    ------
+    cmap_name    - str. Name of colour map to sample. Can use any
+                   pyplot or cmasher name. Diverging cmaps work best.
+    n_colours    - int. How many colours to sample.
+    remove_white - bool. Whether to remove pure white colour from
+                   resulting list. Had some unexpected plotly
+                   behaviour with white while testing.
+    vmax         - float. Maximum value in the plotting range.
+    vmin         - float. Minimum value in the plotting range.
+
+    Returns
+    -------
+    colour_list - list. List of rgba() colour strings from the sampled
+                  portion of the cmap for cmap_name.
     """
     # Get colour values:
     try:
@@ -84,41 +130,41 @@ def make_colour_list(
     # If vmax is +ve and vmin is -ve, use both halves of the diverging
     # colourmap. If both are +ve, use only the top half.
     if vmin == -vmax:
-        # Sample the full diverging colourmap.
+        # █▓▒░░▒▓█ Sample the full diverging colourmap.
         bmin = 0.0
         bmax = 1.0
     elif np.sign(vmin) == -np.sign(vmax):
         # vmin is -ve, vmax is +ve, but zero is not halfway.
         if np.abs(vmax) > np.abs(vmin):
-            # Use the full right-hand-side of the cmap
+            # ▒░░▒▓██ Use the full right-hand-side of the cmap
             # and part of the left-hand-side.
             bmax = 1.0
             bmin = 0.5 * (1.0 - (np.abs(vmin) / np.abs(vmax)))
         else:
-            # Use the full left-hand-side of the cmap
+            # ██▓▒░░▒ Use the full left-hand-side of the cmap
             # and part of the right-hand-side.
             bmin = 0.0
             bmax = 0.5 * (1.0 + (np.abs(vmax) / np.abs(vmin)))
     elif np.sign(vmax) == 0:
-        # Max value is zero. Use only left-hand-side of cmap.
+        # ██▓▓▒▒░░ Max value is zero. Use only left-hand-side of cmap.
         bmin = 0.0
         bmax = 0.5
     elif np.sign(vmin) == 0:
-        # Min value is zero. Use only right-hand-side of cmap.
+        # ░░▒▒▓▓██ Min value is zero. Use only right-hand-side of cmap.
         bmin = 0.5
         bmax = 1.0
     elif np.sign(vmax) == -1:
-        # Both vmin and vmax are -ve.
+        # ██▓▓▒▒░░ Both vmin and vmax are -ve.
         # Use the left half of the cmap:
         bmin = 0.0
         bmax = 0.5
     elif np.sign(vmax) == 1:
-        # Both vmin and vmax are +ve.
+        # ░░▒▒▓▓██ Both vmin and vmax are +ve.
         # Use the right half of the cmap:
         bmin = 0.5
         bmax = 1.0
     else:
-        # This shouldn't happen.
+        # This shouldn't happen. Use the full cmap.
         bmin = 0.0
         bmax = 1.0
 
@@ -143,6 +189,21 @@ def make_colour_list(
 
 
 def make_colour_list_for_plotly_button(*args, **kwargs):
+    """
+    Wrapper for make_colour_list() for plotly restyle buttons.
+
+    This is used for figures that contain buttons that allow the
+    colour scheme to be changed, for example the outcome maps.
+    Lots of extra formatting is needed to make the colour list
+    understandable to the plotly restyle function.
+
+    For inputs, see make_colour_list().
+
+    Returns
+    -------
+    c - str. The colour list as a single string in the format that
+        plotly restyle can understand.
+    """
     c = make_colour_list(*args, **kwargs)
 
     # Convert this into the very specific string format
@@ -162,33 +223,19 @@ def make_colour_list_for_plotly_button(*args, **kwargs):
     return c
 
 
-def select_map_colour_limits(vmin, vmax, label):
-    vmin_s = st.number_input(
-        f'{label}: minimum value',
-        value=vmin,
-        help=f'Default value: {vmin}',
-    )
-    vmax_s = st.number_input(
-        f'{label}: maximum value',
-        value=vmax,
-        help=f'Default value: {vmax}',
-    )
-    # Sanity checks:
-    if (vmax_s <= vmin_s):
-        st.error(
-            'Maximum value must be less than the minimum value.', icon='❗')
-        st.stop()
-    return vmin_s, vmax_s
-
-
 def select_colour_maps():
     """
-    User inputs.
+    User input for which colour map to use on outcome maps.
+
+    Returns
+    -------
+    cmap_selected - str. The chosen colour map name.
+    cmap_names    - list. The cmap options given. Used later to draw
+                    restyle buttons on outcome maps.
     """
-    # ----- Colourmap selection -----
     cmap_names = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
-    # Add the reverse option after each entry. Remove any double reverse
-    # reverse _r_r. Result is flat list.
+    # Add the reverse option after each entry. Remove any double
+    # reverse reverse _r_r. Result is flat list.
     cmap_names = sum(
         [[c, (c + '_r').replace('_r_r', '')] for c in cmap_names], [])
 
@@ -198,7 +245,7 @@ def select_colour_maps():
         ]
 
     try:
-        cmap_name = st.session_state['cmap_name']
+        cmap_name = st.session_state['cmap_diff_name']
     except KeyError:
         cmap_name = cmap_names[0]
     cmap_ind = cmap_names.index(cmap_name)
@@ -215,9 +262,41 @@ def select_colour_maps():
     return cmap_selected, cmap_names
 
 
-def select_colour_limits(map_outcome, vlim_dict,
-                         scenario_name='redir', scenario_label='redirection'):
+def select_colour_limits(
+        map_outcome: str,
+        vlim_dict: dict,
+        scenario_name: str = 'redir',
+        scenario_label: str = 'redirection'
+        ):
+    """
+    Draw editable dataframe of limits of actual and plotted data.
 
+    The table has a row for minimum and a row for maximum values.
+    The first column prints the actual limits in the data.
+    The second editable column is the limits drawn on the
+    outcome maps.
+
+           +------+---------+
+           | Data | Colours |
+    +------+------+---------+
+    | Min. |   X  |    ed.  |
+    +------+------+---------+
+    | Max. |   X  |    ed.  |
+    +------+------+---------+
+
+    Inputs
+    ------
+    map_outcome    - str. The outcome type being shown on the maps.
+    vlim_dict      - dict. Contains an entry for each map with the
+                     min and max values in the data.
+    scenario_name  - str. The key for the not-usual-care scenario.
+    scenario_label - str. The label for the not-usual-care scenario.
+
+    Returns
+    -------
+    d - dict. For each map, the min and max values in the data and the
+        user-selected min and max values to plot.
+    """
     outcome_label_dict = {
         'utility_shift': 'Utility shift',
         'mrs_0-2': 'mRS <= 2',

@@ -9,7 +9,23 @@ import os
 from utilities.utils import print_progress_loc, set_rerun_map
 
 
-def select_map_data(df_subgroups):
+def select_map_data(df_subgroups: pd.DataFrame):
+    """
+    Pick which subgroup to show on the outcome maps.
+
+    This function includes formatting so that the subgroup names are
+    displayed more nicely.
+
+    Inputs
+    ------
+    df_subgroups - pd.DataFrame. Index is the highlighted subgroup
+                   keys, one column 'label' has nice display names.
+
+    Returns
+    -------
+    key   - str. Name of the selected subgroup.
+    label - str. Display name of the selected subgroup.
+    """
     # Pick an outcome population from the already-selected subgroups.
     dict_labels = dict(df_subgroups['label'])
 
@@ -30,6 +46,29 @@ def select_map_data(df_subgroups):
 
 @st.cache_data
 def load_lsoa_raster_lookup():
+    """
+    Load the data that links LSOA to the raster map pixels.
+
+    Cache this data for all users because it can never be altered
+    by the user.
+
+    Returns
+    -------
+    df_raster      - pd.DataFrame. Contains the pixel index and its
+                     representative LSOA for only the pixels that are
+                     mostly covered by land. The pixel index can later
+                     be converted to a row and column in the array
+                     since the size of the grid is determined in
+                     advance.
+    transform_dict - dict. Spatial information for transforming the
+                     raster array to British National Grid coordinates,
+                     e.g. coordinates of leftmost pixel.
+                     Keys: xmin, ymin, xmax, ymax, pixel_size, width,
+                     height, im_xmax, im_ymin.
+                     The im keys mark the bounds of the transformed
+                     pixels as opposed to the actual extent of the
+                     original LSOA shapes.
+    """
     path_to_raster = os.path.join('data', 'rasterise_geojson_lsoa11cd_eng.csv')
     path_to_raster_info = os.path.join(
         'data', 'rasterise_geojson_fid_eng_transform_dict.csv')
@@ -64,7 +103,28 @@ def load_lsoa_raster_lookup():
     return df_raster, transform_dict
 
 
-def convert_df_to_2darray(df_raster, data_col, transform_dict):
+def convert_df_to_2darray(
+        df_raster: pd.DataFrame, data_col: str, transform_dict: dict):
+    """
+    Convert a dataframe of LSOA to a raster map for plotting.
+
+    Make a new empty 1D array. Update the pixel indices in df_raster
+    for the given LSOA data. Then reshape into a 2D grid using the
+    reference grid size.
+
+    Inputs
+    ------
+    df_raster      - pd.DataFrame. Contains pixel indices and the
+                     values that they will be set to in the array.
+    data_col       - str. Column containing the data to show.
+    transform_dict - dict. Contains size and bound information for the
+                     raster image.
+
+    Returns
+    -------
+    raster_arr_maj - np.array. A 2D grid making a map of England with
+                     the given data.
+    """
     # Make a 1D array with all pixels, not just valid ones:
     raster_arr_maj = np.full(
         int(transform_dict['height'] * transform_dict['width']), np.NaN)
@@ -82,18 +142,40 @@ def convert_df_to_2darray(df_raster, data_col, transform_dict):
 
 
 def gather_map_df(
-        df_usual,
-        df_redir,
-        df_lsoa_units_times,
-        cols_time,
-        cols_map=['utility_shift'],
-        map_labels=['usual_care', 'redir'],
-        _log=True, _log_loc=None,
+        df_usual: pd.DataFrame,
+        df_unusual: pd.DataFrame,
+        df_lsoa_units_times: pd.DataFrame,
+        cols_time: list,
+        cols_map: list = ['utility_shift'],
+        map_labels: list = ['usual_care', 'redir'],
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
     """
-    Gather LSOA-level outcomes for usual care, redir, and diff.
+    Gather LSOA-level outcomes for usual, non-usual, and difference.
 
-    df_redir is mix of usual care, redirection approved, redir rejected.
+    For OPTIMIST, df_unusual is mix of usual care, redirection
+    approved, and redirection rejected. For MUSTER it is a mix of usual
+    care, MSU with IVT, and MSU with no IVT.
+
+    Inputs
+    ------
+    df_usual            - pd.DataFrame. Outcomes of usual scenario.
+    df_unusual          - pd.DataFrame. Outcomes of non-usual scenario.
+    df_lsoa_units_times - pd.DataFrame. Treatment times for each LSOA.
+    cols_time           - list. Treatment time columns. Should match
+                          index columns of df_usual and df_redir.
+    cols_map            - list. Which data columns to gather.
+    map_labels          - list. How to label the usual and non-usual
+                          data in the resulting columns.
+    _log                - bool. Whether to print log message.
+    _log_loc            - st.container or None. Where to print log
+                          message.
+
+    Returns
+    -------
+    df_results - pd.DataFrame. LSOA-level outcome data for showing on
+                 maps.
     """
     # Gather the LSOA names and treatment times:
     cols_to_keep = ['LSOA']
@@ -104,8 +186,8 @@ def gather_map_df(
                           right_index=True, how='left')
     rename_dict = dict([(c, f'{c}_{map_labels[0]}') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
-    # ... and redirection (mix of usual care, approved, rejected):
-    df_results = pd.merge(df_results, df_redir[cols_map], left_index=True,
+    # ... and non-usual care (redirection or MSU):
+    df_results = pd.merge(df_results, df_unusual[cols_map], left_index=True,
                           right_index=True, how='left')
     rename_dict = dict([(c, f'{c}_{map_labels[1]}') for c in cols_map])
     df_results = df_results.rename(columns=rename_dict)
@@ -127,12 +209,32 @@ def gather_map_df(
 
 
 def gather_map_data(
-        df_raster,
-        transform_dict,
-        df_maps,
-        cols,
-        _log=True, _log_loc=None,
+        df_raster: pd.DataFrame,
+        transform_dict: dict,
+        df_maps: pd.DataFrame,
+        cols: list,
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
+    """
+    Wrapper for convert_df_to_2darray() to create multiple map arrays.
+
+    Inputs
+    ------
+    df_raster      - pd.DataFrame. Contains pixel indices and the
+                     values that they will be set to in the array.
+    transform_dict - dict. Contains size and bound information for the
+                     raster image.
+    df_maps        - pd.DataFrame. Contains LSOA-level data for the
+                     maps.
+    cols           - list. Columns of data to turn into maps.
+    _log           - bool. Whether to print log message.
+    _log_loc       - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    arrs - list. List of map arrays for the chosen columns of data.
+    """
     df_raster = df_raster.copy()
     df_raster = pd.merge(df_raster, df_maps.reset_index(),
                          left_on='LSOA11NM', right_on='LSOA', how='left')
@@ -145,15 +247,44 @@ def gather_map_data(
     return arrs
 
 
-def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
-                      df_raster, transform_dict,
-                      map_labels=['usual_care', 'redir'],
-                      scenarios=[
-                          'usual_care', 'redirection_approved',
-                          'redirection_rejected'
-                          ],
-                      col_map='utility_shift', _log_loc=None):
-    """Wrapper for gather map into df then reshape to arrays."""
+def gather_map_arrays(
+        df_usual: pd.DataFrame,
+        df_unusual: pd.DataFrame,
+        df_lsoa_units_times: pd.DataFrame,
+        df_raster: pd.DataFrame,
+        transform_dict: dict,
+        map_labels: list = ['usual_care', 'redir'],
+        scenarios: list = ['usual_care', 'redirection_approved',
+                           'redirection_rejected'],
+        col_map: str = 'utility_shift',
+        _log_loc: st.container = None
+        ):
+    """
+    Wrapper for gather map into df then reshape to arrays.
+
+    Inputs
+    ------
+    df_usual            - pd.DataFrame. Outcomes of usual scenario.
+    df_unusual          - pd.DataFrame. Outcomes of non-usual scenario.
+    df_lsoa_units_times - pd.DataFrame. Treatment times for each LSOA.
+    df_raster           - pd.DataFrame. Contains pixel indices and the
+                          values that they will be set to in the array.
+    transform_dict      - dict. Contains size and bound information for
+                          the raster image.
+    map_labels          - list. How to label the two scenarios for the
+                          map data.
+    scenarios           - list. Use to build up a list of columns
+                          containing treatment times.
+    col_map             - str. The source data type for the maps.
+    _log_loc            - st.container or None. Where to print log
+                          message.
+
+    Returns
+    -------
+    arr_dict  - dict. Arrays for each of the maps.
+    vlim_dict - dict. Data limits for each of the maps.
+    """
+    # Build up the columns containing treatment times:
     treats = ['ivt', 'mt']
     cols_time = [f'{s}_{t}' for s in scenarios for t in treats]
     # Special case for muster:
@@ -162,7 +293,7 @@ def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
 
     df_maps = gather_map_df(
         df_usual,
-        df_redir,
+        df_unusual,
         df_lsoa_units_times,
         cols_time,
         cols_map=[col_map],
@@ -170,10 +301,12 @@ def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
         _log_loc=_log_loc
         )
 
+    # Gather the data in these columns...
     cols = [
         f'{col_map}_{map_labels[0]}',
         f'{col_map}_{map_labels[1]}_minus_{map_labels[0]}',
         ]
+    # ... and rename them to these columns:
     cols_out = [c.replace(f'{col_map}_', '') for c in cols]
 
     arrs = gather_map_data(
@@ -190,7 +323,22 @@ def gather_map_arrays(df_usual, df_redir, df_lsoa_units_times,
     return arr_dict, vlim_dict
 
 
-def gather_pop_map(df_raster, transform_dict):
+def gather_pop_map(df_raster: pd.DataFrame, transform_dict: dict):
+    """
+    Create the array for the population map.
+
+    Inputs
+    ------
+    df_raster      - pd.DataFrame. Contains pixel indices and the
+                     values that they will be set to in the array.
+    transform_dict - dict. Contains size and bound information for
+                     the raster image.
+
+    Returns
+    -------
+    arrs[0]   - np.array. Data in the map.
+    vlim_dict - dict. Data limits.
+    """
     # For population map. Load in LSOA-level demographic data:
     df_demog = pd.read_csv(os.path.join('data', 'LSOA_popdens.csv'))
     # Store data limits:
