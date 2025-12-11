@@ -1,7 +1,7 @@
 """Functions for plotly maps of England."""
 import streamlit as st
 import os
-import geopandas
+import geopandas as gpd
 import pandas as pd
 import numpy as np
 import plotly.graph_objs as go
@@ -21,9 +21,17 @@ from utilities.colour_setup import make_colour_list_for_plotly_button
 # ###############################
 # @st.cache_data
 def load_roads_gdf():
+    """
+    Load roads GeoDataFrame and prepare it for scatter plot.
+
+    Returns
+    -------
+    gdf_roads - gpd.GeoDataFrame. Contains x and y coordinates for
+                major roads in England.
+    """
     # Load roads data:
     path_to_roads = os.path.join('data', 'major_roads_england.geojson')
-    gdf_roads = geopandas.read_file(path_to_roads)
+    gdf_roads = gpd.read_file(path_to_roads)
     gdf_roads = gdf_roads.set_index('roadNumber')
 
     # Convert Linestring to x and y coords:
@@ -54,6 +62,18 @@ def load_roads_gdf():
 
 
 def load_units_gdf(df_units):
+    """
+    Load stroke unit coordinates.
+
+    Inputs
+    ------
+    df_units - pd.DataFrame. All stroke units whether they provide
+               IVT, MT, and MSU for MUSTER.
+
+    Returns
+    -------
+    gdf_points_units - gpd.GeoDataFrame. Stroke unit coordinates.
+    """
     # Build geometry:
     gdf_points_units = stroke_maps.load_data.stroke_unit_coordinates()
     # Limit to units in df_units:
@@ -69,16 +89,29 @@ def load_units_gdf(df_units):
     return gdf_points_units
 
 
-def load_england_outline(bounds_to_clip=[]):
+def load_england_outline(bounds_to_clip: list = []):
+    """
+    Load England outline GeoDataFrame and prepare for scatter.
+
+    Inputs
+    ------
+    bounds_to_clip - list. List of bounds xmin, ymin, xmax, ymax
+                     to limit the area of the outline to.
+
+    Returns
+    -------
+    gdf_ew - gpd.GeoDataFrame. Coordinates for the outline of England
+             ready for plotting with scatter.
+    """
     # Don't replace this with stroke-maps!
     # This uses the same simplified LSOA shapes as plotted.
     path_to_file = os.path.join('data', 'outline_england.geojson')
-    gdf_ew = geopandas.read_file(path_to_file)
+    gdf_ew = gpd.read_file(path_to_file)
 
     if len(bounds_to_clip) < 1:
         pass
     else:
-        gdf_ew = geopandas.clip(gdf_ew, bounds_to_clip)
+        gdf_ew = gpd.clip(gdf_ew, bounds_to_clip)
 
     x_list, y_list = convert_shapely_polys_into_xy(gdf_ew)
     gdf_ew['x'] = x_list
@@ -92,13 +125,13 @@ def load_england_outline(bounds_to_clip=[]):
 # ##################################
 # ##### PROCESS GEOGRAPHY DATA #####
 # ##################################
-def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
+def convert_shapely_polys_into_xy(gdf: gpd.GeoDataFrame):
     """
     Turn Polygon objects into two lists of x and y coordinates.
 
     Inputs
     ------
-    gdf - geopandas.GeoDataFrame. Contains geometry.
+    gdf - gpd.GeoDataFrame. Contains geometry.
 
     Returns
     -------
@@ -106,6 +139,18 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
              One list entry per row in the input gdf.
     y_list - list. Same but for y-coordinates.
     """
+    def pick_out_coords(poly):
+        """Helper function for taking coords from poly."""
+        # Put None values between polygons.
+        x, y = poly.exterior.coords.xy
+        x_combo = list(x) + [None]
+        y_combo = list(y) + [None]
+        for interior in poly.interiors:
+            x_i, y_i = interior.coords.xy
+            x_combo += list(x_i) + [None]
+            y_combo += list(y_i) + [None]
+        return x_combo, y_combo
+
     x_list = []
     y_list = []
     for i in gdf.index:
@@ -114,25 +159,16 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
             geo.geom_type
             if geo.geom_type == 'Polygon':
                 # Can use the data pretty much as it is.
-                x, y = geo.exterior.coords.xy
-                for interior in geo.interiors:
-                    x_i, y_i = interior.coords.xy
-                    x = list(x) + [None] + list(x_i)
-                    y = list(y) + [None] + list(y_i)
-                x_list.append(list(x))
-                y_list.append(list(y))
+                x_, y_ = pick_out_coords(geo)
+                x_list.append(list(x_))
+                y_list.append(list(y_))
             elif geo.geom_type == 'MultiPolygon':
-                # Put None values between polygons.
                 x_combo = []
                 y_combo = []
                 for poly in geo.geoms:
-                    x, y = poly.exterior.coords.xy
-                    x_combo += list(x) + [None]
-                    y_combo += list(y) + [None]
-                    for interior in poly.interiors:
-                        x_i, y_i = interior.coords.xy
-                        x_combo += list(x_i) + [None]
-                        y_combo += list(y_i) + [None]
+                    x_, y_ = pick_out_coords(poly)
+                    x_combo += x_
+                    y_combo += y_
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
             elif geo.geom_type == 'GeometryCollection':
@@ -146,24 +182,15 @@ def convert_shapely_polys_into_xy(gdf: geopandas.GeoDataFrame):
                 for t in polys:
                     if t.geom_type == 'Polygon':
                         # Can use the data pretty much as it is.
-                        x, y = t.exterior.coords.xy
-                        x_combo += list(x) + [None]
-                        y_combo += list(y) + [None]
-                        for interior in t.interiors:
-                            x_i, y_i = interior.coords.xy
-                            x_combo += list(x_i) + [None]
-                            y_combo += list(y_i) + [None]
+                        x_, y_ = pick_out_coords(t)
+                        x_combo += x_
+                        y_combo += y_
                     else:
                         # Multipolygon.
-                        # Put None values between polygons.
                         for poly in t.geoms:
-                            x, y = poly.exterior.coords.xy
-                            x_combo += list(x) + [None]
-                            y_combo += list(y) + [None]
-                            for interior in poly.interiors:
-                                x_i, y_i = interior.coords.xy
-                                x_combo += list(x_i) + [None]
-                                y_combo += list(y_i) + [None]
+                            x_, y_ = pick_out_coords(poly)
+                            x_combo += x_
+                            y_combo += y_
                 x_list.append(np.array(x_combo))
                 y_list.append(np.array(y_combo))
             else:
@@ -187,28 +214,36 @@ def make_constant_map_traces():
     Units of British National Grid (BNG).
 
     TO DO? Should region outlines be pixellated to match raster arrs?
+
+    Returns
+    -------
+    map_traces - dict. Contains plotly traces for major roads, England
+                 outline, and fixed region outlines.
     """
     map_traces = {}
     # ----- Roads -----
     gdf_roads = load_roads_gdf()
-    trace_roads = []
-    for i in gdf_roads.index:
-        trace_roads.append(go.Scatter(
-            x=gdf_roads.loc[i, 'x'],
-            y=gdf_roads.loc[i, 'y'],
-            mode='lines',
-            fill="toself",
-            fillcolor='rgba(0, 0, 0, 0)',
-            line_color='grey',
-            line_width=0.5,
-            showlegend=False,
-            hoverinfo='skip',
-            ))
+    # Gather all roads into one long set of coordinates.
+    # There are already None separating the end of one road from the
+    # start of the next.
+    x_roads = np.concatenate(np.array(gdf_roads['x'].values).flatten())
+    y_roads = np.concatenate(np.array(gdf_roads['y'].values).flatten())
+
+    trace_roads = go.Scatter(
+        x=x_roads,
+        y=y_roads,
+        mode='lines',
+        fill="toself",
+        fillcolor='rgba(0, 0, 0, 0)',
+        line_color='grey',
+        line_width=0.5,
+        showlegend=False,
+        hoverinfo='skip',
+        )
     map_traces['roads'] = trace_roads
 
     # ----- Country outline -----
     gdf_eng = load_england_outline()
-    # Add each row of the dataframe separately.
     # Scatter the edges of the polygons and use "fill" to colour
     # within the lines.
     map_traces['england_outline'] = go.Scatter(
@@ -243,11 +278,12 @@ def make_constant_map_traces():
     for n, reg_dict in region_dicts.items():
         # Convert to British National Grid:
         f = reg_dict['file']
-        gdf_region = geopandas.read_file(f).to_crs('EPSG:27700')
+        gdf_region = gpd.read_file(f).to_crs('EPSG:27700')
         gdf_region['x'], gdf_region['y'] = (
             convert_shapely_polys_into_xy(gdf_region))
         # Make trace:
         trace_region = []
+        # Add each row of the dataframe separately.
         for i in gdf_region.index:
             trace_region.append(go.Scatter(
                 x=gdf_region.loc[i, 'x'],
@@ -268,12 +304,34 @@ def make_constant_map_traces():
 
 
 def make_shared_map_traces(
-        df_unit_services,
-        df_lsoa_units_times,
-        df_raster,
-        transform_dict
+        df_unit_services: pd.DataFrame,
+        df_lsoa_units_times: pd.DataFrame,
+        df_raster: pd.DataFrame,
+        transform_dict: dict
         ):
-    """Make unit scatter, nearest unit CSC array."""
+    """
+    Make traces that are used often and depend on user inputs.
+
+    Traces here: stroke unit scatter, map of LSOA whose nearest unit
+    provides MT, map of MT unit catchment, map of IVT unit catchment.
+
+    Inputs
+    ------
+    df_unit_services    - pd.DataFrame. Stroke units and whether they
+                          provide IVT, MT, and MSU for Muster.
+    df_lsoa_units_times - pd.DataFrame. LSOA-level allocated units and
+                          travel times.
+    df_raster           - pd.DataFrame. Contains pixel indices and the
+                          values that they will be set to in the array.
+    transform_dict      - dict. Contains size and bound information for
+                          the raster image.
+
+    Returns
+    -------
+    map_traces       - dict. Contains the plotly traces.
+    df_unit_services - pd.DataFrame. Same as input with addition of
+                       assigned colour index and colours.
+    """
     map_traces = {}
     # ----- Stroke units -----
     gdf_units = load_units_gdf(df_unit_services)
@@ -319,6 +377,10 @@ def make_shared_map_traces(
     )
 
     # ----- Nearest MT units -----
+    # Clear colours if they already exist.
+    # "Colour index" is which element of the colour list was chosen.
+    # Could potentially be used later if a new list of colours were
+    # given.
     try:
         df_unit_services = df_unit_services.drop(
             ['colour_ind', 'colour'], axis='columns')
@@ -330,7 +392,6 @@ def make_shared_map_traces(
             df_unit_services,
             df_raster,
             transform_dict,
-            # unit_number_column='unit_number',
             nearest_unit_column='nearest_mt_unit',
             redo_transform=False,
             create_colour_scale=True,
@@ -344,7 +405,6 @@ def make_shared_map_traces(
             df_unit_services,  # this is returned with colours
             df_raster,
             transform_dict,
-            # unit_number_column='unit_number',
             nearest_unit_column='nearest_ivt_unit',
             redo_transform=False,
             create_colour_scale=True,
@@ -354,13 +414,22 @@ def make_shared_map_traces(
     return map_traces, df_unit_services
 
 
-def make_units_traces(gdf_units):
+def make_units_traces(gdf_units: gpd.GeoDataFrame):
     """
-    Draw:
-    + outline of England
-    + stroke units with markers to show their services
-    + major roads
-    + LSOA nearest a CSC
+    Create plotly traces to show stroke unit locations and services.
+
+    If the "Use_MSU" column is in gdf_units then a trace will be made
+    for the MSU base locations.
+
+    Inputs
+    ------
+    gdf_units - gpd.GeoDataFrame. Stroke unit coordinates and which
+                services they provide.
+
+    Returns
+    -------
+    traces - dict. Contains go.Scatter traces for the different types
+             of stroke unit.
     """
     # Add markers in separate traces for the sake of legend entries.
     # Pick out which stroke unit types are where in the gdf:
@@ -426,7 +495,28 @@ def make_units_traces(gdf_units):
     return traces
 
 
-def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
+def make_trace_heatmap(
+        arr: np.array,
+        transform_dict: dict,
+        dict_colours: dict,
+        name: str = 'name'
+        ):
+    """
+    Generic heatmap trace creation.
+
+    Inputs
+    ------
+    arr            - np.array. Data for the heatmap.
+    transform_dict - dict. How to transform the heatmap from pixels
+                     to British National Grid coordinates.
+    dict_colours   - dict. Contains the colour map and min and max
+                     values for the colour scale.
+    name           - str. Trace name.
+
+    Returns
+    -------
+    trace - go.Heatmap trace.
+    """
     trace = go.Heatmap(
         z=arr,
         transpose=False,
@@ -454,37 +544,83 @@ def make_trace_heatmap(arr, transform_dict, dict_colours, name='name'):
 
 
 def make_unit_catchment_raster(
-        df_lsoa_units_times,
-        df_unit_services,
-        df_raster,
-        transform_dict,
-        # unit_number_column='unit_number',
-        nearest_unit_column='nearest_ivt_unit',
-        redo_transform=True,
-        create_colour_scale=False,
+        df_lsoa_units_times: pd.DataFrame,
+        df_unit_services: pd.DataFrame,
+        df_raster: pd.DataFrame,
+        transform_dict: dict,
+        nearest_unit_column: str = 'nearest_ivt_unit',
+        redo_transform: bool = True,
+        create_colour_scale: bool = False,
         ):
     """
+    Make a heatmap of the stroke unit catchment areas.
+
+    Adjacent catchment areas have different colours assigned to them
+    so that they can be picked out more easily on a big map.
+    Current setup allows MT units to pick from a different selection
+    of colours than IVT-only units.
+
     colour lookup e.g. [[0, 'rgb(0,0,0)'], [1, colour]]
+
+    In this function, local work is done in a temporary "df_units"
+    dataframe. Any results to keep are then copied back into the
+    original "df_unit_services" object.
+
+    Inputs
+    ------
+    df_lsoa_units_times - pd.DataFrame. LSOA-level allocated units and
+                          travel times.
+    df_unit_services    - pd.DataFrame. Stroke units and whether they
+                          provide IVT, MT, and MSU for Muster.
+    df_raster           - pd.DataFrame. Contains pixel indices and the
+                          values that they will be set to in the array.
+    transform_dict      - dict. Contains size and bound information for
+                          the raster image.
+    nearest_unit_column - str. Name of the column to define catchment
+                          areas by. e.g. nearest IVT unit or MT unit.
+    redo_transform      - bool. If the heatmap covers a considerably
+                          smaller area than a full England heatmap,
+                          then make a new transform_dict for that area.
+    create_colour_scale - bool. Whether to assign new colours to these
+                          areas.
+
+    Returns
+    -------
+    catch_trace         - go.Heatmap. Each unit has its catchment area
+                          with a different value assigned to it.
+    transform_dict_here - dict. The transform dict for this Heatmap
+                          trace. Could cover a much smaller area than
+                          the input transform_dict for England.
+    df_unit_services    - input unit services with added colour scale
+                          and colour columns if these were found here.
     """
+    # Check whether any units have already been assigned colours:
     if 'colour_ind' in df_unit_services.columns:
         pass
     else:
+        # Set all units to have some placeholder value with dtype int.
+        # Could be that not all units will receive a colour on the
+        # first pass of this function, but can't leave them as NaN
+        # or the dtype won't be int.
         df_unit_services['colour_ind'] = -1  # dtype int
+
+    # If necessary, limit the stroke units considered:
     if nearest_unit_column == 'nearest_mt_unit':
-        catchment_units = df_unit_services.loc[
-            df_unit_services['Use_MT'] == 1].index.values
-        df_units = df_unit_services.loc[
-            df_unit_services['Use_MT'] == 1].copy()
+        m = (df_unit_services['Use_MT'] == 1)
+        catchment_units = df_unit_services.loc[m].index.values
+        df_units = df_unit_services.loc[m].copy()
     else:
         catchment_units = df_unit_services.index.values
         df_units = df_unit_services.copy()
 
     # Set up unit --> number --> colour lookup.
     # The raster array prefers to work with numbers rather than strings.
+    # These unit numbers will be used in the map array.
     unit_number_column = 'unit_number'
     df_units[unit_number_column] = np.round(
         np.linspace(0.0, 1.0, len(df_units)), 3)
-    # Make a copy in the actual df:
+    # Make a copy in the actual df.
+    # It will be deleted again at the end of this function.
     df_unit_services = df_unit_services.merge(
         df_units[unit_number_column],
         left_index=True, right_index=True, how='left'
@@ -494,11 +630,13 @@ def make_unit_catchment_raster(
     df_lsoa_units_times = df_lsoa_units_times.copy()
     mask = df_lsoa_units_times[nearest_unit_column].isin(catchment_units)
     df = df_lsoa_units_times.loc[mask].copy()
+
+    # Gather LSOA and their catchment units:
     df = pd.merge(
         df, df_units.reset_index()[['Postcode', unit_number_column]],
         left_on=nearest_unit_column, right_on='Postcode', how='left'
         )
-
+    # Create raster for maps:
     arrs = gather_map_data(
         df_raster,
         transform_dict,
@@ -508,169 +646,34 @@ def make_unit_catchment_raster(
         )
     arr = arrs[0]
 
-    # Update the transform dictionary to reflect the crop.
     # Make a copy of the transform dict:
     transform_dict_here = {}
     for k, v in transform_dict.items():
         transform_dict_here[k] = v
     if redo_transform:
-        height_before = arr.shape[0]  # width is arr.shape[1]
-        # Crop the array to non-NaN values:
-        mask0 = np.all(np.isnan(arr), axis=0)
-        min0 = np.where(mask0 == False)[0][0]
-        max0 = np.where(mask0 == False)[0][-1]
-        mask1 = np.all(np.isnan(arr), axis=1)
-        min1 = np.where(mask1 == False)[0][0]
-        max1 = np.where(mask1 == False)[0][-1]
-        arr = arr[min1:max1+1, min0:max0+1]
-        # New image width/height in pixels:
-        transform_dict_here['width'] = arr.shape[1]
-        transform_dict_here['height'] = arr.shape[0]
-        # Reference coordinates are xmin, ymax.
-        # Update the corner coordinates:
-        transform_dict_here['xmin'] = (
-            transform_dict_here['xmin'] +
-            transform_dict_here['pixel_size'] * min0
-            )
-        transform_dict_here['ymax'] = (
-            transform_dict_here['ymax'] -
-            transform_dict_here['pixel_size'] * (height_before - (max1 + 1))
-            )
-        # Far corner in terms of pixels:
-        transform_dict_here['im_xmax'] = (
-            transform_dict_here['xmin'] +
-            transform_dict_here['pixel_size'] * transform_dict_here['width']
-            )
-        transform_dict_here['im_ymin'] = (
-            transform_dict_here['ymax'] -
-            transform_dict_here['pixel_size'] * transform_dict_here['height']
-            )
-        # Remove xmax and ymax because we now only have pixel-scale
-        # limits:
-        transform_dict_here['xmax'] = transform_dict_here['im_xmax']
-        transform_dict_here['ymin'] = transform_dict_here['im_ymin']
+        # Update the data array and the transform dictionary.
+        # Crop array to valid area and make new transform dict:
+        arr, transform_dict_here = make_new_transform(
+            arr, transform_dict_here)
 
+    # If requested, assign colours to the units so that no two units
+    # whose catchment areas border each other have the same colour.
     if create_colour_scale:
-        # Check which regions border each other.
-        # pairs = []
-        df_pairs = pd.DataFrame(
-            np.zeros((len(df_units), len(df_units))),
-            columns=df_units[unit_number_column],
-            index=df_units[unit_number_column],
-            )
-        for row in arr:
-            # From https://stackoverflow.com/a/5738933
-            vals_order = [key for key, _group in groupby(row[~np.isnan(row)])]
-            for i in range(len(vals_order))[:-1]:
-                df_pairs.loc[vals_order[i], vals_order[i+1]] = 1
-                df_pairs.loc[vals_order[i+1], vals_order[i]] = 1
+        df_unit_services = assign_colours_to_units(
+            df_units, df_unit_services, arr, unit_number_column)
 
-        # Dict of unit number to unit postcode:
-        dict_number_unit = (
-            df_units.reset_index().set_index(unit_number_column)
-            ['Postcode'].to_dict()
-        )
-        # Convert pairs df to postcode lookup:
-        df_pairs = df_pairs.rename(
-            columns=dict_number_unit, index=dict_number_unit)
-
-        # Check if any units already have colours assigned to them:
-        try:
-            units_with_colours = list(
-                df_units[df_units['colour'].notna()].index.values)
-        except KeyError:
-            units_with_colours = []
-        # Sort columns from units that already have colours and then
-        # from most to fewest neighbours:
-        n_neighbours = df_pairs.sum(axis='rows').sort_values(ascending=False)
-        unit_order = (
-            units_with_colours +
-            [u for u in n_neighbours.index if u not in units_with_colours]
-        )
-        df_pairs = df_pairs[unit_order]
-        # Allow more colours than we'll likely need:
-        colour_options = range(10)
-        df_colours_allowed = pd.DataFrame(
-            np.ones((len(colour_options), len(df_pairs))),
-            columns=df_pairs.columns,
-            index=colour_options
-        )
-
-        for unit in df_pairs.columns:
-            # Pick the colour here:
-            s = df_colours_allowed[unit]
-            colours_allowed = s[s > 0]
-            if unit in units_with_colours:
-                colour = df_units.loc[unit, 'colour_ind']
-            else:
-                colour = colours_allowed.index[0]
-            # Set this unit to only be allowed this colour:
-            other_colours = [c for c in colour_options if c != colour]
-            df_colours_allowed.loc[other_colours, unit] = 0
-            # Update the allowed colours for its neighbours:
-            neighbours = df_pairs[df_pairs[unit] > 0].index.values
-            df_colours_allowed.loc[colour, neighbours] = 0
-
-        # Pick out the colour index assigned to each unit:
-        # colour_scale = df_unit_services[[unit_number_column]].copy()
-        # From now on update the original df_unit_services dataframe,
-        # not the temporary df_units dataframe.
-        for unit in df_units.index:
-            if unit not in units_with_colours:
-                ind = df_colours_allowed[
-                    df_colours_allowed[unit] == 1].index.values[0]
-                df_unit_services.loc[unit, 'colour_ind'] = int(ind)
-        # Use these indexes to pick out the colour for each unit.
-        # Setup for picking:
-        colours_dict = {
-            'Use_MT': [
-                'red', 'firebrick', 'darkorange', 'lightcoral',
-                'crimson', 'indianred', 'darksalmon', 'darkred',
-                ],
-            'Use_IVT': [
-                'deepskyblue', 'dodgerblue', 'lightblue',
-                'mediumblue', 'royalblue', 'powderblue',
-                'skyblue', 'slateblue', 'steelblue',
-                'cornflowerblue', 'lightskyblue', 'navy', 'cyan', 'blue',
-                ],
-        }
-        masks_dict = {
-            'Use_MT': df_unit_services['Use_MT'] == 1,
-            'Use_IVT': df_unit_services['Use_MT'] != 1,
-        }
-        # Duplicate colours if necessary (shouldn't be!):
-        while (
-            df_unit_services
-            .loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1
-                ) > len(colours_dict['Use_MT']):
-            colours_dict['Use_MT'] += colours_dict['Use_MT']
-        while (
-            df_unit_services
-            .loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1
-                ) > len(colours_dict['Use_IVT']):
-            colours_dict['Use_IVT'] += colours_dict['Use_IVT']
-
-        # Assign reds to MT units and blues to IVT units:
-        for t in ['Use_MT', 'Use_IVT']:
-            m = masks_dict[t]
-            c = colours_dict[t]
-            max_ind = df_unit_services.loc[m, 'colour_ind'].max()
-            if max_ind == -1:
-                # No units here.
-                pass
-            else:
-                for i in range(max_ind+1):
-                    mask = m & (df_unit_services['colour_ind'] == i)
-                    df_unit_services.loc[mask, 'colour'] = c[i]
-
+    # Pick out which unit has each colour.
     # Set up unit --> number --> colour lookup.
     mask_colours = df_unit_services['colour'].notna()
     colour_scale = df_unit_services.loc[
         mask_colours, [unit_number_column, 'colour']
         ].copy().sort_values(unit_number_column).values
     colour_scale = [list(i) for i in colour_scale]
+    # colour_scale has an entry for each stroke unit here.
+    # These (unit number, colour) tuples in colour_scale are used
+    # to tell plotly which colour to give each pixel.
 
-    # The actual map:
+    # Draw the actual map:
     catch_trace = go.Heatmap(
         z=arr,
         transpose=False,
@@ -688,6 +691,235 @@ def make_unit_catchment_raster(
     df_unit_services = df_unit_services.drop(
         unit_number_column, axis='columns')
     return catch_trace, transform_dict_here, df_unit_services
+
+
+def make_new_transform(arr: np.array, transform_dict_here: dict):
+    """
+    Crop arr to the valid data and update transform dict to match.
+
+    For example, if the array only has data for Devon, then instead
+    of storing mostly null data for the rest of England, remove the
+    unused elements and keep only a small portion of the array.
+    Then update the transform dict so that the width, height, corner
+    coordinates etc. can tell plotly how to show this smaller array
+    in British National Grid coordinates.
+
+    Inputs
+    ------
+    arr                 - np.array.
+    transform_dict_here - dict. Transform dict to be updated. Initial
+                          values should be those for the whole of
+                          England.
+
+    Returns
+    -------
+    arr                 - np.array. A 2D grid of only the valid pixels
+                          from the input array.
+    transform_dict_here - dict. Updated transform grid to match smaller
+                          data array.
+    """
+    height_before = arr.shape[0]  # width is arr.shape[1]
+
+    # Crop the array to non-NaN values:
+    mask0 = np.all(np.isnan(arr), axis=0)
+    min0 = np.where(mask0 == False)[0][0]
+    max0 = np.where(mask0 == False)[0][-1]
+    mask1 = np.all(np.isnan(arr), axis=1)
+    min1 = np.where(mask1 == False)[0][0]
+    max1 = np.where(mask1 == False)[0][-1]
+    arr = arr[min1:max1+1, min0:max0+1]
+
+    # Update transform dict.
+    # New image width/height in pixels:
+    transform_dict_here['width'] = arr.shape[1]
+    transform_dict_here['height'] = arr.shape[0]
+    # Reference coordinates are xmin, ymax.
+    # Update the corner coordinates:
+    transform_dict_here['xmin'] = (
+        transform_dict_here['xmin'] +
+        transform_dict_here['pixel_size'] * min0
+        )
+    transform_dict_here['ymax'] = (
+        transform_dict_here['ymax'] -
+        transform_dict_here['pixel_size'] * (height_before - (max1 + 1))
+        )
+    # Far corner in terms of pixels:
+    transform_dict_here['im_xmax'] = (
+        transform_dict_here['xmin'] +
+        transform_dict_here['pixel_size'] * transform_dict_here['width']
+        )
+    transform_dict_here['im_ymin'] = (
+        transform_dict_here['ymax'] -
+        transform_dict_here['pixel_size'] * transform_dict_here['height']
+        )
+    # Remove xmax and ymax because we now only have pixel-scale
+    # limits:
+    transform_dict_here['xmax'] = transform_dict_here['im_xmax']
+    transform_dict_here['ymin'] = transform_dict_here['im_ymin']
+    return arr, transform_dict_here
+
+
+def assign_colours_to_units(
+        df_units: pd.DataFrame,
+        df_unit_services: pd.DataFrame,
+        arr: np.array,
+        unit_number_column: str
+        ):
+    """
+    Assign colours so bordering unit catchment areas are different.
+
+    Find which stroke units have catchment areas that border each other
+    and then make sure that those units are assigned different colours.
+    When assigning new colours, start with the unit with the most
+    neighbours and work down to the least.
+
+    The colours are first assigned as a number (index). Then the
+    actual colours are picked out from a list using those indices.
+
+    Inputs
+    ------
+    df_units           - pd.DataFrame. Contains only the units being
+                         assigned colours here.
+    df_unit_services   - pd.DataFrame. Full data for all stroke units.
+    arr                - np.array. Catchment map array. The values are
+                         numbers that can be matched to stroke units
+                         using the unit_number_column in the two dfs.
+    unit_number_column - str. Numbers assigned to the stroke units for
+                         use in the maps.
+
+    Returns
+    -------
+    df_unit_services - pd.DataFrame. The input dataframe with updated
+                       columns for colour index and colour strings.
+    """
+    # Check which regions border each other.
+    # This df_pairs contains a row and a column for each stroke unit.
+    # Initally all values are 0.
+    # When two units border each other, the intersection of the rows
+    # and columns are set to 1.
+    df_pairs = pd.DataFrame(
+        np.zeros((len(df_units), len(df_units))),
+        columns=df_units[unit_number_column],
+        index=df_units[unit_number_column],
+        )
+    for row in arr:
+        # From https://stackoverflow.com/a/5738933
+        vals_order = [key for key, _group in groupby(row[~np.isnan(row)])]
+        for i in range(len(vals_order))[:-1]:
+            df_pairs.loc[vals_order[i], vals_order[i+1]] = 1
+            df_pairs.loc[vals_order[i+1], vals_order[i]] = 1
+
+    # Convert unit numbers to postcodes.
+    # This isn't necessary for assigning colours but makes checking
+    # the working much easier.
+    # Dict of unit number to unit postcode:
+    dict_number_unit = (
+        df_units.reset_index().set_index(unit_number_column)
+        ['Postcode'].to_dict()
+    )
+    # Convert pairs df to postcode lookup:
+    df_pairs = df_pairs.rename(
+        columns=dict_number_unit, index=dict_number_unit)
+
+    # Check if any units already have colours assigned to them:
+    try:
+        units_with_colours = list(
+            df_units[df_units['colour'].notna()].index.values)
+    except KeyError:
+        units_with_colours = []
+    # Sort columns from units that already have colours and then
+    # from most to fewest neighbours:
+    n_neighbours = df_pairs.sum(axis='rows').sort_values(ascending=False)
+    unit_order = (
+        units_with_colours +
+        [u for u in n_neighbours.index if u not in units_with_colours]
+    )
+    df_pairs = df_pairs[unit_order]
+
+    # Keep track of which units are allowed to be assigned each colour
+    # and which ones cannot because their neighbour uses that colour.
+    # Initially allow all colours for all units (df_colours_allowed is
+    # 1 everywhere) then disallow colours (set to 0).
+    # Allow more colours than we'll likely need.
+    colour_options = range(10)
+    df_colours_allowed = pd.DataFrame(
+        np.ones((len(colour_options), len(df_pairs))),
+        columns=df_pairs.columns,
+        index=colour_options
+    )
+
+    for unit in df_pairs.columns:
+        # Pick out all colour options for this unit:
+        s = df_colours_allowed[unit]
+        # Only keep the colours that are still allowed:
+        colours_allowed = s[s > 0]
+        # If this unit already has a colour, pick it out now.
+        # Otherwise select the first available colour from the
+        # allowed list.
+        if unit in units_with_colours:
+            colour = df_units.loc[unit, 'colour_ind']
+        else:
+            colour = colours_allowed.index[0]
+        # Set this unit to only be allowed this colour:
+        other_colours = [c for c in colour_options if c != colour]
+        df_colours_allowed.loc[other_colours, unit] = 0
+        # Update the allowed colours for its neighbours.
+        # Do not let these neighbours have the same colour as here.
+        neighbours = df_pairs[df_pairs[unit] > 0].index.values
+        df_colours_allowed.loc[colour, neighbours] = 0
+
+    # Pick out the colour index assigned to each unit:
+    # colour_scale = df_unit_services[[unit_number_column]].copy()
+    # From now on update the original df_unit_services dataframe,
+    # not the temporary df_units dataframe.
+    for unit in df_units.index:
+        if unit not in units_with_colours:
+            ind = df_colours_allowed[
+                df_colours_allowed[unit] == 1].index.values[0]
+            df_unit_services.loc[unit, 'colour_ind'] = int(ind)
+    # Use these indexes to pick out the colour for each unit.
+    # Setup for picking:
+    colours_dict = {
+        'Use_MT': [
+            'red', 'firebrick', 'darkorange', 'lightcoral',
+            'crimson', 'indianred', 'darksalmon', 'darkred',
+            ],
+        'Use_IVT': [
+            'deepskyblue', 'dodgerblue', 'lightblue',
+            'mediumblue', 'royalblue', 'powderblue',
+            'skyblue', 'slateblue', 'steelblue',
+            'cornflowerblue', 'lightskyblue', 'navy', 'cyan', 'blue',
+            ],
+    }
+    masks_dict = {
+        'Use_MT': df_unit_services['Use_MT'] == 1,
+        'Use_IVT': df_unit_services['Use_MT'] != 1,
+    }
+    # Duplicate colours if necessary (shouldn't be!):
+    while (
+        df_unit_services
+        .loc[masks_dict['Use_MT'], 'colour_ind'].max() + 1
+            ) > len(colours_dict['Use_MT']):
+        colours_dict['Use_MT'] += colours_dict['Use_MT']
+    while (
+        df_unit_services
+        .loc[masks_dict['Use_IVT'], 'colour_ind'].max() + 1
+            ) > len(colours_dict['Use_IVT']):
+        colours_dict['Use_IVT'] += colours_dict['Use_IVT']
+
+    # Assign colours to units:
+    for t in ['Use_MT', 'Use_IVT']:
+        m = masks_dict[t]
+        c = colours_dict[t]
+        max_ind = df_unit_services.loc[m, 'colour_ind'].max()
+        if max_ind == -1:
+            # No units here.
+            pass
+        else:
+            for i in range(max_ind+1):
+                mask = m & (df_unit_services['colour_ind'] == i)
+                df_unit_services.loc[mask, 'colour'] = c[i]
+    return df_unit_services
 
 
 #MARK: Figure setup
@@ -859,7 +1091,7 @@ def load_region_outline_here(region_type, region):
         region_display_name = reg_dict['display_name']
         # Convert to British National Grid:
         f = reg_dict['file']
-        gdf_region = geopandas.read_file(f).to_crs('EPSG:27700')
+        gdf_region = gpd.read_file(f).to_crs('EPSG:27700')
         # Only keep the selected region:
         gdf_region = gdf_region.loc[gdf_region[region_type] == region]
         gdf_region['x'], gdf_region['y'] = (
@@ -1005,6 +1237,14 @@ def make_coords_nearest_unit_catchment(
 # ##### PLOT FIGURES #####
 # ########################
 def draw_units_map(map_traces, outline_name='none'):
+    """
+
+    Draw:
+    + outline of England
+    + stroke units with markers to show their services
+    + major roads
+    + LSOA nearest a CSC
+    """
     fig = go.Figure()
 
     # Only draw the "nearest unit has MT" raster if we're not
@@ -1025,8 +1265,7 @@ def draw_units_map(map_traces, outline_name='none'):
         else:
             fig.add_trace(map_traces[f'raster_{outline_name}'])
 
-    for r in map_traces['roads']:
-        fig.add_trace(r)
+    fig.add_trace(map_traces['roads'])
     fig.add_trace(map_traces['units']['ivt'])
     fig.add_trace(map_traces['units']['mt'])
 
@@ -1078,8 +1317,8 @@ def draw_units_msu_map(map_traces, outline_name='none'):
         else:
             fig.add_trace(
                 map_traces[f'raster_{outline_name}'], row='all', col='all')
-    for r in map_traces['roads']:
-        fig.add_trace(r, row='all', col='all')
+
+    fig.add_trace(map_traces['roads'], row='all', col='all')
     fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col=1)
     fig.add_trace(map_traces['units']['mt'], row='all', col='all')
@@ -1154,8 +1393,7 @@ def plot_outcome_maps(
     else:
         for t in map_traces[f'{outline_name}_outlines']:
             fig.add_trace(t, row='all', col='all')
-    for r in map_traces['roads']:
-        fig.add_trace(r, row='all', col='all')
+    fig.add_trace(map_traces['roads'], row='all', col='all')
     if show_msu_bases:
         fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col='all')
