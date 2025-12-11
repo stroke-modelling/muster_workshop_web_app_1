@@ -24,8 +24,8 @@ def print_progress_loc(p: str, log_loc: st.container):
 def make_formatted_time_str(t: float):
     """Convert time to str 'Xhr YYmin'. If t is NaN, returns '~'."""
     try:
-        t_new = (f'{int(60*(t/60)//60):d}hr ' +
-                 f'{int(60*(t/60)%60):02d}min')
+        t_new = (f'{int(round(60*(t/60)//60, 0)):d}hr ' +
+                 f'{int(round(60*(t/60)%60, 0)):02d}min')
     except ValueError:
         # t is NaN.
         t_new = '~'

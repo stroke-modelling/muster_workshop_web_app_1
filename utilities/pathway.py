@@ -480,11 +480,12 @@ def draw_timeline(
         s = df_treats.loc[i, 'source_time']
         if s != 'none':
             t = series_treatment_times_without_travel[s]
+            # Avoid floating point weirdness:
+            t = int(np.round(t, 0))
             # Convert minutes to hour-minute strings:
             df_treats.loc[i, 'min'] = t
             df_treats.loc[i, 'hr_min'] = make_formatted_time_str(t)
         else:
             df_treats.loc[i, 'min'] = np.NaN
             df_treats.loc[i, 'hr_min'] = '-'
-
     timeline.make_timeline_fig(df_pathway_steps, df_treats, use_msu=use_msu)
