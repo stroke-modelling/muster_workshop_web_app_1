@@ -177,7 +177,7 @@ def select_onion_population(df_pops: pd.DataFrame):
 
 
 def calculate_population_subgroups(
-        d: pd.Series | dict,
+        d: pd.Series,  # note: for python 3.10+, use pd.Series | dict
         _log: bool = True,
         _log_loc: st.container = None
         ):
@@ -290,7 +290,7 @@ def select_subgroups_for_results():
 
 
 def calculate_population_subgroup_grid(
-        d: pd.Series | dict,
+        d: pd.Series,  # note: for python 3.10+, use pd.Series | dict
         df_subgroups: pd.DataFrame = None,
         _log: bool = True,
         _log_loc: st.container = None
@@ -449,7 +449,7 @@ def calculate_population_subgroup_grid(
 
 
 def calculate_population_subgroup_grid_muster(
-        d: pd.Series | dict,
+        d: pd.Series,  # note: for python 3.10+, use pd.Series | dict
         df_subgroups: pd.DataFrame = None,
         _log: bool = True,
         _log_loc: st.container = None
