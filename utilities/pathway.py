@@ -5,20 +5,34 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from utilities.utils import print_progress_loc, set_inputs_changed
+from utilities.utils import print_progress_loc, set_inputs_changed, \
+    make_formatted_time_str
 import utilities.plot_timeline as timeline
 
 
-def select_pathway_timings(use_col, containers):
+def select_pathway_timings(use_col: str, containers: list):
     """
-    This version creates a long list of number inputs.
+    Display widget for each pathway timing, store in dataframe.
 
-    TO DO another day - set these reference values up in fixed_params.
     Default values from median onset to arrival times document
     (Mike Allen, 23rd April 2024):
     onset_to_call: 79,
     call_to_ambulance_arrival_time: 18,
     ambulance_on_scene_time: 29,
+
+    Inputs
+    ------
+    use_col    - str. Either 'optimist' or 'muster'. Limits the drawn
+                 input widgets to only the relevant variables. The
+                 reference dataframe contains a mix of Optimist and
+                 Muster data.
+    containers - list. List of containers to draw the input widgets in.
+                 Currently placement is hard-coded and assumes two
+                 (Optimist) or three (Muster) containers in list.
+
+    Returns
+    -------
+    df_pathway - pd.DataFrame. User-selected pathway timings.
     """
     # Load in pathway timings from file:
     df_pathway = pd.read_csv('./data/pathway_timings.csv', index_col='name')
@@ -37,9 +51,9 @@ def select_pathway_timings(use_col, containers):
             c = containers[1]
 
         d = df_pathway.loc[key]
-        # Convert types to match step to make sure that numeric
-        # dtypes match, e.g. all int or all float.
         with c:
+            # Convert types to match step to make sure that numeric
+            # dtypes match, e.g. all int or all float.
             df_pathway.loc[key, 'value'] = st.number_input(
                 d['label'],
                 value=d['default'].astype(type(d['step'])),
@@ -55,20 +69,36 @@ def select_pathway_timings(use_col, containers):
 
 
 def calculate_treatment_times_without_travel(
-        df_pathway, scenarios, _log=True, _log_loc=None
+        d: pd.Series,
+        scenarios: list,
+        _log: bool = True,
+        _log_loc: st.container = None
         ):
     """
-    df_pathway: index is variable name, columns are label and value.
+    Calculate treatment times excluding travel from pathway steps.
 
     Check whether to include ambulance response. Want to use this
     fixed value in OPTIMIST but not in MUSTER.
+
+    Inputs
+    ------
+    d         - pd.Series. Pathway timings.
+    scenarios - list. Names of the scenarios to calculate treatment
+                times for. Expecting usual_care, prehospdiag, and msu.
+    _log      - bool. Whether to print log message.
+    _log_loc  - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    r - pd.Series. Calculated treatment times for the given scenarios.
     """
-    # Turn into a series:
-    d = df_pathway['value']
+    # Store results in here:
     r = pd.Series()
 
     # Check whether to include travel time of ambulance
-    # before it reaches the patient.
+    # before it reaches the patient. Want to include this time
+    # for OPTIMIST (where the time is always the same) but not
+    # for MUSTER (where the time depends on the MSU base).
     use_ambo_response = not any(['msu' in s for s in scenarios])
 
     for s in scenarios:
@@ -128,14 +158,28 @@ def calculate_treatment_times_without_travel(
 
 
 def calculate_treatment_times(
-        df,
-        unique_travel_ivt,
-        unique_travel_mt,
-        _log=True,
-        _log_loc=None,
+        df: pd.DataFrame,
+        unique_travel_ivt: list,
+        unique_travel_mt: list,
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
     """
-    df: df_treatment_times_without_travel
+    Calculate the unique times to treatment with IVT and MT.
+
+    Inputs
+    ------
+    df                - pd.DataFrame. Treatment times without travel.
+    unique_travel_ivt - list. Unique total travel times to IVT unit.
+    unique_travel_mt  - list. Unique total travel times to MT unit.
+    _log              - bool. Whether to print log message.
+    _log_loc          - st.container or None. Where to print log
+                        message.
+
+    Returns
+    -------
+    unique_ivt - list. Unique times to treatment with IVT.
+    unique_mt  - list. Same as above but for times to MT.
     """
 
     keys_ivt_without_travel = [t for t in df.index if 'time_to_ivt' in t]
@@ -155,10 +199,31 @@ def calculate_treatment_times(
 
 
 def find_unique_treatment_time_pairs(
-        dict_time_pairs, series_treatment_times_without_travel,
-        _log=True, _log_loc=None,
+        dict_time_pairs: dict,
+        series_treatment_times_without_travel: pd.Series,
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
     """
+    Find unique pairs of treatment times to IVT and to MT.
+
+    Inputs
+    ------
+    dict_time_pairs                       - dict. Unique pairs of
+                                            travel times to IVT and MT
+                                            units.
+    series_treatment_times_without_travel - pd.Series. Treatment times
+                                            without travel for all
+                                            scenarios.
+    _log                                  - bool. Whether to print log
+                                            message.
+    _log_loc                              - st.container or None. Where
+                                            to print log message.
+
+    Returns
+    -------
+    df_treat - pd.DataFrame. The unique pairs of time to treatment with
+               IVT and with MT.
     """
     ivt_times = [
         t for t in series_treatment_times_without_travel.keys()
@@ -180,6 +245,7 @@ def find_unique_treatment_time_pairs(
                 if 'travel_ambo_response' in df_times.columns:
                     # For MUSTER. Separate ambulance response time
                     # depending on whether usual care or MSU.
+                    # ? December 2025 - why aren't we also adding the MSU response time here? TO DO
                     df_times['time_to_ivt'] += df_times['travel_ambo_response']
                     df_times['time_to_mt'] += df_times['travel_ambo_response']
                 list_dfs.append(df_times[['time_to_ivt', 'time_to_mt']].copy())
@@ -195,12 +261,30 @@ def find_unique_treatment_time_pairs(
 
 
 def calculate_treatment_times_each_lsoa_scenarios(
-        df_lsoa_units_times,
-        series_treatment_times,
-        _log=True, _log_loc=None, test=False
+        df_lsoa_units_times: pd.DataFrame,
+        series_treatment_times: pd.Series,
+        _log: bool = True,
+        _log_loc: st.container = None,
+        _test: bool = False
         ):
     """
-    series_treatment_times is without travel.
+    Calculate treatment times for each LSOA in OPTIMIST scenarios.
+
+    Inputs
+    ------
+    df_lsoa_units_times    - pd.DataFrame. Each LSOA's assigned stroke
+                             units and travel times.
+    series_treatment_times - pd.Series. Times to treatment for each
+                             scenario excluding travel times.
+    _log                   - bool. Whether to print log message.
+    _log_loc               - st.container or None. Where to print log
+                             message.
+    _test                  - bool. Whether to run sanity checks.
+
+    Returns
+    -------
+    df_lsoa_units_times - pd.DataFrame. The input dataframe with extra
+                          times for treatment in each scenario.
     """
     # LSOA-level scenario timings.
     mask = df_lsoa_units_times['transfer_required']
@@ -242,7 +326,7 @@ def calculate_treatment_times_each_lsoa_scenarios(
         df_lsoa_units_times['nearest_ivt_then_mt_time'] +
         series_treatment_times['prehospdiag_time_to_mt_no_transfer']
     )
-    if test:
+    if _test:
         # How many unique combinations of these times are there?
         # Default setup, roughly 33,000 LSOA and 9,000 combos.
         # Worth calculating for unique combinations of times and
@@ -263,12 +347,30 @@ def calculate_treatment_times_each_lsoa_scenarios(
 
 
 def calculate_treatment_times_each_lsoa_scenarios_muster(
-        df_lsoa_units_times,
-        series_treatment_times,
-        _log=True, _log_loc=None, test=False
+        df_lsoa_units_times: pd.DataFrame,
+        series_treatment_times: pd.Series,
+        _log: bool = True,
+        _log_loc: st.container = None,
+        _test: bool = False
         ):
     """
-    series_treatment_times is without travel.
+    Calculate treatment times for each LSOA in MUSTER scenarios.
+
+    Inputs
+    ------
+    df_lsoa_units_times    - pd.DataFrame. Each LSOA's assigned stroke
+                             units and travel times.
+    series_treatment_times - pd.Series. Times to treatment for each
+                             scenario excluding travel times.
+    _log                   - bool. Whether to print log message.
+    _log_loc               - st.container or None. Where to print log
+                             message.
+    _test                  - bool. Whether to run sanity checks.
+
+    Returns
+    -------
+    df_lsoa_units_times - pd.DataFrame. The input dataframe with extra
+                          times for treatment in each scenario.
     """
     # LSOA-level scenario timings.
     mask = df_lsoa_units_times['transfer_required']
@@ -298,13 +400,13 @@ def calculate_treatment_times_each_lsoa_scenarios_muster(
     )
     # MSU (no IVT):
     s = 'msu_no_ivt'
-    # df_lsoa_units_times[f'{s}_ivt'] = np.nan
+    # Don't calculate any times for IVT in this scenario.
     df_lsoa_units_times[f'{s}_mt'] = (
         df_lsoa_units_times['msu_response_then_mt_time'] +
         series_treatment_times['msu_time_to_mt_no_ivt']
     )
 
-    if test:
+    if _test:
         # How many unique combinations of these times are there?
         # Default setup, roughly 33,000 LSOA and 9,000 combos.
         # Worth calculating for unique combinations of times and
@@ -324,17 +426,23 @@ def calculate_treatment_times_each_lsoa_scenarios_muster(
     return df_lsoa_units_times
 
 
-def show_treatment_time_summary(treatment_times_without_travel):
-    # ----- Treatment times summary -----
-    df_treatment_times = (
-        timeline.make_treatment_time_df_optimist(
-            treatment_times_without_travel)
-        )
-    st.table(df_treatment_times)
+def draw_timeline(
+        df_pathway_steps: pd.DataFrame,
+        series_treatment_times_without_travel: pd.Series,
+        use_msu: bool = False
+        ):
+    """
+    Calculate some extra data and then draw the timeline.
 
-
-def draw_timeline(df_pathway_steps, series_treatment_times_without_travel,
-                  use_msu=False):
+    Inputs
+    ------
+    df_pathway_steps                      - pd.DataFrame. Each timing
+                                            step in the pathway.
+    series_treatment_times_without_travel - pd.Series. Total times for
+                                            summary labels.
+    use_msu                               - bool. Whether to set up
+                                            and draw MUSTER bits.
+    """
     # ----- Timeline -----
     # Calculate some extra keys:
     df_pathway_steps.loc['onset'] = 0
@@ -372,11 +480,12 @@ def draw_timeline(df_pathway_steps, series_treatment_times_without_travel,
         s = df_treats.loc[i, 'source_time']
         if s != 'none':
             t = series_treatment_times_without_travel[s]
+            # Avoid floating point weirdness:
+            t = int(np.round(t, 0))
             # Convert minutes to hour-minute strings:
             df_treats.loc[i, 'min'] = t
-            df_treats.loc[i, 'hr_min'] = timeline.make_formatted_time_str(t)
+            df_treats.loc[i, 'hr_min'] = make_formatted_time_str(t)
         else:
             df_treats.loc[i, 'min'] = np.NaN
             df_treats.loc[i, 'hr_min'] = '-'
-
-    timeline.draw_timeline(df_pathway_steps, df_treats, use_msu=use_msu)
+    timeline.make_timeline_fig(df_pathway_steps, df_treats, use_msu=use_msu)

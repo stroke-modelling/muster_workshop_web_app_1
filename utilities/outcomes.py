@@ -13,6 +13,14 @@ from utilities.utils import print_progress_loc, set_rerun_map
 
 def select_outcome_type():
     """
+    User selection of which outcome to show on the maps.
+
+    This function shows nicer labels for display on the app.
+
+    Returns
+    -------
+    outcome_type - str. The name of the selected outcome as it appears
+                   in the outcome dataframes.
     """
     outcome_type_dict = {
         'utility_shift': 'Added utility',
@@ -33,8 +41,22 @@ def select_outcome_type():
     return outcome_type
 
 
-def load_no_treatment_outcomes(_log=True, _log_loc=None):
+def load_no_treatment_outcomes(
+        _log: bool = True, _log_loc: st.container = None):
     """
+    Load the no-treatment mRS distributions.
+
+    Inputs
+    ------
+    _log     - bool. Whether to print log message.
+    _log_loc - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    dict_no_treatment_outcomes - dict. Keys for nLVO and LVO, values
+                                 are Series with mRS distributions
+                                 and changes from no treatment (for
+                                 consistency with outcome results).
     """
     # mRS distributions:
     mrs_dists_ref = (
@@ -64,18 +86,29 @@ def load_no_treatment_outcomes(_log=True, _log_loc=None):
 
 
 def calculate_unique_outcomes(
-        times_to_ivt, times_to_mt,
-        _log=True, _log_loc=None
+        times_to_ivt: list,
+        times_to_mt: list,
+        _log: bool = True,
+        _log_loc: st.container = None
         ):
     """
-    Run the outcome model for only the unique treatment times
-    instead of one row per LSOA.
+    Calculate outcomes for the unique treatment times.
 
-    Result is a dictionary with one key per population.
-    Each df has the keys: time_to_ivt or time_to_mt,
-    mrs_0-2, mrs_shift,
-    utility_shift, mrs_dists_i for i in 0 to 6,
-    mrs_dists_noncum_i for i in 0 to 6.
+    Run the continuous model from the stroke-outcome package.
+
+    Inputs
+    ------
+    times_to_ivt - list. Unique onset to thrombolysis times.
+    times_to_mt  - list. Unique onset to thrombectomy times.
+    _log         - bool. Whether to print log message.
+    _log_loc     - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    d - dict. One key per population (nLVO IVT, LVO IVT, LVO MT).
+        Each value is a dataframe with the keys: time_to_ivt or
+        time_to_mt; mrs_0-2, mrs_shift, utility_shift,
+        mrs_dists_i for i in 0 to 6.
     """
     times = {'ivt': list(np.array(times_to_ivt, dtype=float)),
              'mt': list(np.array(times_to_mt, dtype=float))}
@@ -98,26 +131,21 @@ def calculate_unique_outcomes(
         key_mrs = f'{pop}_each_patient_mrs_dist_post_stroke'
         vals_mrs = outcomes_by_stroke_type[t][key_mrs]
         cols_mrs = [f'{pop}_mrs_dists_{i}' for i in range(7)]
-        # # Create non-cumulative mRS dists:
-        # vals_mrs_n = np.diff(vals_mrs, prepend=0.0)
-        # cols_mrs_n = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
         # Gather data:
         arrs = [
             np.array(times[t]).reshape(len(times[t]), 1),
             np.array(vals).T,
             vals_mrs,
-            # vals_mrs_n
             ]
         df = pd.DataFrame(
             np.hstack(arrs),
-            columns=[f'time_to_{t}'] + keys + cols_mrs  # + cols_mrs_n
+            columns=[f'time_to_{t}'] + keys + cols_mrs
         )
         df = np.round(df, 5)
         # Remove "each patient" and occlusion/treatment from columns:
         new_cols = [c.replace('_each_patient', '').replace(f'{pop}_', '')
                     for c in df.columns]
-        r = dict(zip(df.columns, new_cols))
-        df = df.rename(columns=r)
+        df = df.rename(columns=dict(zip(df.columns, new_cols)))
         d[pop] = df
 
     if _log:
@@ -126,7 +154,19 @@ def calculate_unique_outcomes(
     return d
 
 
-def run_outcome_model_for_unique_times_ivt(times_to_ivt):
+def run_outcome_model_for_unique_times_ivt(times_to_ivt: np.array):
+    """
+    Run the stroke-outcome model for IVT only for unique times.
+
+    Inputs
+    ------
+    times_to_ivt - list. Unique onset to thrombolysis times.
+
+    Returns
+    -------
+    outcomes_by_stroke_type_ivt_only - dict. Results from the outcome
+                                       model for nLVO and LVO.
+    """
     # IVT:
     # Set up input table for stroke outcome package.
     outcome_inputs_df_ivt_only = pd.DataFrame()
@@ -148,7 +188,19 @@ def run_outcome_model_for_unique_times_ivt(times_to_ivt):
     return outcomes_by_stroke_type_ivt_only
 
 
-def run_outcome_model_for_unique_times_mt(times_to_mt):
+def run_outcome_model_for_unique_times_mt(times_to_mt: np.array):
+    """
+    Run the stroke-outcome model for MT only for unique times.
+
+    Inputs
+    ------
+    times_to_mt - list. Unique onset to thrombectomy times.
+
+    Returns
+    -------
+    outcomes_by_stroke_type_mt_only - dict. Results from the outcome
+                                      model for nLVO and LVO.
+    """
     # MT:
     # Set up input table for stroke outcome package.
     outcome_inputs_df_mt_only = pd.DataFrame()
@@ -171,11 +223,32 @@ def run_outcome_model_for_unique_times_mt(times_to_mt):
 
 
 def flag_lvo_ivt_better_than_mt(
-        outcomes_lvo_ivt, outcomes_lvo_mt,
-        unique_treatment_pairs,
-        _log=True, _log_loc=None,
+        outcomes_lvo_ivt: pd.DataFrame,
+        outcomes_lvo_mt: pd.DataFrame,
+        unique_treatment_pairs: pd.DataFrame,
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
     """
+    Find where IVT is better than MT for all pairs of treatment times.
+
+    Inputs
+    ------
+    outcomes_lvo_ivt       - pd.DataFrame. Base outcomes for LVO
+                             treated with IVT only.
+    outcomes_lvo_mt        - pd.DataFrame. Base outcomes for LVO
+                             treated with MT only.
+    unique_treatment_pairs - pd.DataFrame. Pairs of times to treatment
+                             with IVT and with MT.
+    _log                   - bool. Whether to print log message.
+    _log_loc               - st.container or None. Where to print log
+                             message.
+
+    Returns
+    -------
+    df - pd.DataFrame. Rows for unique times to treatment for IVT
+         and for MT, and columns with comparison outcome measure
+         mRS<=2 and a flag for whether IVT is better than MT.
     """
     outcomes_t = {'ivt': outcomes_lvo_ivt, 'mt': outcomes_lvo_mt}
     out = 'mrs_0-2'
@@ -197,9 +270,33 @@ def flag_lvo_ivt_better_than_mt(
 
 
 def combine_lvo_ivt_mt_outcomes(
-        df_lvo_ivt, df_lvo_mt, df_lvo_ivt_mt_better,
-        _log=True, _log_loc=None,
+        df_lvo_ivt: pd.DataFrame,
+        df_lvo_mt: pd.DataFrame,
+        df_lvo_ivt_mt_better: pd.DataFrame,
+        _log=True,
+        _log_loc=None,
         ):
+    """
+    Gather outcomes for LVO IVT&MT, checking which treatment is better.
+
+    Inputs
+    ------
+    df_lvo_ivt           - pd.DataFrame. Base outcomes for LVO
+                           treated with IVT only.
+    df_lvo_mt            - pd.DataFrame. Base outcomes for LVO
+                           treated with MT only.
+    df_lvo_ivt_mt_better - pd.DataFrame. Pairs of treatment times with
+                           IVT and MT and flag for when IVT is better.
+    _log                 - bool. Whether to print log message.
+    _log_loc             - st.container or None. Where to print log
+                           message.
+
+    Returns
+    -------
+    df - pd.DataFrame. Outcomes for all pairs of times to treatment
+         with IVT and MT where either the IVT or MT outcomes are used
+         depending on which is better.
+    """
     # Combine IVT&MT. Start with MT results and replace with
     # the IVT results when IVT is better than MT.
     df = df_lvo_ivt_mt_better.copy()
@@ -211,8 +308,9 @@ def combine_lvo_ivt_mt_outcomes(
     cols_outcomes = [c for c in df_lvo_mt.columns if 'time' not in c]
     df.loc[df['ivt_better'], cols_outcomes] = pd.NA
     # Substitute in the IVT results:
-    df = df.set_index('time_to_ivt').combine_first(
-        df_lvo_ivt.set_index('time_to_ivt')
+    df = (
+        df.set_index('time_to_ivt').combine_first(
+            df_lvo_ivt.set_index('time_to_ivt'))
         ).reset_index().set_index(['time_to_ivt', 'time_to_mt'])
     if _log:
         p = 'Gathered outcomes for LVO with both IVT and MT.'

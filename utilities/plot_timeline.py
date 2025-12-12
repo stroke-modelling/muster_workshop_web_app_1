@@ -9,240 +9,28 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from utilities.utils import update_plotly_font_sizes, make_formatted_time_str
+from utilities.utils import update_plotly_font_sizes
 
 
-def build_time_dicts_muster(pathway_dict):
-    # Pre-hospital "usual care":
-    time_dict_prehosp_usual_care = {'onset': 0}
-    prehosp_keys = [
-        'process_time_call_ambulance',
-        'process_time_ambulance_response',
-        'process_ambulance_on_scene_duration',
-        ]
-    for key in prehosp_keys:
-        time_dict_prehosp_usual_care[key] = pathway_dict[key]
+def load_timeline_setup(use_col: str):
+    """
+    Load the timeline display data.
 
-    # MSU dispatch:
-    time_dict_msu_dispatch = {'onset': 0}
-    msu_dispatch_keys = [
-        'process_time_call_ambulance',
-        'process_msu_dispatch',
-        ]
-    for key in msu_dispatch_keys:
-        time_dict_msu_dispatch[key] = pathway_dict[key]
+    The dataframe contains the display label and emoji for each
+    step in the pathway. It also contains a column for each chunk of
+    pathway timings and the order of the steps in the chunk.
 
-    # MSU:
-    time_dict_prehosp_msu_ivt = {'msu_arrival_on_scene': 0}
-    prehosp_msu_ivt_keys = [
-        'process_msu_thrombolysis',
-        'process_msu_on_scene_post_thrombolysis',
-        ]
-    for key in prehosp_msu_ivt_keys:
-        time_dict_prehosp_msu_ivt[key] = pathway_dict[key]
+    Inputs
+    ------
+    use_col - str. Either 'optimist' or 'muster'. The pathway steps
+              can belong to one or both projects, so this column is
+              used as a check for which steps to keep.
 
-    # MSU, no thrombolysis:
-    time_dict_prehosp_msu_no_ivt = {'msu_arrival_on_scene': 0}
-    prehosp_msu_no_ivt_keys = [
-        'process_msu_on_scene_no_thrombolysis',
-        ]
-    for key in prehosp_msu_no_ivt_keys:
-        time_dict_prehosp_msu_no_ivt[key] = pathway_dict[key]
-
-    # Transfer to MT unit from MSU:
-    time_dict_mt_transfer_unit_from_msu = {'arrival_ivt_mt': 0}
-    time_dict_mt_transfer_unit_from_msu['arrival_to_puncture'] = (
-        pathway_dict['process_time_msu_arrival_to_puncture'])
-
-    # IVT-only unit:
-    time_dict_ivt_only_unit = {'arrival_ivt_only': 0}
-    time_dict_ivt_only_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_only_unit['needle_to_door_out'] = (
-        pathway_dict['transfer_time_delay'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    # MT transfer unit:
-    time_dict_mt_transfer_unit = {'arrival_ivt_mt': 0}
-    time_dict_mt_transfer_unit['arrival_to_puncture'] = (
-        pathway_dict['process_time_transfer_arrival_to_puncture'])
-
-    # IVT and MT unit:
-    time_dict_ivt_mt_unit = {'arrival_ivt_mt': 0}
-    time_dict_ivt_mt_unit['arrival_to_needle'] = (
-        pathway_dict['process_time_arrival_to_needle'])
-    time_dict_ivt_mt_unit['needle_to_puncture'] = (
-        pathway_dict['process_time_arrival_to_puncture'] -
-        pathway_dict['process_time_arrival_to_needle']
-    )
-
-    time_dicts = {
-        'prehosp_usual_care': time_dict_prehosp_usual_care,
-        'msu_dispatch': time_dict_msu_dispatch,
-        'prehosp_msu_ivt': time_dict_prehosp_msu_ivt,
-        'prehosp_msu_no_ivt': time_dict_prehosp_msu_no_ivt,
-        'mt_transfer_from_msu': time_dict_mt_transfer_unit_from_msu,
-        'ivt_only_unit': time_dict_ivt_only_unit,
-        'mt_transfer_unit': time_dict_mt_transfer_unit,
-        'ivt_mt_unit': time_dict_ivt_mt_unit,
-    }
-    return time_dicts
-
-
-def make_treatment_time_df_msu(treatment_times_without_travel):
-    # Add strings to show travel times:
-    usual_care_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_time_to_ivt"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_no_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_mt_no_transfer"]}',
-        '+ 🚑 travel to nearest unit'
-        ])
-    usual_care_mt_transfer_str = ' '.join([
-        f'{treatment_times_without_travel["usual_care_mt_transfer"]}',
-        '+ 🚑 travel to nearest unit',
-        '+ 🚑 travel between units'
-        ])
-    msu_time_to_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["msu_time_to_ivt"]}',
-        '+ 🚑 travel from MSU base'
-        ])
-    msu_time_to_mt_str = ' '.join([
-        f'{treatment_times_without_travel["msu_time_to_mt"]}',
-        '+ 🚑 travel from MSU base',
-        '+ 🚑 travel to MT unit'
-        ])
-    msu_time_to_mt_no_ivt_str = ' '.join([
-        f'{treatment_times_without_travel["msu_time_to_mt_no_ivt"]}',
-        '+ 🚑 travel from MSU base',
-        '+ 🚑 travel to MT unit'
-        ])
-
-    # Place these into a dataframe:
-    df_treatment_times = pd.DataFrame(
-        [[usual_care_time_to_ivt_str, msu_time_to_ivt_str],
-         [usual_care_mt_no_transfer_str, msu_time_to_mt_no_ivt_str],
-         [usual_care_mt_transfer_str, msu_time_to_mt_str]],
-        columns=['Standard pathway', 'Mobile Stroke Unit'],
-        index=['Time to IVT', 'Time to MT (fastest)', 'Time to MT (slowest)']
-    )
-    return df_treatment_times
-
-
-def make_treatment_time_df_optimist(treatment_times_without_travel):
-    t_near = '\n\+ 🚑 travel to nearest unit'
-    t_mt = '\n\+ 🚑 travel to MT unit'
-    t_trans = '\+ 🚑 travel between units'
-
-    t_dict = {
-        'usual_care_time_to_ivt': {
-            'tre': 'usual_care_time_to_ivt',
-            'trav': [t_near],
-        },
-        'usual_care_mt_no_transfer': {
-            'tre': 'usual_care_time_to_mt_no_transfer',
-            'trav': [t_near],
-        },
-        'usual_care_mt_transfer': {
-            'tre': 'usual_care_time_to_mt_transfer',
-            'trav': [t_near, t_trans],
-        },
-        'prehospdiag_rej_time_to_ivt': {
-            'tre': 'prehospdiag_time_to_ivt',
-            'trav': [t_near],
-        },
-        'prehospdiag_rej_mt_no_transfer': {
-            'tre': 'prehospdiag_time_to_mt_no_transfer',
-            'trav': [t_near],
-        },
-        'prehospdiag_rej_mt_transfer': {
-            'tre': 'prehospdiag_time_to_mt_transfer',
-            'trav': [t_near, t_trans],
-        },
-        'prehospdiag_app_time_to_ivt': {
-            'tre': 'prehospdiag_time_to_ivt',
-            'trav': [t_mt],
-        },
-        'prehospdiag_app_mt_no_transfer': {
-            'tre': 'prehospdiag_time_to_mt_no_transfer',
-            'trav': [t_mt],
-        },
-        'prehospdiag_app_mt_transfer': {
-            'tre': 'prehospdiag_time_to_mt_no_transfer',
-            'trav': [t_mt],
-        },
-    }
-    s_dict = {}
-    for key, t_dict in t_dict.items():
-        t = treatment_times_without_travel[t_dict['tre']]
-        s = make_formatted_time_str(t)
-        s = f"__{s.replace(' ', '__ __')}__"
-        s_dict[key] = '  '.join([s] + t_dict['trav'])
-
-    # Manually update the last one:
-    s_dict['prehospdiag_app_mt_transfer'] = '\-'
-
-    # Place these into a dataframe:
-    r1 = [s_dict['usual_care_time_to_ivt'],
-          s_dict['prehospdiag_rej_time_to_ivt'],
-          s_dict['prehospdiag_app_time_to_ivt']]
-    r2 = [s_dict['usual_care_mt_no_transfer'],
-          s_dict['prehospdiag_rej_mt_no_transfer'],
-          s_dict['prehospdiag_app_mt_no_transfer']]
-    r3 = [s_dict['usual_care_mt_transfer'],
-          s_dict['prehospdiag_rej_mt_transfer'],
-          s_dict['prehospdiag_app_mt_transfer']]
-    cols = ['Usual care', 'Redirection rejected', 'Redirection approved']
-    ind = ['Time to IVT 💉', 'Time to MT 🔧  \n(fast)', 'Time to MT 🔧  \n(slow)']
-    df_treatment_times = pd.DataFrame([r1, r2, r3], columns=cols, index=ind)
-    return df_treatment_times
-
-
-def build_time_dicts_for_plot_msu(time_dicts, gap_between_chunks=45):
-    # Setup for timeline plot.
-    # Leave this gap in minutes between separate chunks of pathway:
-    # Start each chunk at these offsets:
-    time_offsets = {
-        'prehosp_usual_care': 0,
-        'ivt_only_unit': (
-            gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
-            ),
-        'mt_transfer_unit': (
-            gap_between_chunks * 2.0 +
-            sum(time_dicts['prehosp_usual_care'].values()) +
-            sum(time_dicts['ivt_only_unit'].values())
-        ),
-        'ivt_mt_unit': (
-            gap_between_chunks + sum(time_dicts['prehosp_usual_care'].values())
-        ),
-        'msu_dispatch': 0,
-        'prehosp_msu_ivt': (
-            gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
-        ),
-        'prehosp_msu_no_ivt': (
-            gap_between_chunks + sum(time_dicts['msu_dispatch'].values())
-        ),
-        'mt_transfer_from_msu': (
-            gap_between_chunks * 2.0 +
-            sum(time_dicts['msu_dispatch'].values()) +
-            max([
-                sum(time_dicts['prehosp_msu_ivt'].values()),
-                sum(time_dicts['prehosp_msu_no_ivt'].values())
-                ])
-        ),
-    }
-    # Find shared max time for setting same size across multiple plots
-    # so that 1 minute always spans the same number of pixels.
-    tmax = max(
-        [time_offsets[k] + sum(time_dicts[k].values())
-         for k in time_dicts.keys()]
-    ) + gap_between_chunks
-    return time_offsets, tmax
-
-
-def load_timeline_setup(use_col):
+    Returns
+    -------
+    df_time - pd.DataFrame. The relevant steps, labels, emoji, and
+              order within the chunks.
+    """
     # Columns of emoji, label, and sub-timeline order:
     df_time = pd.read_csv('./data/timeline_display.csv', index_col='name')
     # Limit to the keys we need:
@@ -251,7 +39,33 @@ def load_timeline_setup(use_col):
     return df_time
 
 
-def load_timeline_chunks(use_col):
+def load_timeline_chunks(use_col: str):
+    """
+    Load the timeline chunk data.
+
+    Different chunks are needed in each scenario. For example,
+    usual care has one set of pre-hospital pathway steps and the
+    redirection scenario has another set. This dataframe sets up
+    which chunks are need in each case.
+
+    Scenarios:
+    Both: usual care (no transfer for MT), usual care (transfer);
+    OPTIMIST: redirection approved, redirection rejected (no transfer),
+              redir rejected (transfer for MT);
+    MUSTER: MSU gives IVT, MSU gives no IVT.
+
+    Chunks: pre-ambulance-arrival, on-scene, pre-hospital-arrival,
+            first unit, second unit.
+
+    Inputs
+    ------
+    use_col - str. Either 'optimist' or 'muster'. Chooses which
+              chunk info is relevant to this project.
+
+    Returns
+    -------
+    df_chunks - pd.DataFrame. The chunk lookup for each scenario here.
+    """
     # Columns of emoji, label, and sub-timeline order:
     df_chunks = pd.read_csv('./data/timeline_chunks.csv', index_col='scenario')
     # Limit to the keys we need:
@@ -266,7 +80,31 @@ def load_timeline_chunks(use_col):
     return df_chunks
 
 
-def set_up_fig_chunks(df_times, chunks_to_keep, t_travel=20, gap=20):
+def set_up_fig_chunks(
+        df_times: pd.DataFrame,
+        chunks_to_keep: list,
+        t_travel: float = 20,
+        gap: float = 20
+        ):
+    """
+    Set up the coordinates of pathway chunks on the timeline fig.
+
+    Want to draw each chunk in chronological order with gaps in
+    between. This function sets up the x/y coordinates of each chunk
+    so that they'll appear nicely spaced.
+
+    Inputs
+    ------
+    df_times       - pd.DataFrame. Pathway steps.
+    chunks_to_keep - list. Which chunks to use here.
+    t_travel       - float. Time to use for generic travel.
+    gap            - float. Gap between chunks.
+
+    Returns
+    -------
+    df_chunk_coords - pd.DataFrame. The offset and size of each chunk
+                      and coordinates for its bounding box.
+    """
     # Set up chunk widths and spacing:
     cols_preambo = [c for c in df_times if c.startswith('times_preambo')]
     cols_onscene = [c for c in df_times if c.startswith('times_onscene')]
@@ -334,52 +172,94 @@ def set_up_fig_chunks(df_times, chunks_to_keep, t_travel=20, gap=20):
     return df_chunk_coords
 
 
-def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
-    """Optimist."""
-    # Load emoji and labels:
+def make_timeline_fig(
+        df_pathway_steps: pd.DataFrame,
+        df_treats: pd.Series,
+        use_msu: bool = False
+        ):
+    """
+    Draw timeline in chunks with emoji for steps and summary times.
+
+    Example:
+    Scenarios v \\ Chunks >   Pre-hospital    Travel  First unit
+                            ╔══════════════╗ ╔═════╗ ╔═══════════╗
+    Usual care              ║🏠--☎-🚑--🚑  ║ ║🏠--o║ ║🏥-💉---🚑║
+    Redirection approved    ║🏠--☎-🚑--📈🚑║ ║🏠--*║ ║🏥-💉--🔧 ║
+                            ╚══════════════╝ ╚═════╝ ╚═══════════╝
+
+    This function can be used for either Optimist or Muster so long
+    as the chunks and steps functions called here have been set up
+    correctly.
+
+    Inputs
+    ------
+    df_pathway_steps - pd.DataFrame. Contains the timings for each
+                       step used here.
+    df_treats        - pd.DataFrame. For printing the treatment times.
+                       Has one row per scenario and treatment combo.
+    use_msu          - bool. Whether to use MUSTER setup (True) or
+                       OPTIMIST (False).
+    """
+    # ----- Gather data for plotting -----
+    # --- Setup ---
     if use_msu:
         project = 'muster'
         order_cols = [
             # Usual care:
-            'order_preambo_usual_care', 'order_onscene_usual_care',
-            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_preambo_usual_care',
+            'order_onscene_usual_care',
+            'order_ivt_only_unit',
+            'order_mt_unit_no_transfer',
             'order_mt_unit_transfer',
             # MSU:
-            'order_preambo_msu', 'order_onscene_msu_ivt',
-            'order_onscene_msu_no_ivt', 'order_mt_unit_msu'
+            'order_preambo_msu',
+            'order_onscene_msu_ivt',
+            'order_onscene_msu_no_ivt',
+            'order_mt_unit_msu'
         ]
         chunks_to_keep = ['preambo', 'travel_to_scene', 'onscene',
                           'travel_to_first', 'first_unit', 'travel_transfer',
                           'second_unit', 'treat_times']
-        t_travel = 30
+        t_travel = 30  # generic travel time
     else:
         project = 'optimist'
         order_cols = [
-            'order_prehospital_usual_care', 'order_prehospital_prehospdiag',
-            'order_ivt_only_unit', 'order_mt_unit_no_transfer',
+            'order_prehospital_usual_care',
+            'order_prehospital_prehospdiag',
+            'order_ivt_only_unit',
+            'order_mt_unit_no_transfer',
             'order_mt_unit_transfer'
         ]
         chunks_to_keep = ['prehosp',
                           'travel_to_first', 'first_unit', 'travel_transfer',
                           'second_unit', 'treat_times']
-        t_travel = 20
+        t_travel = 20  # generic travel time
+
+    # --- Load display emoji and labels ---
     df_times = load_timeline_setup(project)
+    # Gather timings and display setup in one place:
     df_times = pd.merge(df_times, df_pathway_steps,
                         left_index=True, right_index=True, how='left')
 
-    # Calculate cumulative times for each chunk:
+    # --- Calculate timings within chunks ---
     for col in order_cols:
+        # Copy over the timings for each step:
         df = df_times[[col, 'value']]
+        # Only keep the steps in this chunk and sort them
+        # chronologically:
         df = df[df[col].notna()].sort_values(col)
+        # Make a new column with the cumulative times in the chunk:
         new_col = col.replace('order_', 'times_')
         df[new_col] = np.cumsum(df['value'])
+        # Store a copy of this new cumulative times column:
         df_times = pd.concat((df_times, df[new_col]), axis='columns')
 
+    # --- Set up chunk coordinates ---
     # Chunk setup for each scenario.
     # Use these to work out which chunk is used in each scenario,
     # e.g. whether first unit is the IVT unit or the MT unit:
     df_chunks = load_timeline_chunks(project)
-    # Use these to make coordinates for plotting:
+    # Use these to make coordinates for the chunks:
     df_chunk_coords = set_up_fig_chunks(
         df_times, chunks_to_keep, t_travel=t_travel, gap=20)
 
@@ -411,7 +291,23 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
         '<extra></extra>'           # Remove secondary box.
         )
 
+    # Formatting for arrows:
+    arrow_kwargs = dict(
+        mode='lines+markers',
+        marker=dict(size=20, symbol='arrow-up', angleref='previous',
+                    standoff=10),
+        showlegend=False,
+        hoverinfo='skip',
+    )
+    # Formatting for stroke units:
+    marker_ivt_unit_kwargs = dict(size=15, symbol='circle', color='white',
+                                  line={'color': 'black', 'width': 1},)
+    marker_mt_unit_kwargs = dict(size=18, symbol='star', color='white',
+                                 line={'color': 'black', 'width': 1},)
+
+    # --- Functions for normal chunks ---
     def plot_chunk_emoji(df, offset, hovertemplate):
+        """Plot the emoji and connecting line within this chunk."""
         fig.add_trace(go.Scatter(
             x=df['cumulative_time'] + offset,
             y=[axis_ticklabel] * len(df),
@@ -428,7 +324,9 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
             hovertemplate=hovertemplate,
         ))
 
+    # --- Functions for generic travel chunks ---
     def draw_arrow(x_list, arrow_colour):
+        """Draw an arrow between the points in x_list."""
         fig.add_trace(go.Scatter(
             x=x_list,
             y=[axis_ticklabel] * len(x_list),
@@ -436,7 +334,8 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
             line=dict(color=arrow_colour, width=10),
         ))
 
-    def draw_unit(x, marker_unit_kwargs, unit_time, unit_label,):
+    def draw_unit(x, marker_unit_kwargs, unit_time, unit_label):
+        """Draw a stroke unit on the generic travel chunk."""
         fig.add_trace(go.Scatter(
             x=[x],
             y=[axis_ticklabel],
@@ -451,6 +350,7 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
         ))
 
     def draw_start_location(x, time='0min', label='Leave starting location'):
+        """Draw the start location on the generic travel chunk."""
         fig.add_trace(go.Scatter(
             x=[x],
             y=[axis_ticklabel],
@@ -466,6 +366,7 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
         ))
 
     def draw_ambo(x, time='0min', label='Ambulance dispatch'):
+        """Draw the ambulance on the generic travel chunk."""
         fig.add_trace(go.Scatter(
             x=[x],
             y=[axis_ticklabel],
@@ -480,21 +381,38 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
             hovertemplate=hovertemplate_travel,
         ))
 
-    arrow_kwargs = dict(
-        mode='lines+markers',
-        marker=dict(size=20, symbol='arrow-up', angleref='previous',
-                    standoff=10),
-        showlegend=False,
-        hoverinfo='skip',
-    )
-    marker_ivt_unit_kwargs = dict(size=15, symbol='circle', color='white',
-                                  line={'color': 'black', 'width': 1},)
-    marker_mt_unit_kwargs = dict(size=18, symbol='star', color='white',
-                                 line={'color': 'black', 'width': 1},)
+    # Labels and marker setup for generic travel:
+    travel_chunks_dict = {
+        'travel_to_scene': {
+            'start': {
+                'type': 'ambo', 'time': '0min',
+                'label': 'Ambulance dispatch'},
+            'end': {
+                'type': 'patient', 'time': 'Depends',
+                'label': 'Arrive at patient'},
+        },
+        'travel_to_first': {
+            'start': {
+                'type': 'patient', 'time': '0min',
+                'label': 'Ambulance leaves scene'},
+            'end': {
+                'type': 'first', 'time': 'Depends',
+                'label': ''},
+        },
+        'travel_transfer': {
+            'start': {
+                'type': 'first', 'time': '0min',
+                'label': 'Ambulance leaves IVT-only unit'},
+            'end': {
+                'type': 'mt', 'time': 'Depends',
+                'label': 'Arrive at MT unit'},
+        },
+        }
 
     # ----- Begin plot -----
     fig = go.Figure()
 
+    # --- Chunk borders ---
     # Draw background rectangle for each chunk and label them.
     for chunk in df_chunk_coords.index:
         s = df_chunk_coords.loc[chunk]
@@ -514,13 +432,12 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
             yanchor='bottom'
         )
     step_chunks = [c for c in df_chunks.columns if c != 'label']
-    # Draw the scatter data.
+
+    # --- Draw the pathway steps ---
     for i, scenario in enumerate(df_chunks.index):
         s = df_chunks.loc[scenario]
-        if isinstance(s['second_unit'], str):
-            use_second_unit = True
-        else:
-            use_second_unit = False
+
+        # --- Normal chunk emoji and connecting lines ---
         # Pick out info for each chunk:
         axis_ticklabel = s['label']
         for sc in step_chunks:
@@ -540,45 +457,25 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                     hovertemplate
                     )
 
-        # Draw travel times:
-        travel_chunks_dict = {
-            'travel_to_scene': {
-                'start': {
-                    'type': 'ambo', 'time': '0min',
-                    'label': 'Ambulance dispatch'},
-                'end': {
-                    'type': 'patient', 'time': 'Depends',
-                    'label': 'Arrive at patient'},
-            },
-            'travel_to_first': {
-                'start': {
-                    'type': 'patient', 'time': '0min',
-                    'label': 'Ambulance leaves scene'},
-                'end': {
-                    'type': 'first', 'time': 'Depends',
-                    'label': ''},
-            },
-            'travel_transfer': {
-                'start': {
-                    'type': 'first', 'time': '0min',
-                    'label': 'Ambulance leaves IVT-only unit'},
-                'end': {
-                    'type': 'mt', 'time': 'Depends',
-                    'label': 'Arrive at MT unit'},
-            },
-            }
+        # --- Generic travel chunks ---
+        # Check whether there is a transfer unit to draw:
+        if isinstance(s['second_unit'], str):
+            use_second_unit = True
+        else:
+            use_second_unit = False
 
         for travel_chunk, t_dict in travel_chunks_dict.items():
-            draw_travel = True
             if ('transfer' in travel_chunk) & (not use_second_unit):
                 draw_travel = False
             else:
                 try:
+                    # Pick out the chunk coordinates:
                     x_travel = [
                         df_chunk_coords.loc[travel_chunk, 'offset'],
                         df_chunk_coords.loc[
                             travel_chunk, ['offset', 'width']].sum()
                         ]
+                    draw_travel = True
                 except KeyError:
                     # This chunk doesn't exist in this project.
                     draw_travel = False
@@ -603,6 +500,12 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                     t = t_kwargs['type']
                     if t == 'patient':
                         if i == 1:
+                            # For travel to patient, ambulance arrival
+                            # on scene.
+                            # Check whether the ambulance emoji needs
+                            # the formatting for MSU (travel time
+                            # depends) or generic ambulance (travel
+                            # time fixed).
                             if 'msu' in scenario:
                                 label = 'Depends'
                             else:
@@ -610,6 +513,7 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                                 label = df_times.loc[p, 'value']
                                 label = f'{label:.0f}min'
                         else:
+                            # For travel from patient to elsewhere.
                             label = t_kwargs['time']
                         draw_start_location(x_travel[i], time=label,
                                             label=t_kwargs['label'])
@@ -630,13 +534,17 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
                                   'Depends', 'Arrive at MT unit')
                     i += 1
 
-        # Treatment times:
+        # --- Treatment times labels ---
+        # Masks for where the data is:
         m = df_treats['scenario'] == scenario
         m_ivt = m & (df_treats['treatment'] == 'ivt')
         m_mt = m & (df_treats['treatment'] == 'mt')
+        # Pick out the times:
         time_ivt = df_treats.loc[m_ivt, 'hr_min'].values[0]
         time_mt = df_treats.loc[m_mt, 'hr_min'].values[0]
+        # String to display:
         s = f'💉 <b>IVT</b>: {time_ivt}<br>🔧 <b>MT</b>: {time_mt}'
+        # Coordinate for display:
         x = np.mean([df_chunk_coords.loc['treat_times', 'min'],
                      df_chunk_coords.loc['treat_times', 'max']])
         fig.add_annotation(
@@ -646,6 +554,7 @@ def draw_timeline(df_pathway_steps, df_treats, use_msu=False):
             showarrow=False,
         )
 
+    # --- Figure layout ---
     # Axis ranges:
     fig.update_layout(xaxis_range=[
         df_chunk_coords['min'].min() - 2,

@@ -13,7 +13,8 @@ from utilities.utils import print_progress_loc, update_plotly_font_sizes, \
     set_inputs_changed
 
 
-def set_up_onion_parameters(project='optimist', use_debug=False):
+def set_up_onion_parameters(project: str = 'optimist',
+                            use_debug: bool = False):
     """
     Resulting series keys: population, label, prop_nlvo, prop_lvo,
     prop_other, prop_redir_considered, redir_sensitivity,
@@ -21,6 +22,17 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
 
     Note November 2025, pandas styling currently only works for
     disabled columns in data_editor so can't add coloured backgrounds.
+
+    Inputs
+    ------
+    project   - str. Use keys for either 'optimist' or 'muster'
+                project.
+    use_debug - bool. Whether to show the "debug" option that recreates
+                results from the previous version of the app.
+
+    Returns
+    -------
+    df_pops - pd.DataFrame. Population parameters with user edits.
     """
     # Load in pathway timings from file:
     if project == 'optimist':
@@ -38,20 +50,32 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
     number_cols = [c for c in df_pops.columns if is_numeric_dtype(df_pops[c])]
     # Labels for number cols:
     dict_help = {
-        'prop_of_all_stroke': 'Proportion of all emergency stroke patients in this population',
-        'prop_nlvo': 'Proportion of full population who have nLVO',
-        'prop_lvo': 'Proportion of full population who have LVO',
-        'prop_other': 'Proportion of full population who have neither nLVO nor LVO',
-        'prop_redir_considered': 'Proportion of full population where redirection was considered. The rest of the population uses “usual care”.',
-        'redir_sensitivity': 'The proportion of patients redirected who have LVO.',
-        'redir_specificity': 'The proportion of patients rejected for redirection who have LVO.',
-        'prop_nlvo_ivt': 'Proportion of patients with nLVO who have IVT.',
-        'prop_lvo_ivt': 'Proportion of patients with LVO who have IVT.',
-        'prop_lvo_mt': 'Proportion of patients with LVO who receive MT only.',
-        'prop_lvo_ivt_mt': 'Proportion of patients with LVO who have both IVT and MT.'
+        'prop_of_all_stroke': '''
+Proportion of all emergency stroke patients in this population''',
+        'prop_nlvo': '''
+Proportion of full population who have nLVO''',
+        'prop_lvo': '''
+Proportion of full population who have LVO''',
+        'prop_other': '''
+Proportion of full population who have neither nLVO nor LVO''',
+        'prop_redir_considered': '''
+Proportion of full population where redirection was considered.
+The rest of the population uses “usual care”.''',
+        'redir_sensitivity': '''
+The proportion of patients redirected who have LVO.''',
+        'redir_specificity': '''
+The proportion of patients rejected for redirection who have LVO.''',
+        'prop_nlvo_ivt': '''
+Proportion of patients with nLVO who have IVT.''',
+        'prop_lvo_ivt': '''
+Proportion of patients with LVO who have IVT.''',
+        'prop_lvo_mt': '''
+Proportion of patients with LVO who receive MT only.''',
+        'prop_lvo_ivt_mt': '''
+Proportion of patients with LVO who have both IVT and MT.'''
     }
 
-    # # Convert to percent:
+    # Convert to percent:
     df_pops[number_cols] = df_pops[number_cols] * 100.0
 
     # Set up display:
@@ -95,7 +119,23 @@ def set_up_onion_parameters(project='optimist', use_debug=False):
     return df_pops
 
 
-def select_onion_population(df_pops):
+def select_onion_population(df_pops: pd.DataFrame):
+    """
+    Select which layer of the onion to use.
+
+    This function contains formatting to display the options with
+    nicer labels.
+
+    Inputs
+    ------
+    df_pops - pd.DataFrame. The patient population proportions for
+              each layer of the SPEEDY onion.
+
+    Returns
+    -------
+    series_chosen_pops - pd.Series. The parameters for just the
+                         selected layer.
+    """
     # Set up for layer selection:
     try:
         ind_default = int(np.where(
@@ -136,9 +176,26 @@ def select_onion_population(df_pops):
     return series_chosen_pops
 
 
-def calculate_population_subgroups(d, _log=True, _log_loc=None):
+def calculate_population_subgroups(
+        d: pd.Series | dict,
+        _log: bool = True,
+        _log_loc: st.container = None
+        ):
     """
     Combine the existing proportions to find subgroups.
+
+    Find the proportions of patients with nLVO and LVO who fall into
+    each redirection category.
+
+    Inputs
+    ------
+    d        - pd.Series or dict. Population parameters.
+    _log     - bool. Whether to print log message.
+    _log_loc - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    d - pd.Series or dict. The input object with some added data.
     """
     # Proportions redirected:
     d['prop_redir_lvo'] = d['redir_sensitivity']
@@ -173,6 +230,15 @@ def calculate_population_subgroups(d, _log=True, _log_loc=None):
 
 
 def select_subgroups_for_results():
+    """
+    Select occlusion-treatment combinations to calculate results for.
+
+    Returns
+    -------
+    df_subgroups - pd.DataFrame. One row per user-selected subgroup,
+                   columns for subgroup name and label and boolean
+                   occlusion types and treatment types it includes.
+    """
 
     # Load in subgroup names and labels from file:
     f = './data/subgroup_names.csv'
@@ -217,18 +283,48 @@ def select_subgroups_for_results():
         default='lvo_mt',
         on_change=set_inputs_changed
     )
+    # Keep only the data for the selected subgroups:
     df_subgroups = df_subgroups.loc[list_selected_subgroups]
 
     return df_subgroups
 
 
 def calculate_population_subgroup_grid(
-        d, df_subgroups=None, _log=True, _log_loc=None):
+        d: pd.Series | dict,
+        df_subgroups: pd.DataFrame = None,
+        _log: bool = True,
+        _log_loc: st.container = None
+        ):
     """
+    Calculate patient proportions for OPTIMIST scenarios.
 
-    There are two sets of "usual care". One is for the current
-    real-life setup, and the other is for the redirection scenario
-    when some patients are not considered for redirection.
+    Calculate the proportions of patients in each combination of
+    occlusion type (nLVO, LVO), treatment type (IVT, MT, both,
+    neither), and scenario (usual care, redirection available,
+    redirection accepted only). For each scenario, proportions sum to
+    1.
+
+    The redirection scenario is split into groups for "usual care",
+    "redirection accepted", and "redirection rejected". This lets
+    for example more patients with LVO be accepted and patients with
+    nLVO be rejected.
+    The data labelled "usual_care" is for the current
+    real-life setup, and "redir_usual_care" is for the redirection
+    scenario when some patients are not considered for redirection.
+
+    Inputs
+    ------
+    d            - pd.Series or dict.
+    df_subgroups - pd.DataFrame or None.
+    _log         - bool. Whether to print log message.
+    _log_loc     - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    dict_of_dfs - dict. Keys for "usual care", "redirection available"
+                  (including redir accepted, rejected, not considered),
+                  and "redirection accepted". Each value is a dataframe
+                  of the patient proportions for each case.
     """
     # Each individual subgroup.
     treatment_groups = [
@@ -243,7 +339,7 @@ def calculate_population_subgroup_grid(
     d['prop_lvo_no_treatment'] = (1.0 - (
         d['prop_lvo_ivt'] + d['prop_lvo_mt'] + d['prop_lvo_ivt_mt']))
 
-    # Full population, usual care:
+    # ----- Full population, usual care: -----
     s = pd.Series()
     s.name = 'full_population'
     for tre in treatment_groups:
@@ -258,7 +354,7 @@ def calculate_population_subgroup_grid(
     # Scenario label for consistency with redir df:
     df_pop_usual_care.insert(0, 'scenario', 'usual_care')
 
-    # Full population, redir options:
+    # ----- Full population, redir options: -----
     redir_scenarios = [
         'redir_usual_care', 'redir_accepted', 'redir_rejected']
     props = {}
@@ -279,7 +375,7 @@ def calculate_population_subgroup_grid(
         columns={0: 'full_population'})
         .reset_index().set_index('treatment_group'))
 
-    # Full population, only redirection approved:
+    # ----- Full population, only redirection approved: -----
     scen = 'redir_accepted'
     r = pd.Series()
     r.name = 'full_population'
@@ -295,7 +391,7 @@ def calculate_population_subgroup_grid(
     # Scenario label for consistency with redir df:
     df_pop_redir_approved_only.insert(0, 'scenario', 'redir_accepted_only')
 
-    # Gather the new props dataframes:
+    # ----- Gather the new props dataframes: -----
     dict_of_dfs = {
         'usual_care': df_pop_usual_care,
         'redir_allowed': df_pop_redir,
@@ -353,8 +449,37 @@ def calculate_population_subgroup_grid(
 
 
 def calculate_population_subgroup_grid_muster(
-        d, df_subgroups=None, _log=True, _log_loc=None):
+        d: pd.Series | dict,
+        df_subgroups: pd.DataFrame = None,
+        _log: bool = True,
+        _log_loc: st.container = None
+        ):
     """
+    Calculate patient proportions for MUSTER scenarios.
+
+    Calculate the proportions of patients in each combination of
+    occlusion type (nLVO, LVO), treatment type (IVT, MT, both,
+    neither), and scenario (usual care, MSU).
+    For each scenario, proportions sum to 1.
+
+    The MSU scenario is split into groups for "usual care",
+    "MSU with IVT", and "MSU without IVT". Currently the "usual care"
+    group here goes unused but it could be if the MSU were not always
+    available. Patients who have MT but not IVT use the "MSU without
+    IVT" timings.
+
+    Inputs
+    ------
+    d            - pd.Series or dict.
+    df_subgroups - pd.DataFrame or None.
+    _log         - bool. Whether to print log message.
+    _log_loc     - st.container or None. Where to print log message.
+
+    Returns
+    -------
+    dict_of_dfs - dict. Keys for "usual care" and "msu".
+                  Each value is a dataframe of the patient proportions
+                  for each case.
     """
     # Each individual subgroup.
     treatment_groups = [
@@ -466,12 +591,32 @@ def calculate_population_subgroup_grid_muster(
 
 
 def plot_population_props(
-        props_usual_care,
-        props_redir,
-        s,
-        subgroup_setup,
-        titles=['<b>Usual care</b>', '<b>Redirection available</b>']
+        props_usual_care: pd.DataFrame,
+        props_redir: pd.DataFrame,
+        s: str,
+        subgroup_setup: pd.Series,
+        titles: list = ['<b>Usual care</b>', '<b>Redirection available</b>']
         ):
+    """
+    Plot bar chart of this subgroup's patient proportions.
+
+    Expect props for: nLVO IVT, nLVO no treatment, LVO IVT, LVO MT,
+    LVO IVT&MT, LVO no treatment.
+
+    Inputs
+    ------
+    props_usual_care - pd.DataFrame. Proportions of patients with each
+                       occlusion/treatment combo for usual care. Extra
+                       column is for the subgroup to plot here.
+    props_redir      - pd.DataFrame. Proportions of patients with each
+                       occlusion/treatment combo for usual care. Extra
+                       column is for the subgroup to plot here.
+    s                - str. Subgroup name.
+    subgroup_setup   - pd.Series. Bool for which occlusion and treatment
+                       types should be included in this subgroup.
+    titles           - list. Subplot axis titles.
+    """
+    # Nicer labels for the bars:
     treat_labels = {
         'nlvo_ivt': 'nLVO<br>IVT',
         'nlvo_no_treatment': 'nLVO<br>no treat',
@@ -483,6 +628,7 @@ def plot_population_props(
     fig = make_subplots(rows=2, cols=1, subplot_titles=titles,
                         shared_xaxes=True)
 
+    # Usual care (top axis):
     fig.add_trace(go.Bar(
         x=[treat_labels[b] for b in props_usual_care.index],
         y=100.0 * props_usual_care[s],
@@ -490,6 +636,7 @@ def plot_population_props(
         hovertemplate='%{y:.1f}%',
     ), row=1, col=1)
 
+    # Redirection available (bottom axis):
     redir_scenarios = props_redir['scenario'].unique()
     redir_labels = {
         'redir_usual_care': 'Usual care',
@@ -498,7 +645,6 @@ def plot_population_props(
         'msu_ivt': 'MSU (IVT)',
         'msu_no_ivt': 'MSU (no IVT)',
     }
-
     for scenario in redir_scenarios:
         m = props_redir['scenario'] == scenario
         fig.add_trace(go.Bar(
@@ -508,15 +654,13 @@ def plot_population_props(
             hovertemplate='%{y:.1f}%',
         ), row=2, col=1)
 
+    # Layout:
     fig.update_layout(barmode='group')
     fig.update_layout(height=400, width=500,
                       title_text=subgroup_setup['label'],
                       margin_r=0,)
-    # fig.update_xaxes(title_text='Treatment group', row=2, col=1)
     for i in range(1, 3):
-        fig.update_yaxes(
-            title_text='Patients (%)', row=i, col=1,
-            )
+        fig.update_yaxes(title_text='Patients (%)', row=i, col=1)
     fig.update_layout(legend=dict(
         orientation="h",
         yanchor="top",
@@ -560,35 +704,65 @@ def plot_population_props(
 
 
 def calculate_unique_outcomes_onion(
-        dict_base_outcomes,
-        dict_df_pops,
-        df_subgroups,
-        df_treat_times_sets_unique,
-        s,
-        check_mrs_noncum=False,
-        _log=True, _log_loc=None,
+        dict_base_outcomes: dict,
+        dict_df_pops: dict,
+        s_subgroups: pd.Series,
+        df_treat_times_sets_unique: pd.DataFrame,
+        s: str,
+        _check_mrs_noncum: bool = False,
+        _log: bool = True,
+        _log_loc: st.container = None,
         ):
     """
-    Combine the base outcomes into nLVO+LVO and combined scenarios
-    (mix of usual care, redirection rejected, redirection approved).
+    Combine the base outcomes into nLVO+LVO and combined scenarios.
 
-    Population dict keys: population, label, prop_nlvo, prop_lvo,
-    prop_other, prop_redir_considered, redir_sensitivity,
-    redir_specificity, prop_redir_lvo, prop_redir_nlvo,
-    prop_X_redir_usual_care, prop_X_redir_accepted,
-    prop_X_redir_rejected for X in nlvo, lvo.
-    Each base outcome df has the keys:
-    time_to_ivt or time_to_mt, mrs_0-2, mrs_shift,
-    utility_shift, mrs_dists_i for i in 0 to 6
+    For OPTIMIST, combined scenario is a mix of usual care,
+    redirection rejected, and redirection approved. For MUSTER,
+    it is a mix of usual care, MSU with IVT, and MSU with no IVT.
 
     Note: checked the mRS distribution combination.
     The result is the same for combining non-cumulative scores
     as for combining cumulative scores and then taking diff.
+    The _check_mrs_noncum kwarg is a leftover of this check.
+
+    Inputs
+    ------
+    dict_base_outcomes         - dict. Keys are occlusion/treatment
+                                 combos, values are dataframes with
+                                 base outcomes. Each base outcome df
+                                 has keys: time_to_ivt or time_to_mt,
+                                 mrs_0-2, mrs_shift, utility_shift,
+                                 mrs_dists_i for i in 0 to 6.
+    dict_df_pops               - dict. Keys are scenarios (usual care,
+                                 redirection subgroups), values are
+                                 dataframes containing patient
+                                 proportions. Use this to look up how
+                                 much the outcomes for this subgroup
+                                 should be scaled by, e.g. 40% LVO MT.
+    s_subgroups                - pd.Series. Which occlusion and
+                                 treatment types are included in this
+                                 subgroup.
+    df_treat_times_sets_unique - pd.DataFrame. Unique sets of treatment
+                                 times for IVT and MT for all
+                                 scenarios.
+    s                          - str. Name of the subgroup to calculate
+                                 outcomes for.
+    _check_mrs_noncum          - bool. Whether to sanity check that the
+                                 non-cumulative results are the same if
+                                 calculated before or after combining
+                                 populations.
+    _log                       - bool. Whether to print log message.
+    _log_loc                   - st.container or None. Where to print
+                                 log message.
+
+    Returns
+    -------
+    dict_outputs - dict. Combined outcomes for this subgroup.
     """
     # Which outcome data do we need?
     base_outcome_keys = list(dict_base_outcomes.keys())
     base_outcome_keys_here = [
-        k for k in base_outcome_keys if df_subgroups[k] == 1]
+        k for k in base_outcome_keys if s_subgroups[k] == 1]
 
     # Match scenario with simpler proportions dataframes:
     dict_scenario_props = {}
@@ -631,13 +805,33 @@ def calculate_unique_outcomes_onion(
     time_cols = list(df_treat_times_sets_unique.columns)
 
     def gather_outcomes_and_props(
-            scenarios,
-            dict_scenario_props,
-            df_treat_times_sets_unique,
-            base_outcome_keys_here,
-            time_lookup
+            scenarios: list,
+            dict_scenario_props: dict,
+            df_treat_times_sets_unique: pd.DataFrame,
+            base_outcome_keys_here: list,
+            time_lookup: dict
             ):
         """
+        Pick out the outcome data, scale by patient props, and combine.
+
+        Inputs
+        ------
+        scenarios                  - list. Scenarios to calculate
+                                     outcomes for.
+        dict_scenario_props        - dict. Population proportions for
+                                     each scenario.
+        df_treat_times_sets_unique - pd.DataFrame. Unique sets of times
+                                     across all scenarios together.
+        base_outcome_keys_here     - list. The names of the base
+                                     outcomes that are needed for this
+                                     subgroup.
+        time_lookup                - dict. Link scenario names between
+                                     data sources.
+
+        Returns
+        -------
+        df - pd.DataFrame. Combined scaled outcomes across the
+             different base groups in this subgroup.
         """
         # Take a copy of each set of treatment times
         # and make a new version of the relevant outcomes
@@ -702,7 +896,7 @@ def calculate_unique_outcomes_onion(
                         )
                         df_outcomes = df_outcomes.drop(
                             f'time_to_{treat}', axis='columns')
-                    if check_mrs_noncum:
+                    if _check_mrs_noncum:
                         # Sanity check:
                         # Convert mRS distributions to non-cumulative:
                         mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
@@ -738,7 +932,7 @@ def calculate_unique_outcomes_onion(
             time_lookup
             )
 
-    if check_mrs_noncum:
+    if _check_mrs_noncum:
         mrs_cols = [f'mrs_dists_{i}' for i in range(7)]
         mrs_noncum_cols = [c.replace('dists_', 'dists_noncum_')
                            for c in mrs_cols]
@@ -765,16 +959,32 @@ def calculate_unique_outcomes_onion(
 
 
 def gather_lsoa_level_outcomes(
-        dict_outcomes,
-        df_lsoa_units_times,
-        cols_times,
-        _log=True, _log_loc=None
+        dict_outcomes: dict,
+        df_lsoa_units_times: pd.DataFrame,
+        cols_times: list,
+        _log: bool = True,
+        _log_loc: st.container = None
         ):
     """
+    Gather each LSOA's outcomes for each subgroup and scenario.
 
-    Don't calculate the transfer-only subset
-    because the "transfer_required" column is in
-    df_lsoa_units_times.
+    Don't calculate the transfer-only subset separately.
+
+    Inputs
+    ------
+    dict_outcomes       - dict. One key per subgroup, values are a dict
+                          with an entry for each scenario, those values
+                          are dataframes of outcomes.
+    df_lsoa_units_times - pd.DataFrame. Has LSOA and treatment times.
+    cols_times          - list. Which treatment times to group by.
+    _log                - bool. Whether to print log message.
+    _log_loc            - st.container or None. Where to print log
+                          message.
+
+    Returns
+    -------
+    dict_lsoa - dict. Contains one dataframe for each subgroup. Each
+                dataframe is the full outcome results by LSOA.
     """
     df_lsoa = df_lsoa_units_times.set_index(cols_times)
 
@@ -799,6 +1009,15 @@ def gather_lsoa_level_outcomes(
 
 def plot_onion():
     """
+    Plot a series of labelled circles for the SPEEDY populations.
+
+                       ▒▒▒▒▒
+    Layer 1 ---->    ▒▒  ▄  ▒▒
+    Layer 2 --->   ▒▒  ▄█▀█▄  ▒▒
+    Layer 3 --->  ▒  ▐█  o  █▌  ▒
+    Layer 4 --->   ▒▒  ▀█▄█▀  ▒▒
+    Layer 5 ---->    ▒▒  ▀  ▒▒
+                       ▒▒▒▒▒
     """
     fig = go.Figure()
 

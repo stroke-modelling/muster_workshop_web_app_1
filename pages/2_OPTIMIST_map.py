@@ -189,26 +189,36 @@ with containers['units_text']:
 We assume that all of the MT units also provide IVT.
 
 In usual care:
-+ patients whose nearest unit has MT always travel directly to an MT unit (:primary[red path]).
-+ other patients travel first to the IVT unit and then if necessary are transferred to the MT unit (:grey[grey path]).
++ patients whose nearest unit has MT always travel directly to an MT
+unit (:primary[red path]).
++ other patients travel first to the IVT unit and then if necessary are
+transferred to the MT unit (:grey[grey path]).
 
-With redirection, patients who would normally travel to the IVT unit first (:grey[grey path]) instead travel directly to the MT unit (:primary[red path]).
+With redirection, patients who would normally travel to the IVT unit
+first (:grey[grey path]) instead travel directly to the MT unit
+(:primary[red path]).
 ''')
     with cols[0]:
         reg.plot_basic_travel_options()
     st.markdown('''
-
-For most patients, redirection means faster access to MT because of the reduced travel time and delays for hospital transfer.
-It also means slower access to IVT because of the increased travel time to the MT unit compared with the IVT unit.
+For most patients, redirection means faster access to MT because of the
+reduced travel time and delays for hospital transfer.
+It also means slower access to IVT because of the increased travel time
+to the MT unit compared with the IVT unit.
 ''')
 with containers['pathway_text']:
     st.markdown('''
-The time to treatment depends on the travel times and whether redirection was considered.
+The time to treatment depends on the travel times and whether
+redirection was considered.
 
 Assumptions:
-1. When redirection is considered, the ambulance spends more time on-scene to do the pre-hospital diagnostic.
-2. All stroke units share the same time from arrival to delivery of IVT.
-3. The time from arrival to delivery of MT can be different for patients admitted directly to the MT unit and for patients who received a transfer.
+1. When redirection is considered, the ambulance spends more time
+on-scene to do the pre-hospital diagnostic.
+2. All stroke units share the same time from arrival to delivery of
+IVT.
+3. The time from arrival to delivery of MT can be different for
+patients admitted directly to the MT unit and for patients who
+received a transfer.
 4. All other pathway timings are the same in every scenario.
 ''')
 with containers['onion_text']:
@@ -217,11 +227,17 @@ The population can be grouped in a series of subsets:
 + :grey-background[Full study population]:  
   + All patients suspected to be stroke by ambulance staff  
   __and__  
-  + All patients confirmed to be stroke at hospital, conveyed by ambulance but not initially suspected to be stroke by ambulance staff.
-+ :orange-background[Ambulance suspected stroke population]: patients suspected to be stroke by ambulance staff.
-+ :yellow-background[Target population]: Ambulance suspected stroke patients who have the pathway initiation crieria i.e. drip-ship area, specified clinical features.
-+ :green-background[Primary analysis population]: Patients with ischaemic stroke.
-+ :blue-background[Thrombectomy]: Patients with LVO ischaemic stroke who receive thrombectomy.
+  + All patients confirmed to be stroke at hospital, conveyed by
+ambulance but not initially suspected to be stroke by ambulance staff.
++ :orange-background[Ambulance suspected stroke population]: patients
+suspected to be stroke by ambulance staff.
++ :yellow-background[Target population]: Ambulance suspected stroke
+patients who have the pathway initiation crieria i.e. drip-ship area,
+specified clinical features.
++ :green-background[Primary analysis population]: Patients with
+ischaemic stroke.
++ :blue-background[Thrombectomy]: Patients with LVO ischaemic stroke
+who receive thrombectomy.
 ''')
 with containers['onion_text2']:
     st.markdown('''
@@ -232,7 +248,9 @@ These proportions can be changed in the following table:
 ''')
 with containers['pop_plots']:
     st.markdown('''
-We calculate six base outcomes. These can be combined in different proportions to find the outcomes for the ischaemic stroke patients in a selected subgroup of patients.
+We calculate six base outcomes. These can be combined in different
+proportions to find the outcomes for the ischaemic stroke patients in a
+selected subgroup of patients.
 ''')
 with containers['region_unit_admissions_top']:
     st.markdown('''
@@ -338,7 +356,8 @@ df_pathway_steps = pathway.select_pathway_timings(
     )
 series_treatment_times_without_travel = (
     pathway.calculate_treatment_times_without_travel(
-        df_pathway_steps, ['usual_care', 'prehospdiag'],
+        df_pathway_steps['value'],
+        ['usual_care', 'prehospdiag'],
         _log_loc=containers['log_pathway']
         )
     )
@@ -567,7 +586,7 @@ if st.session_state['rerun_region_summaries']:
                 st.session_state['dict_outcomes'],
                 st.session_state[
                     'dict_highlighted_region_unique_treatment_times'],
-                df_highlighted_regions,
+                use_highlighted_teams=True,
                 _log_loc=containers['log_regions']
                 )
         )
