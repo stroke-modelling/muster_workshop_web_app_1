@@ -927,6 +927,7 @@ def assign_colours_to_units(
 # ##### FIGURE SETUP #####
 # ########################
 def get_map_config():
+    """Get dict of standard plotly chart config options."""
     # Options for the mode bar.
     # (which doesn't appear on touch devices.)
     plotly_config = {
@@ -950,8 +951,8 @@ def get_map_config():
     return plotly_config
 
 
-def england_map_setup(fig):
-
+def england_map_setup(fig: go.Figure):
+    """Standard plotly chart setup for maps of England."""
     # Remove repeat legend names:
     # (e.g. multiple sets of IVT unit, MT unit)
     # # from https://stackoverflow.com/a/62162555
@@ -963,6 +964,7 @@ def england_map_setup(fig):
     # This makes sure that if multiple maps use the exact same
     # colours and labels, the labels only appear once in the legend.
 
+    # Legend location and format:
     fig.update_layout(
         legend=dict(
             title_text='',
@@ -986,7 +988,23 @@ def england_map_setup(fig):
     return fig
 
 
-def draw_cmap_buttons(fig, colour_dicts, cmaps):
+def draw_cmap_buttons(fig: go.Figure, colour_dicts: dict, cmaps: list):
+    """
+    Add restyle buttons to plotly figure for updating heatmap colours.
+
+    Inputs
+    ------
+    fig           - go.Figure. A plotly chart with three heatmap traces
+                    named 'lhs', 'rhs', and 'pop' (for left-hand-side,
+                    right-hand-side, population maps).
+    colours_dicts - dict. One key per map, each value is a dict
+                    containing min/max colour limits for the map.
+    cmaps         - list. List of colour maps to choose from.
+
+    Returns
+    -------
+    fig - go.Figure. The input fig.
+    """
     # BUTTONS TEST - https://plotly.com/python/custom-buttons/
 
     if len(cmaps) > 0:
@@ -994,13 +1012,14 @@ def draw_cmap_buttons(fig, colour_dicts, cmaps):
     else:
         # Set up some colour options now.
         cmaps = ['iceburn_r', 'seaweed', 'fusion', 'waterlily']
-        # Add the reverse option after each entry. Remove any double reverse
-        # reverse _r_r. Result is flat list.
+        # Add the reverse option after each entry. Remove any double
+        # reverse reverse _r_r. Result is flat list.
         cmaps = sum(
             [[c, (c + '_r').replace('_r_r', '')] for c in cmaps], [])
-    # Colour scales dict:
+    # Make a new colour scales dict:
     keys = list(colour_dicts.keys())
     dicts_colourscales = dict([(k, {}) for k in keys])
+    # Place colours in the new dict:
     for i, c in enumerate(cmaps):
         for k in keys:
             dicts_colourscales[k][c] = (
@@ -1010,22 +1029,23 @@ def draw_cmap_buttons(fig, colour_dicts, cmaps):
                     vmax=colour_dicts[k]['vmax']
                     ))
 
+    # Set up buttons:
+    buttons = list([
+        dict(
+            args=[{'colorscale': [dicts_colourscales[keys[0]][c],
+                                  dicts_colourscales[keys[1]][c],
+                                  dicts_colourscales[keys[2]][c]]},
+                  {'traces': ['lhs', 'rhs', 'pop']}],
+            label=c,
+            method='restyle'
+        )
+        for c in cmaps
+    ])
+    # Draw buttons:
     fig.update_layout(
         updatemenus=[
             dict(
-                buttons=list([
-                    dict(
-                        args=[{'colorscale': [
-                                dicts_colourscales[keys[0]][c],
-                                dicts_colourscales[keys[1]][c],
-                                dicts_colourscales[keys[2]][c]
-                                ]},
-                              {'traces': ['lhs', 'rhs', 'pop']}],
-                        label=c,
-                        method='restyle'
-                    )
-                    for c in cmaps
-                ]),
+                buttons=buttons,
                 type='buttons',
                 direction='right',
                 pad={'r': 10, 't': 10},
@@ -1056,15 +1076,33 @@ def draw_cmap_buttons(fig, colour_dicts, cmaps):
     return fig
 
 
-def generate_node_coordinates(df_unit_services, all_units):
+def generate_node_coordinates(
+        df_unit_services: pd.DataFrame, units_to_show: list):
+    """Wrapper for load_units_gdf for unit subset for flow maps."""
     # Generate coordinates for nodes.
     # Stroke units use their real coordinates:
-    df_units_here = df_unit_services.loc[all_units]
+    df_units_here = df_unit_services.loc[units_to_show]
     gdf_units = load_units_gdf(df_units_here)
     return gdf_units
 
 
-def load_region_outline_here(region_type, region):
+def load_region_outline_here(region_type: str, region: str):
+    """
+    Load the outline for a single region.
+
+    Inputs
+    ------
+    region_type - str. Either 'isdn', 'icb', 'ambo'.
+    region      - str. The name of the required region in the
+                  region geojson file.
+
+    Returns
+    -------
+    gdf_region          - gpd.GeoDataFrame. The outline of the single
+                          chosen region.
+    region_display_name - str. Nicer formatting for the input
+                          region_type, e.g. "ISDN" for "icb".
+    """
     # Place catchment units outside the bounding box of the selected region
     # _and_ all transfer units.
     # n.b. this would be hideous for large enough regions...!
@@ -1104,13 +1142,42 @@ def load_region_outline_here(region_type, region):
 
 
 def set_network_map_bounds(
-        gdf_units,
-        gdf_region=None,
-        transform_dict_units=None
+        gdf_units: gpd.GeoDataFrame,
+        gdf_region: gpd.GeoDataFrame = None,
+        transform_dict_units: dict = None
         ):
+    """
+    Calculate the bounding area for the patient flow maps.
+
+    Rather than showing the whole of England when the relevant units
+    are all in a smaller area, limit the bounds to everything that
+    needs to be shown plus some buffer room. Create a separate list of
+    bounds for each input to this function, then combine to find bounds
+    for everything.
+
+    Inputs
+    ------
+    gdf_units            - gpd.GeoDataFrame. The subset of stroke
+                           units for this network map.
+    gdf_region           - gpd.GeoDataFrame. Outline of the region
+                           selected if region is ICB, ISDN, or ambo.
+    transform_dict_units - dict. Pixel array to BNG coordinate
+                           transform lookup for raster maps, e.g. unit
+                           catchment map.
+
+    Returns
+    -------
+    bounds   - list. New bounds that cover all inputs plus buffer.
+    x_buffer - float. The breathing room given in the x direction.
+    y_buffer - float. The breathing room given in the y direction.
+    """
+    # Gather bounds of all the input geography.
+    # Start with the bounds of the selected stroke units:
     bounds_lists = [gdf_units.total_bounds]
+    # If region outline exists, gather its bounds:
     if gdf_region is not None:
         bounds_lists.append(gdf_region.total_bounds)
+    # If unit catchment map exists, gather its bounds:
     if transform_dict_units is not None:
         bounds_units_raster = [
             transform_dict_units['xmin'],
@@ -1119,37 +1186,81 @@ def set_network_map_bounds(
             transform_dict_units['ymax'],
         ]
         bounds_lists.append(bounds_units_raster)
+
+    # Pick out the bounds that cover all of the input geography:
     bounds = [
         min([b[0] for b in bounds_lists]),
         min([b[1] for b in bounds_lists]),
         max([b[2] for b in bounds_lists]),
-        max([b[3] for b in bounds_lists]),
+        max([b[3] for b in bounds_lists])
     ]
 
     # Add breathing room to region bounding box:
     x_buffer = (bounds[2] - bounds[0]) * 0.1
     y_buffer = (bounds[3] - bounds[1]) * 0.1
-    bounds = [
-        bounds[0] - x_buffer,
-        bounds[1] - y_buffer,
-        bounds[2] + x_buffer,
-        bounds[3] + y_buffer,
-        ]
+    bounds = [bounds[0] - x_buffer, bounds[1] - y_buffer,
+              bounds[2] + x_buffer, bounds[3] + y_buffer]
 
     return bounds, x_buffer, y_buffer
 
 
 def make_coords_nearest_unit_catchment(
-        gdf_units,
-        df_net_u,
-        bounds,
-        nearest_units,
-        x_buffer,
-        y_buffer,
+        gdf_units: gpd.GeoDataFrame,
+        df_net_u: pd.DataFrame,
+        bounds: list,
+        nearest_units: list,
+        x_buffer: float,
+        y_buffer: float,
         ):
+    """
+    Make coordinates for the catchment boxes outside the network maps.
+
+    The catchment boxes sit outside the main map area. They have a
+    label for how many people are in the catchment area of that unit.
+    Then arrows go from that box to any stroke units that its patients
+    attend.
+
+    Here we set up the box locations by drawing a line from the centre
+    of the map to the stroke unit and then extending it out to the
+    map's outside border. This means that stroke units in the top right
+    corner of the map will have their boxes placed in the top right of
+    the axis.
+
+    There are currently no checks whether the catchment boxes will
+    overlap once drawn.
+
+    Inputs
+    ------
+    gdf_units     - gpd.GeoDataFrame. Contains coordinates of the
+                    stoke units in this network map, including those
+                    outside the selected region who collect transfers
+                    from within the region or whose catchment area
+                    covers inside the region.
+    df_net_u      - pd.DataFrame. Contains the admissions numbers
+                    in each unit's usual catchment area. This is only
+                    used here to gather the admission numbers. It is
+                    not part of the coordinate calculations.
+    bounds        - list. Bounds of the network map.
+    nearest_units - list. List of only units in the selected region.
+                    This list is usually smaller than the units in
+                    gdf_units.
+    x_buffer      - float. The buffer space between the contents of the
+                    network map and the drawn boundaries in the
+                    x-direction.
+    y_buffer      - float. Same for y-direction.
+
+    Returns
+    -------
+    gdf - gpd.GeoDataFrame. Contains coordinates for the catchment
+          boxes named 'x_anchor', 'y_anchor'.
+    """
     box_centre = [0.5*(bounds[0]+bounds[2]), 0.5*(bounds[1]+bounds[3])]
 
+    # Store catchment box coordinates in here:
     gdf = gdf_units.copy()
+    # Limit to units in the region:
+    gdf['nearest_unit'] = 'nearest_' + gdf.index.astype(str)
+    gdf = gdf.loc[gdf['nearest_unit'].isin(nearest_units)]
     # Make coordinates for each unit in the region's "nearest unit"
     # anchor. Find the angle between the centre of the region and
     # each unit.
@@ -1158,16 +1269,16 @@ def make_coords_nearest_unit_catchment(
     gdf['angle'] = np.arctan2(gdf['y_off'], gdf['x_off'])
     gdf['angle_deg'] = gdf['angle'] * 180.0 / np.pi
 
-    # Limit to units in the region:
-    gdf['nearest_unit'] = 'nearest_' + gdf.index.astype(str)
-    gdf = gdf.loc[
-        gdf['nearest_unit'].isin(nearest_units)]
-
+    # Define the locations of the rectangle around the network map.
+    # The catchment boxes will use one of these four coordinates
+    # depending on which side of the map they are placed.
     anch_top = bounds[3] + (2.0 * y_buffer)
     anch_left = bounds[0] - (2.0 * x_buffer)
     anch_bottom = bounds[1] - (2.0 * y_buffer)
     anch_right = bounds[2] + (2.0 * x_buffer)
 
+    # Find angles to the corners of the network map so that we can
+    # decide which side each catchment box must go on:
     angle_to_top_right = np.arctan2(
         (bounds[3] - box_centre[1]), (bounds[2] - box_centre[0]))
     angle_to_top_left = np.arctan2(
@@ -1177,6 +1288,8 @@ def make_coords_nearest_unit_catchment(
     angle_to_bottom_right = np.arctan2(
         (bounds[1] - box_centre[1]), (bounds[2] - box_centre[0]))
 
+    # Pick out which catchment boxes go on each side of the network
+    # map:
     mask_top = (
         (gdf['angle'] >= angle_to_top_right) &
         (gdf['angle'] < angle_to_top_left)
@@ -1193,17 +1306,17 @@ def make_coords_nearest_unit_catchment(
         (gdf['angle'] >= angle_to_bottom_right) &
         (gdf['angle'] < angle_to_top_right)
     )
-
+    # Label the chosen sides:
     gdf.loc[mask_top, 'side'] = 'top'
     gdf.loc[mask_left, 'side'] = 'left'
     gdf.loc[mask_bottom, 'side'] = 'bottom'
     gdf.loc[mask_right, 'side'] = 'right'
-
+    # Pick out the fixed coordinate for each side:
     gdf.loc[mask_top, 'y_anchor'] = anch_top
     gdf.loc[mask_left, 'x_anchor'] = anch_left
     gdf.loc[mask_bottom, 'y_anchor'] = anch_bottom
     gdf.loc[mask_right, 'x_anchor'] = anch_right
-
+    # Calculate the other coordinate for each side:
     gdf.loc[mask_top, 'x_anchor'] = box_centre[0] + (
         (bounds[3] - box_centre[1]) /
         np.tan(gdf.loc[mask_top, 'angle'])
@@ -1221,9 +1334,12 @@ def make_coords_nearest_unit_catchment(
         np.tan(gdf.loc[mask_right, 'angle'])
         )
 
+    # Limit the results gdf to the most relevant info.
+    # Just the catchment box coordinates and some formatting:
     cols_to_keep = ['nearest_unit', 'side', 'x_anchor', 'y_anchor',
                     'ssnap_name', 'Use_MT', 'colour']
     gdf = gdf[cols_to_keep]
+    # Add in the admissions numbers in each unit's catchment area:
     gdf = pd.merge(
         gdf.reset_index(),
         df_net_u[['first_unit', 'admissions']],
@@ -1236,17 +1352,30 @@ def make_coords_nearest_unit_catchment(
 # ########################
 # ##### PLOT FIGURES #####
 # ########################
-def draw_units_map(map_traces, outline_name='none'):
+def draw_units_map(map_traces: dict, outline_name: str = 'none'):
     """
+    Draw a map of England with the stroke units by service type.
 
     Draw:
-    + outline of England
+    + either:
+      + outline of England and map of whether LSOA nearest a CSC
+      + region outlines and map of whether LSOA nearest a CSC
+      + map of unit catchment areas
     + stroke units with markers to show their services
     + major roads
-    + LSOA nearest a CSC
+
+    Inputs
+    ------
+    map_traces   - dict. Contains plotly traces of everything that
+                   will be displayed on this figure.
+    outline_name - str. Which outline type if any to draw on the
+                   maps. Can be 'isdn', 'icb', 'ambo',
+                   'nearest_ivt_unit', or 'nearest_mt_unit'.
     """
     fig = go.Figure()
 
+    # --- Draw traces ---
+    # "Nearest unit has MT" map.
     # Only draw the "nearest unit has MT" raster if we're not
     # drawing all the unit catchments anyway.
     if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
@@ -1255,28 +1384,28 @@ def draw_units_map(map_traces, outline_name='none'):
         fig.add_trace(map_traces['raster_nearest_csc']['trace'])
     # Always draw the "nearest unit has MT" legend cheat:
     fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+
     # Region outline or unit catchment raster:
     if outline_name == 'none':
         fig.add_trace(map_traces['england_outline'])
     else:
         if f'{outline_name}_outlines' in map_traces.keys():
+            # ISDN, ICB, or ambulance outlines.
             for t in map_traces[f'{outline_name}_outlines']:
                 fig.add_trace(t)
         else:
+            # Unit catchment raster.
             fig.add_trace(map_traces[f'raster_{outline_name}'])
 
+    # Always add roads and unit locations.
     fig.add_trace(map_traces['roads'])
     fig.add_trace(map_traces['units']['ivt'])
     fig.add_trace(map_traces['units']['mt'])
 
+    # --- Layout ---
     fig = england_map_setup(fig)
     # Figure setup.
-    fig.update_layout(
-        width=500,
-        height=600,
-        margin_t=25,
-        margin_b=0
-        )
+    fig.update_layout(width=500, height=600, margin_t=25, margin_b=0)
     # Equivalent to pyplot set_aspect='equal':
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
 
@@ -1284,6 +1413,7 @@ def draw_units_map(map_traces, outline_name='none'):
     fig.update_layout(title_text='')
     plotly_config = get_map_config()
 
+    # --- Display fig ---
     st.plotly_chart(
         fig,
         config=plotly_config,
@@ -1291,13 +1421,34 @@ def draw_units_map(map_traces, outline_name='none'):
         )
 
 
-def draw_units_msu_map(map_traces, outline_name='none'):
+def draw_units_msu_map(map_traces: dict, outline_name: str = 'none'):
+    """
+    Draw two map of England: stroke units IVT/MT and MSU/MT.
+
+    Draw:
+    + either:
+      + outline of England and map of whether LSOA nearest a CSC
+      + region outlines and map of whether LSOA nearest a CSC
+      + map of unit catchment areas
+    + stroke units with markers to show their services
+    + major roads
+
+    Inputs
+    ------
+    map_traces   - dict. Contains plotly traces of everything that
+                   will be displayed on this figure.
+    outline_name - str. Which outline type if any to draw on the
+                   maps. Can be 'isdn', 'icb', 'ambo',
+                   'nearest_ivt_unit', or 'nearest_mt_unit'.
+    """
     fig = make_subplots(
         rows=1, cols=2,
         horizontal_spacing=0.0,
         subplot_titles=['Usual care', 'MSU available'],
         )
 
+    # --- Draw traces ---
+    # "Nearest unit has MT" map.
     # Only draw the "nearest unit has MT" raster if we're not
     # drawing all the unit catchments anyway.
     if outline_name in ['nearest_ivt_unit', 'nearest_mt_unit']:
@@ -1307,30 +1458,30 @@ def draw_units_msu_map(map_traces, outline_name='none'):
             map_traces['raster_nearest_csc']['trace'], row='all', col='all')
     # Always draw the "nearest unit has MT" legend cheat:
     fig.add_trace(map_traces['raster_nearest_csc']['trace_legend'])
+
     # Region outline or unit catchment raster:
     if outline_name == 'none':
         fig.add_trace(map_traces['england_outline'], row='all', col='all')
     else:
         if f'{outline_name}_outlines' in map_traces.keys():
+            # ISDN, ICB, or ambulance outlines.
             for t in map_traces[f'{outline_name}_outlines']:
                 fig.add_trace(t, row='all', col='all')
         else:
+            # Unit catchment raster.
             fig.add_trace(
                 map_traces[f'raster_{outline_name}'], row='all', col='all')
 
+    # Always add roads and unit locations.
     fig.add_trace(map_traces['roads'], row='all', col='all')
     fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col=1)
     fig.add_trace(map_traces['units']['mt'], row='all', col='all')
 
+    # --- Layout ---
     fig = england_map_setup(fig)
     # Figure setup.
-    fig.update_layout(
-        width=500,
-        height=600,
-        margin_t=25,
-        margin_b=0
-        )
+    fig.update_layout(width=500, height=600, margin_t=25, margin_b=0)
 
     # Equivalent to pyplot set_aspect='equal':
     fig.update_yaxes(col=1, scaleanchor='x', scaleratio=1)
@@ -1351,6 +1502,7 @@ def draw_units_msu_map(map_traces, outline_name='none'):
     ))
     plotly_config = get_map_config()
 
+    # --- Display fig ---
     st.plotly_chart(
         fig,
         config=plotly_config,
@@ -1359,20 +1511,51 @@ def draw_units_msu_map(map_traces, outline_name='none'):
 
 
 def plot_outcome_maps(
-        map_traces, map_order, colour_dicts,
-        all_cmaps, outline_name='none', show_msu_bases=False,
-        title=''
+        map_traces: dict,
+        map_order: list,
+        colour_dicts: dict,
+        all_cmaps: list,
+        outline_name: str = 'none',
+        show_msu_bases: bool = False,
+        title: str = ''
         ):
-    """"""
+    """
+    Draw three maps: usual outcome, difference, and population.
+
+    The left map 'lhs' shows the outcome in usual care scenario.
+    The middle map 'rhs' shows the difference between the outcomes
+    in the given scenario and in usual care. The right map 'pop'
+    shows the population density.
+
+    The map traces have been made in advance.
+
+    Inputs
+    ------
+    map_traces     - dict. Contains plotly traces for maps, units,
+                     roads, regions...
+    map_order      - list. Ordered traces to show as the three maps.
+    colour_dicts   - dict. Contains the colour limits and display names
+                     for each map.
+    all_cmaps      - list. The colour map options to be shown as
+                     restyle buttons.
+    outline_name   - str. Which region types to draw as outlines.
+    show_msu_bases - bool. Whether to draw MSU bases.
+    title          - str. Top title for the figure.
+
+    Returns
+    -------
+    fig - go.Figure. Return the figure so that it can be cached.
+          Call st.plotly_chart in the main script instead of here.
+    """
     # Map labels:
     subplot_titles = [colour_dicts[m]['title'] for m in map_order]
-    fig = make_subplots(
-        rows=1, cols=len(map_order),
-        horizontal_spacing=0.0,
-        subplot_titles=subplot_titles
-        )
+    fig = make_subplots(rows=1, cols=len(map_order), horizontal_spacing=0.0,
+                        subplot_titles=subplot_titles)
 
+    # --- Map traces ---
+    # Size of the colour bar in figure units:
     cbar_len = 1.0 / len(map_order)
+    # Draw the three maps and their colour bars:
     for i, m in enumerate(map_order):
         fig.add_trace(map_traces[m], row=1, col=i+1)
         fig.update_traces(
@@ -1388,17 +1571,23 @@ def plot_outcome_maps(
             selector={'name': m}
             )
 
+    # --- Region, unit, road traces ---
     if outline_name == 'none':
+        # Draw England:
         fig.add_trace(map_traces['england_outline'], row='all', col='all')
     else:
+        # Draw region outlines:
         for t in map_traces[f'{outline_name}_outlines']:
             fig.add_trace(t, row='all', col='all')
+    # Always draw roads:
     fig.add_trace(map_traces['roads'], row='all', col='all')
+    # Draw stroke units:
     if show_msu_bases:
         fig.add_trace(map_traces['units']['msu'], row='all', col=2)
     fig.add_trace(map_traces['units']['ivt'], row='all', col='all')
     fig.add_trace(map_traces['units']['mt'], row='all', col='all')
 
+    # --- Layout ---
     fig = england_map_setup(fig)
     # Figure setup.
     fig.update_layout(
@@ -1423,17 +1612,42 @@ def plot_outcome_maps(
 
 
 def plot_networks(
-        df_net_u,
-        df_net_r,
-        df_unit_services,
-        gdf_nearest_units,
-        gdf_units,
-        bounds,
-        catch_trace,
-        gdf_region=None,
-        region_display_name=None,
-        subplot_titles=[]
+        df_net_u: pd.DataFrame,
+        df_net_r: pd.DataFrame,
+        df_unit_services: pd.DataFrame,
+        gdf_nearest_units: gpd.GeoDataFrame,
+        gdf_units: gpd.GeoDataFrame,
+        bounds: list,
+        catch_trace: go.Heatmap,
+        gdf_region: gpd.GeoDataFrame = None,
+        region_display_name: str = None,
+        subplot_titles: list = []
         ):
+    """
+    Draw maps with arrows to show patient flow between units.
+
+    Inputs
+    ------
+    df_net_u            - pd.DataFrame. Patient numbers to nearest,
+                          first, transfer units for the units here
+                          in the usual care scenario.
+    df_net_r            - pd.DataFrame. As above for the unusual
+                          scenario e.g. redirection.
+    df_unit_services    - pd.DataFrame. Use as a lookup for stroke
+                          units and their display names.
+    gdf_nearest_units   - gpd.GeoDataFrame. Coordinates for catchment
+                          area boxes and the admissions in each area. 
+    gdf_units           - gpd.GeoDataFrame. Coordinates of stroke
+                          units.
+    bounds              - list. Extent of the network map geography.
+    catch_trace         - go.HeatMap. Plotly trace showing unit
+                          catchment areas.
+    gdf_region          - gpd.GeoDataFrame or None. Outline for a
+                          single selected region to draw on maps.
+    region_display_name - str. Display name of selected region.
+    subplot_titles      - list. Subplot titles. Top left, right,
+                          bottom left, right.
+    """
     fig = make_subplots(
         rows=2, cols=2,
         horizontal_spacing=0.0,
@@ -1441,6 +1655,7 @@ def plot_networks(
         subplot_titles=subplot_titles,
         )
 
+    # --- Draw traces ---
     # Border:
     fig.add_shape(
         type="rect",
@@ -1451,9 +1666,8 @@ def plot_networks(
         col=[1, 2, 2], row=[1, 1, 2],
     )
 
-    # ----- Country outline -----
+    # Load England and restrict it to the area being drawn:
     gdf_eng = load_england_outline(bounds)
-    # Add each row of the dataframe separately.
     # Scatter the edges of the polygons and use "fill" to colour
     # within the lines.
     fig.add_trace(go.Scatter(
@@ -1472,7 +1686,7 @@ def plot_networks(
         col=[1, 2, 2], row=[1, 1, 2],
     )
 
-    # Region catchment:
+    # Region catchment heatmap:
     fig.add_trace(catch_trace, row=1, col=1)
 
     # Selected region:
@@ -1675,7 +1889,7 @@ def plot_networks(
     fig.add_trace(go.Scatter(unit_traces['mt']),
                   col=[1, 2, 2], row=[1, 1, 2],)
 
-    # Catchment anchors:
+    # Catchment boxes:
     fig.add_trace(go.Scatter(
         x=gdf_nearest_units['x_anchor'],
         y=gdf_nearest_units['y_anchor'],
@@ -1704,6 +1918,7 @@ def plot_networks(
         hoverlabel=dict(bordercolor=gdf_nearest_units['colour']),
     ), row='all', col=2)
 
+    # --- Layout ---
     fig.update_layout(hovermode='closest')
 
     fig = england_map_setup(fig)
@@ -1721,14 +1936,8 @@ def plot_networks(
     width = 800
     height = width
     # Figure setup.
-    fig.update_layout(
-        width=width,
-        height=height,
-        margin_t=50,
-        margin_b=0,
-        margin_l=0,
-        margin_r=0,
-        )
+    fig.update_layout(width=width, height=height, margin_t=50, margin_b=0,
+                      margin_l=0, margin_r=0,)
     fig.update_layout(legend=dict(
         # orientation="h",
         yanchor='middle',
