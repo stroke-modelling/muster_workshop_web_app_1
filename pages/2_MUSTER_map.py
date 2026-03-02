@@ -653,7 +653,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         n_admissions = s_admissions['admissions_nearest_unit_no_mt']
         prop_nearest_mt = 100.0
         extra_str = f'''
-        Excluding {n_patients_nearest_mt:.1f} patients whose nearest unit
+        Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
         has MT.
         '''
 
@@ -661,7 +661,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=400, border=True)
         with c:
             st.metric('Annual stroke admissions',
-                      f"{n_admissions:.1f}")
+                      f"{n_admissions:.0f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             st.metric(n, f"{prop_nearest_mt:.1f}%")
             st.markdown(extra_str)

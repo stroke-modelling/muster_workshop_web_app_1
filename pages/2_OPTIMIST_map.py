@@ -687,7 +687,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         index=['Usual care', 'Redirection']
     )
     column_config_mt = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        (c, st.column_config.NumberColumn(width='small', format='%.0f'))
         for c in df_mt.columns
         ])
     df_ivt = pd.DataFrame(
@@ -701,7 +701,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         index=['Usual care', 'Redirection']
     )
     column_config_ivt_only = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        (c, st.column_config.NumberColumn(width='small', format='%.0f'))
         for c in df_ivt.columns
         ])
 
@@ -724,12 +724,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         df_mt = df_mt.drop('Nearest unit has MT', axis='columns')
         df_ivt = df_ivt.drop('Nearest unit has MT', axis='columns')
         prop_nearest_mt = 100.0
-        extra_str = f'''
-        Excluding {n_patients_nearest_mt:.1f} patients whose nearest unit
-        has MT, including
-        {n_mt_not_subset:.1f} patients who receive thrombectomy
-        and {n_ivt_only_not_subset:.1f} receieving thrombolysis only.
-        '''
+        if n_patients_nearest_mt > 0.0:
+            extra_str = f'''
+            Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
+            has MT, including
+            {n_mt_not_subset:.0f} patients who receive thrombectomy
+            and {n_ivt_only_not_subset:.0f} receieving thrombolysis only.
+            '''
 
     with containers['region_treat_stats']:
         c = st.container(width=500, border=True)
@@ -738,19 +739,19 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             cols = st.columns(2)
             with cols[0]:
                 st.metric('Annual stroke admissions  \nin this population',
-                          f"{n_patients:.1f}")
+                          f"{n_patients:.0f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             with cols[1]:
                 st.metric(n, f"{prop_nearest_mt:.1f}%")
 
             st.markdown(f'''
-                Of the {n_mt:.1f} patients who receive thrombectomy
+                Of the {n_mt:.0f} patients who receive thrombectomy
                 (with or without thrombolysis):
                 ''')
             st.dataframe(df_mt, column_config=column_config_mt)
 
             st.markdown(f'''
-                Of the {n_ivt_only:.1f}
+                Of the {n_ivt_only:.0f}
                 patients who receive thrombolysis only:
                 ''')
             st.dataframe(df_ivt, column_config=column_config_ivt_only)
@@ -892,18 +893,18 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 label='Directly-admitting unit', width=150),
         'admissions_catchment_to_first_unit_usual_care':
             st.column_config.NumberColumn(
-                label='Usual care', format='%.2f', width='small'),
+                label='Usual care', format='%.0f', width='small'),
         'admissions_catchment_to_first_unit_redir':
             st.column_config.NumberColumn(
                 label='Redirection available',
-                format='%.2f', width='small'),
+                format='%.0f', width='small'),
         'admissions_first_unit_to_transfer_usual_care':
             st.column_config.NumberColumn(
-                label='t', format='%+.2f', width='small'),
+                label='t', format='%+.0f', width='small'),
         'admissions_first_unit_to_transfer_redir':
             st.column_config.NumberColumn(
                 label='t',
-                format='%+.2f', width='small')
+                format='%+.0f', width='small')
     }
 
     with containers['region_unit_admissions']:
@@ -912,7 +913,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             st.subheader(region_label)
 
             st.dataframe(
-                df_unit_admissions,
+                df_unit_admissions.round(0),
                 # column_order=['admissions_combo_usual_care',
                 #               'admissions_combo_redir'],
                 column_order=['admissions_catchment_to_first_unit_usual_care',

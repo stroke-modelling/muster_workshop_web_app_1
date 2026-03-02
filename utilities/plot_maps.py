@@ -1779,7 +1779,7 @@ def plot_networks(
                     axis=-1
                     ),
                 hovertemplate=(
-                    '%{customdata[2]:.1f} patients from catchment area of ' +
+                    '%{customdata[2]:.0f} patients from catchment area of ' +
                     '<br>' +
                     '%{customdata[0]}' +
                     '<br>' +
@@ -1865,7 +1865,7 @@ def plot_networks(
                         axis=-1
                         ),
                     hovertemplate=(
-                        '%{customdata[2]:.1f} patients transfer from ' +
+                        '%{customdata[2]:.0f} patients transfer from ' +
                         '<br>' +
                         '%{customdata[0]}' +
                         '<br>' +
@@ -1910,7 +1910,7 @@ def plot_networks(
         hovertemplate=(
             'Catchment area of<br>%{customdata[0]}' +
             '<br>' +
-            '%{customdata[1]:.1f} patients' +
+            '%{customdata[1]:.0f} patients' +
             # Need the following line to remove default "trace" bit
             # in second "extra" box:
             '<extra></extra>'
