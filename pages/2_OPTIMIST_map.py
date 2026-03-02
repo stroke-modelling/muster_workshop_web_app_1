@@ -255,7 +255,7 @@ selected subgroup of patients.
 with containers['region_unit_admissions_top']:
     st.markdown('''
 Total patients from this catchment area
-directly admitted to (and transferred "t" to or from)
+directly admitted to (and transferred to or from)
 each unit:
 ''')
 with containers['region_unit_maps_top']:
@@ -902,10 +902,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 format='%.0f', width='small'),
         'admissions_first_unit_to_transfer_usual_care':
             st.column_config.NumberColumn(
-                label='t', format='%+.0f', width='small'),
+                label='Transfers (usual care)', format='%+.0f', width='small'),
         'admissions_first_unit_to_transfer_redir':
             st.column_config.NumberColumn(
-                label='t',
+                label='Transfers (redirection)',
                 format='%+.0f', width='small')
     }
 
