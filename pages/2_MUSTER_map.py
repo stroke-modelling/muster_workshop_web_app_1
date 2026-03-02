@@ -843,6 +843,13 @@ with containers['map_setup']:
         key='maps_outcomes_outline'
         )
 
+
+maps_to_show = ['usual_care', 'msu_minus_usual_care']
+with containers['map_fig']:
+    if st.toggle('Show population density map.',
+                 on_change=set_rerun_map, value=True):
+        maps_to_show.append('pop')
+
 if st.session_state['rerun_maps']:
     # Make traces for maps:
     for col, arr in st.session_state['map_arrs_dict'].items():
@@ -850,7 +857,7 @@ if st.session_state['rerun_maps']:
             arr, transform_dict, dicts_colours[col], name=col)
     st.session_state['maps_fig'] = plot_maps.plot_outcome_maps(
         map_traces,
-        ['usual_care', 'msu_minus_usual_care', 'pop'],
+        maps_to_show,
         dicts_colours,
         all_cmaps,
         outline_name,
