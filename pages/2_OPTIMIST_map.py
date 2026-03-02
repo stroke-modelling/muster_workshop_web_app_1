@@ -685,9 +685,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
           dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{r}']]],
         columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
         index=['Usual care', 'Redirection']
-    )
+    ).round(3)
     column_config_mt = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.0f'))
+        (c, st.column_config.NumberColumn(
+            width='small', format='%.0f admissions'))
         for c in df_mt.columns
         ])
     df_ivt = pd.DataFrame(
@@ -699,9 +700,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
           dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{r}']]],
         columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
         index=['Usual care', 'Redirection']
-    )
+    ).round(3)
     column_config_ivt_only = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.0f'))
+        (c, st.column_config.NumberColumn(
+            width='small', format='%.0f admissions'))
         for c in df_ivt.columns
         ])
 
@@ -902,7 +904,8 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 format='%.0f', width='small'),
         'admissions_first_unit_to_transfer_usual_care':
             st.column_config.NumberColumn(
-                label='Transfers (usual care)', format='%+.0f', width='small'),
+                label='Transfers (usual care)', format='%+.0f',
+                width='small'),
         'admissions_first_unit_to_transfer_redir':
             st.column_config.NumberColumn(
                 label='Transfers (redirection)',
@@ -913,6 +916,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.write('Numbers of admissions:')
 
             st.dataframe(
                 df_unit_admissions.round(0),
