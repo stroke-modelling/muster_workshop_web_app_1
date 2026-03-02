@@ -652,10 +652,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         # Only patients whose nearest unit does not have MT.
         n_admissions = s_admissions['admissions_nearest_unit_no_mt']
         prop_nearest_mt = 100.0
-        extra_str = f'''
-        Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
-        has MT.
-        '''
+        if n_patients_nearest_mt == 0.0:
+            extra_str = ''
+        else:
+            extra_str = f'''
+            Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
+            has MT.
+            '''
 
     with containers['region_treat_stats']:
         c = st.container(width=400, border=True)

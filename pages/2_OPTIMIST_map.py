@@ -724,7 +724,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         df_mt = df_mt.drop('Nearest unit has MT', axis='columns')
         df_ivt = df_ivt.drop('Nearest unit has MT', axis='columns')
         prop_nearest_mt = 100.0
-        if n_patients_nearest_mt > 0.0:
+        if n_patients_nearest_mt == 0.0:
+            extra_str = ''
+        else:
             extra_str = f'''
             Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
             has MT, including
