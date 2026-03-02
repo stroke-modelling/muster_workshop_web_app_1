@@ -939,10 +939,10 @@ def load_region_lists(df_unit_services: pd.DataFrame):
 
     # Key for region type, value for list of options.
     region_options_dict = {
+        'Ambulance service': ambo_list,
         'ISDN': isdn_list,
         'ICB': icb_list,
         'Nearest unit': nearest_ivt_unit_names_list,
-        'Ambulance service': ambo_list
     }
 
     return region_options_dict
@@ -1276,7 +1276,7 @@ def select_full_data_type():
         'Choose a region type for the full results.',
         options=region_types,
         format_func=f,
-        index=3,
+        index=4,
         on_change=set_rerun_full_results
         )
     return full_data_type

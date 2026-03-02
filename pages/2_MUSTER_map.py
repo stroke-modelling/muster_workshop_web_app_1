@@ -286,9 +286,9 @@ map_traces = st.session_state['map_traces_shared'] | map_traces_constant
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
+        'ambo22': 'Ambulance service',
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
-        'ambo22': 'Ambulance service',
         'nearest_ivt_unit': 'Nearest IVT unit',
         'nearest_mt_unit': 'Nearest MT unit',
     }
@@ -826,9 +826,9 @@ for p, dp in dicts_colours.items():
 with containers['map_setup']:
     outline_labels_dict = {
         'none': 'None',
+        'ambo22': 'Ambulance service',
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
-        'ambo22': 'Ambulance service',
     }
 
     def f(label):
