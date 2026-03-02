@@ -912,6 +912,7 @@ if generate_full_data:
                 reg.calculate_nested_average_outcomes(
                     st.session_state['dict_outcomes'],
                     dict_this_region_unique_treatment_times,
+                    use_highlighted_teams=False,
                     _log_loc=containers['log_full_results']
                     )
             )
