@@ -129,6 +129,7 @@ def set_up_page_layout():
     tabs_results = ['Region summaries', 'England maps', 'Full results tables']
     with c['results']:
         st.header('Results')
+        c['results_top'] = st.container()
         (c['region_summaries'], c['maps'], c['full_results']) = (
             st.tabs(tabs_results))
 
@@ -387,6 +388,11 @@ with containers['onion_text']:
     dict_onion = pop.select_onion_population(df_onion_pops)
 dict_onion = pop.calculate_population_subgroups(
     dict_onion, _log_loc=containers['log_onion'])
+# Keep a copy of the label for this population.
+# Use it throughout the results to make it clearer which patients
+# are included.
+str_this_population = dict_onion['label']
+prop_this_population = dict_onion['prop_of_all_stroke']
 
 
 # ----- Subgroups (this onion layer) -----
@@ -602,6 +608,8 @@ else:
     pass
 
 # Display chosen results:
+with containers['results_top']:
+    st.markdown(f'Results are given for only this population: "__{str_this_population}__" ({prop_this_population:.1%} of all stroke).')
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
         'Exclude patients whose nearest unit provides MT.',
@@ -740,9 +748,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'For only patients in the population: __{str_this_population}__ ({prop_this_population:.1%} of all stroke).')
             cols = st.columns(2)
             with cols[0]:
-                st.metric('Annual stroke admissions  \nin this population',
+                st.metric(f'Annual stroke admissions  \nin this population:',
                           f"{n_patients:.0f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             with cols[1]:
@@ -782,6 +791,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'For only patients in the population: __{str_this_population}__ ({prop_this_population:.1%} of all stroke).')
             if selected_region_is_mt_unit:
                 st.markdown('No data to display.')
             else:
@@ -916,6 +926,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'For only patients in the population: __{str_this_population}__ ({prop_this_population:.1%} of all stroke).')
             st.write('Numbers of admissions:')
 
             st.dataframe(
@@ -972,6 +983,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     region_label = df_unit_services.loc[region, 'ssnap_name']
                 else:
                     region_label = region
+                st.markdown(f'For only patients in the population: __{str_this_population}__ ({prop_this_population:.1%} of all stroke).')
                 # Plot graph:
                 plot_maps.plot_networks(
                     df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
@@ -997,6 +1009,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'For only patients in the population: __{str_this_population}__ ({prop_this_population:.1%} of all stroke).')
             df_u = st.session_state['dict_highlighted_region_outcomes'][
                 subgroup]['usual_care'][lsoa_subset]
             df_r = st.session_state['dict_highlighted_region_outcomes'][
