@@ -1118,6 +1118,7 @@ with containers['map_setup_highlights']:
     subgroup_map, subgroup_map_label = maps.select_map_data(
         st.session_state['df_subgroups']
     )
+map_title = f'{subgroup_map_label} — of {str_this_population} ({prop_this_population:.1%} of all stroke)'
 with containers['map_setup_toggles']:
     use_full_redir = st.toggle(
         '''In middle map, include "reject redirection" and
@@ -1194,7 +1195,7 @@ if st.session_state['rerun_maps']:
         dicts_colours,
         all_cmaps,
         outline_name=outline_name,
-        title=subgroup_map_label,
+        title=map_title,
         )
     st.session_state['rerun_maps'] = False
 
