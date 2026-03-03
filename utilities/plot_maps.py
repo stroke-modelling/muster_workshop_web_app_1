@@ -1590,9 +1590,11 @@ def plot_outcome_maps(
     # --- Layout ---
     fig = england_map_setup(fig)
     # Figure setup.
+    # Allow two subplots to be taller (800px) than three (600px).
+    h = 1200 - 200 * len(map_order)
     fig.update_layout(
         # width=1200,
-        height=600,
+        height=h,
         margin_t=80,
         margin_b=0,
         )

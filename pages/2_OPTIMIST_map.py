@@ -154,6 +154,17 @@ def set_up_page_layout():
         c['map_fig'] = st.container()
         with st.expander('Accessibility & advanced map setup'):
             c['map_setup'] = st.container()
+    with c['map_fig']:
+        c['map_setup_highlights'] = st.container(border=True)
+    with c['map_setup_highlights']:
+        st.subheader('Patients included in the maps')
+        st.markdown('''
+                    Adjust the settings here to change which subgroup of
+                    patients is being shown.  
+                    More subgroups can be made available by adding
+                    them in the "Subgroups" tab in the Setup.
+                    ''')
+        c['map_setup_toggles'] = st.container(horizontal=True)
     with c['full_results']:
         c['full_results_setup'] = st.container()
 
@@ -1103,10 +1114,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 with containers['map_setup']:
     map_outcome = outcomes.select_outcome_type()
 # Gather data for maps:
-with containers['map_fig']:
+with containers['map_setup_highlights']:
     subgroup_map, subgroup_map_label = maps.select_map_data(
         st.session_state['df_subgroups']
     )
+with containers['map_setup_toggles']:
     use_full_redir = st.toggle(
         '''In middle map, include "reject redirection" and
         "usual care" patients.''',
@@ -1114,8 +1126,7 @@ with containers['map_fig']:
         key='full_redir_subset',
         on_change=set_rerun_map
         )
-    redir_subset = ('redir_allowed' if use_full_redir
-                    else 'redir_accepted_only')
+redir_subset = ('redir_allowed' if use_full_redir else 'redir_accepted_only')
 
 if st.session_state['rerun_maps']:
     st.session_state['map_arrs_dict'], st.session_state['map_vlim_dict'] = (
@@ -1167,7 +1178,7 @@ with containers['map_setup']:
         )
 
 maps_to_show = ['usual_care', 'redir_minus_usual_care']
-with containers['map_fig']:
+with containers['map_setup_toggles']:
     if st.toggle('Show population density map.',
                  on_change=set_rerun_map, value=True):
         maps_to_show.append('pop')
