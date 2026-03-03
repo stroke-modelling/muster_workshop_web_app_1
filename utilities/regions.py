@@ -1212,7 +1212,7 @@ def plot_mrs_bars(mrs_lists_dict: dict, key: str = None):
         orientation='h'
     ))
     # Figure setup.
-    fig.update_layout(height=250, margin_t=0)
+    fig.update_layout(height=350, margin_t=0)
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title='')
     # Turn off legend click events

@@ -642,8 +642,8 @@ with containers['region_summaries']:
         # Set up which bars to show on the mRS bar charts:
         options_labels = {
             'usual_care': 'Usual care',
-            'redir_allowed': 'Redirection available',
-            'redir_accept': 'Accept redirection',
+            'redir_allowed': 'Redirection available (mix of usual care, redirection approved, redirection rejected)',
+            'redir_accept': 'Only redirected patients',
             'no_treatment': 'No treatment',
         }
 
@@ -1083,14 +1083,14 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         'cum': df_r[cols_mrs],
                         'std': df_r[cols_mrs_std],
                         'colour': '#56b4e9',
-                        'label': 'Redirection available'
+                        'label': 'Redirection available<br>(mix of usual care,<br>redirection approved,<br>redirection rejected)'
                     },
                     'redir_accept': {
                         'noncum': df_a[cols_mrs_noncum],
                         'cum': df_a[cols_mrs],
                         'std': df_a[cols_mrs_std],
                         'colour': '#009e73',
-                        'label': 'Accept redirection'
+                        'label': 'Only redirected patients'
                     },
                     'no_treatment': {
                         'noncum': df_no_treat[cols_mrs_noncum],
