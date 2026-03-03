@@ -633,6 +633,12 @@ with containers['region_select']:
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
 
 # Set up containers for the outcome subgroups:
+label_redir = '''
+Redirection available<br>
+(mix of usual care,<br>
+redirection approved,<br>
+redirection rejected)
+'''
 with containers['region_summaries']:
     for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
         containers[f'{subgroup}_top'] = st.expander(
@@ -642,7 +648,7 @@ with containers['region_summaries']:
         # Set up which bars to show on the mRS bar charts:
         options_labels = {
             'usual_care': 'Usual care',
-            'redir_allowed': 'Redirection available (mix of usual care, redirection approved, redirection rejected)',
+            'redir_allowed': label_redir,
             'redir_accept': 'Only redirected patients',
             'no_treatment': 'No treatment',
         }
@@ -1070,6 +1076,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         with st.container():
                             reg.display_region_summary(df_u, df_r, key)
 
+
                 mrs_lists_dict = {
                     'usual_care': {
                         'noncum': df_u[cols_mrs_noncum],
@@ -1083,7 +1090,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         'cum': df_r[cols_mrs],
                         'std': df_r[cols_mrs_std],
                         'colour': '#56b4e9',
-                        'label': 'Redirection available<br>(mix of usual care,<br>redirection approved,<br>redirection rejected)'
+                        'label': label_redir
                     },
                     'redir_accept': {
                         'noncum': df_a[cols_mrs_noncum],
@@ -1118,7 +1125,10 @@ with containers['map_setup_highlights']:
     subgroup_map, subgroup_map_label = maps.select_map_data(
         st.session_state['df_subgroups']
     )
-map_title = f'{subgroup_map_label} — of {str_this_population} ({prop_this_population:.1%} of all stroke)'
+map_title = f'''
+{subgroup_map_label} — of {str_this_population}
+({prop_this_population:.1%} of all stroke)
+'''
 with containers['map_setup_toggles']:
     use_full_redir = st.toggle(
         '''In middle map, include "reject redirection" and
