@@ -634,7 +634,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         ch = st.container(border=True, width=500)
     with ch:
         st.subheader(region_label)
-        st.write('summary summary summary bits')
+        st.write('Placeholder for most important summary results.')
 
     # Admissions
     s_admissions = (
