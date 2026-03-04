@@ -279,27 +279,27 @@ def select_unit_services_muster(
         # i = 0
         # with cols[i % n_cols]:
         add_all_ivt = st.button('Place MSU at all IVT-only units',
-                                on_click=set_inputs_changed)
+                                on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         add_all_mt = st.button('Place MSU at all MT units',
-                               on_click=set_inputs_changed)
+                               on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         add_all = st.button('Place MSU at all units',
-                            on_click=set_inputs_changed)
+                            on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all_ivt = st.button('Remove MSU from all IVT-only units',
-                                   on_click=set_inputs_changed)
+                                   on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all_mt = st.button('Remove MSU from all MT units',
-                                  on_click=set_inputs_changed)
+                                  on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all = st.button('Remove MSU from all units',
-                               on_click=set_inputs_changed)
+                               on_click=set_rerun_lsoa_units_times)
 
     # Which units need to be changed in each case:
     units_ivt_bool = (

@@ -160,9 +160,7 @@ def set_up_page_layout():
         st.subheader('Patients included in the maps')
         st.markdown('''
                     Adjust the settings here to change which subgroup of
-                    patients is being shown.  
-                    More subgroups can be made available by adding
-                    them in the "Subgroups" tab in the Setup.
+                    patients is being shown.
                     ''')
         c['map_setup_toggles'] = st.container(horizontal=True)
     with c['full_results']:
@@ -623,8 +621,9 @@ with containers['results_top']:
     st.markdown(f'''
                 Results are given for only this population:
                 "__{str_this_population}__"
-                ({prop_this_population:.1%} of all stroke).
-                ''')
+                ({prop_this_population:.1%} of all stroke).  
+                __More subgroups__ can be made available by adding
+                them in the "Subgroups" tab in the Setup.''')
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
         'Exclude patients whose nearest unit provides MT.',
@@ -641,8 +640,10 @@ redirection rejected)
 '''
 with containers['region_summaries']:
     for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+        label_subgroup = 'Outcomes for __:primary[' + (
+            st.session_state['df_subgroups'].loc[subgroup, 'label']) + ']__'
         containers[f'{subgroup}_top'] = st.expander(
-            st.session_state['df_subgroups'].loc[subgroup, 'label'],
+            label_subgroup,
             expanded=(True if s == 0 else False)
             )
         # Set up which bars to show on the mRS bar charts:
@@ -1047,7 +1048,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         with c:
             st.subheader(region_label)
             st.markdown(f'''
-                For only this population:
+                {label_subgroup} in
                 "__{str_this_population}__"
                 ({prop_this_population:.1%} of all stroke).
                 ''')
