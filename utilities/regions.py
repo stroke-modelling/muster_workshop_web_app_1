@@ -279,27 +279,27 @@ def select_unit_services_muster(
         # i = 0
         # with cols[i % n_cols]:
         add_all_ivt = st.button('Place MSU at all IVT-only units',
-                                on_click=set_inputs_changed)
+                                on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         add_all_mt = st.button('Place MSU at all MT units',
-                               on_click=set_inputs_changed)
+                               on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         add_all = st.button('Place MSU at all units',
-                            on_click=set_inputs_changed)
+                            on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all_ivt = st.button('Remove MSU from all IVT-only units',
-                                   on_click=set_inputs_changed)
+                                   on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all_mt = st.button('Remove MSU from all MT units',
-                                  on_click=set_inputs_changed)
+                                  on_click=set_rerun_lsoa_units_times)
         # i += 1
         # with cols[i % n_cols]:
         remove_all = st.button('Remove MSU from all units',
-                               on_click=set_inputs_changed)
+                               on_click=set_rerun_lsoa_units_times)
 
     # Which units need to be changed in each case:
     units_ivt_bool = (
@@ -939,10 +939,10 @@ def load_region_lists(df_unit_services: pd.DataFrame):
 
     # Key for region type, value for list of options.
     region_options_dict = {
+        'Ambulance service': ambo_list,
         'ISDN': isdn_list,
         'ICB': icb_list,
         'Nearest unit': nearest_ivt_unit_names_list,
-        'Ambulance service': ambo_list
     }
 
     return region_options_dict
@@ -1212,7 +1212,7 @@ def plot_mrs_bars(mrs_lists_dict: dict, key: str = None):
         orientation='h'
     ))
     # Figure setup.
-    fig.update_layout(height=250, margin_t=0)
+    fig.update_layout(height=350, margin_t=0)
     fig = update_plotly_font_sizes(fig)
     fig.update_layout(title='')
     # Turn off legend click events
@@ -1276,7 +1276,7 @@ def select_full_data_type():
         'Choose a region type for the full results.',
         options=region_types,
         format_func=f,
-        index=3,
+        index=4,
         on_change=set_rerun_full_results
         )
     return full_data_type

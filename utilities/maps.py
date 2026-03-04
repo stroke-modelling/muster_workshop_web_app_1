@@ -34,7 +34,7 @@ def select_map_data(df_subgroups: pd.DataFrame):
         return dict_labels[label]
     # Pick a layer to use for calculating population results:
     key = st.selectbox(
-        'Choose a population to show on the maps.',
+        '__:primary[Choose a subgroup]__ to show on the maps.',
         options=df_subgroups.index,
         format_func=f,
         index=0,

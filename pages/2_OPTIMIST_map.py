@@ -129,6 +129,7 @@ def set_up_page_layout():
     tabs_results = ['Region summaries', 'England maps', 'Full results tables']
     with c['results']:
         st.header('Results')
+        c['results_top'] = st.container()
         (c['region_summaries'], c['maps'], c['full_results']) = (
             st.tabs(tabs_results))
 
@@ -153,6 +154,15 @@ def set_up_page_layout():
         c['map_fig'] = st.container()
         with st.expander('Accessibility & advanced map setup'):
             c['map_setup'] = st.container()
+    with c['map_fig']:
+        c['map_setup_highlights'] = st.container(border=True)
+    with c['map_setup_highlights']:
+        st.subheader('Patients included in the maps')
+        st.markdown('''
+                    Adjust the settings here to change which subgroup of
+                    patients is being shown.
+                    ''')
+        c['map_setup_toggles'] = st.container(horizontal=True)
     with c['full_results']:
         c['full_results_setup'] = st.container()
 
@@ -255,7 +265,7 @@ selected subgroup of patients.
 with containers['region_unit_admissions_top']:
     st.markdown('''
 Total patients from this catchment area
-directly admitted to (and transferred "t" to or from)
+directly admitted to (and transferred to or from)
 each unit:
 ''')
 with containers['region_unit_maps_top']:
@@ -320,9 +330,9 @@ map_traces = st.session_state['map_traces_shared'] | map_traces_constant
 with containers['units_text']:
     outline_labels_dict = {
         'none': 'None',
+        'ambo22': 'Ambulance service',
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
-        'ambo22': 'Ambulance service',
         'nearest_ivt_unit': 'Nearest IVT unit',
         'nearest_mt_unit': 'Nearest MT unit',
     }
@@ -387,6 +397,11 @@ with containers['onion_text']:
     dict_onion = pop.select_onion_population(df_onion_pops)
 dict_onion = pop.calculate_population_subgroups(
     dict_onion, _log_loc=containers['log_onion'])
+# Keep a copy of the label for this population.
+# Use it throughout the results to make it clearer which patients
+# are included.
+str_this_population = dict_onion['label']
+prop_this_population = dict_onion['prop_of_all_stroke']
 
 
 # ----- Subgroups (this onion layer) -----
@@ -602,6 +617,13 @@ else:
     pass
 
 # Display chosen results:
+with containers['results_top']:
+    st.markdown(f'''
+                Results are given for only this population:
+                "__{str_this_population}__"
+                ({prop_this_population:.1%} of all stroke).  
+                __More subgroups__ can be made available by adding
+                them in the "Subgroups" tab in the Setup.''')
 with containers['region_select']:
     use_lsoa_subset = st.toggle(
         'Exclude patients whose nearest unit provides MT.',
@@ -610,17 +632,25 @@ with containers['region_select']:
 lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
 
 # Set up containers for the outcome subgroups:
+label_redir = '''
+Redirection available<br>
+(mix of usual care,<br>
+redirection approved,<br>
+redirection rejected)
+'''
 with containers['region_summaries']:
     for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+        label_subgroup = 'Outcomes for __:primary[' + (
+            st.session_state['df_subgroups'].loc[subgroup, 'label']) + ']__'
         containers[f'{subgroup}_top'] = st.expander(
-            st.session_state['df_subgroups'].loc[subgroup, 'label'],
+            label_subgroup,
             expanded=(True if s == 0 else False)
             )
         # Set up which bars to show on the mRS bar charts:
         options_labels = {
             'usual_care': 'Usual care',
-            'redir_allowed': 'Redirection available',
-            'redir_accept': 'Accept redirection',
+            'redir_allowed': label_redir,
+            'redir_accept': 'Only redirected patients',
             'no_treatment': 'No treatment',
         }
 
@@ -685,9 +715,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
           dict_region_treat_stats[f'n_mt_{u_no_mt}_{red}_{r}']]],
         columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
         index=['Usual care', 'Redirection']
-    )
+    ).round(3)
     column_config_mt = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        (c, st.column_config.NumberColumn(
+            width='small', format='%.0f admissions'))
         for c in df_mt.columns
         ])
     df_ivt = pd.DataFrame(
@@ -699,9 +730,10 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
           dict_region_treat_stats[f'n_ivt_only_{u_no_mt}_{red}_{r}']]],
         columns=['Nearest unit has MT', 'Not redirected', 'Redirected'],
         index=['Usual care', 'Redirection']
-    )
+    ).round(3)
     column_config_ivt_only = dict([
-        (c, st.column_config.NumberColumn(width='small', format='%.1f'))
+        (c, st.column_config.NumberColumn(
+            width='small', format='%.0f admissions'))
         for c in df_ivt.columns
         ])
 
@@ -724,33 +756,41 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         df_mt = df_mt.drop('Nearest unit has MT', axis='columns')
         df_ivt = df_ivt.drop('Nearest unit has MT', axis='columns')
         prop_nearest_mt = 100.0
-        extra_str = f'''
-        Excluding {n_patients_nearest_mt:.1f} patients whose nearest unit
-        has MT, including
-        {n_mt_not_subset:.1f} patients who receive thrombectomy
-        and {n_ivt_only_not_subset:.1f} receieving thrombolysis only.
-        '''
+        if n_patients_nearest_mt == 0.0:
+            extra_str = ''
+        else:
+            extra_str = f'''
+            Excluding {n_patients_nearest_mt:.0f} patients whose nearest unit
+            has MT, including
+            {n_mt_not_subset:.0f} patients who receive thrombectomy
+            and {n_ivt_only_not_subset:.0f} receieving thrombolysis only.
+            '''
 
     with containers['region_treat_stats']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'''
+                For only this population:
+                "__{str_this_population}__"
+                ({prop_this_population:.1%} of all stroke).
+                ''')
             cols = st.columns(2)
             with cols[0]:
-                st.metric('Annual stroke admissions  \nin this population',
-                          f"{n_patients:.1f}")
+                st.metric(f'Annual stroke admissions  \nin this population:',
+                          f"{n_patients:.0f}")
             n = 'Proportion of patients whose  \nnearest unit offers MT'
             with cols[1]:
                 st.metric(n, f"{prop_nearest_mt:.1f}%")
 
             st.markdown(f'''
-                Of the {n_mt:.1f} patients who receive thrombectomy
+                Of the {n_mt:.0f} patients who receive thrombectomy
                 (with or without thrombolysis):
                 ''')
             st.dataframe(df_mt, column_config=column_config_mt)
 
             st.markdown(f'''
-                Of the {n_ivt_only:.1f}
+                Of the {n_ivt_only:.0f}
                 patients who receive thrombolysis only:
                 ''')
             st.dataframe(df_ivt, column_config=column_config_ivt_only)
@@ -777,6 +817,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'''
+                For only this population:
+                "__{str_this_population}__"
+                ({prop_this_population:.1%} of all stroke).
+                ''')
             if selected_region_is_mt_unit:
                 st.markdown('No data to display.')
             else:
@@ -892,27 +937,34 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 label='Directly-admitting unit', width=150),
         'admissions_catchment_to_first_unit_usual_care':
             st.column_config.NumberColumn(
-                label='Usual care', format='%.2f', width='small'),
+                label='Usual care', format='%.0f', width='small'),
         'admissions_catchment_to_first_unit_redir':
             st.column_config.NumberColumn(
                 label='Redirection available',
-                format='%.2f', width='small'),
+                format='%.0f', width='small'),
         'admissions_first_unit_to_transfer_usual_care':
             st.column_config.NumberColumn(
-                label='t', format='%+.2f', width='small'),
+                label='Transfers (usual care)', format='%+.0f',
+                width='small'),
         'admissions_first_unit_to_transfer_redir':
             st.column_config.NumberColumn(
-                label='t',
-                format='%+.2f', width='small')
+                label='Transfers (redirection)',
+                format='%+.0f', width='small')
     }
 
     with containers['region_unit_admissions']:
         c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'''
+                For only this population:
+                "__{str_this_population}__"
+                ({prop_this_population:.1%} of all stroke).
+                ''')
+            st.write('Numbers of admissions:')
 
             st.dataframe(
-                df_unit_admissions,
+                df_unit_admissions.round(0),
                 # column_order=['admissions_combo_usual_care',
                 #               'admissions_combo_redir'],
                 column_order=['admissions_catchment_to_first_unit_usual_care',
@@ -965,6 +1017,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     region_label = df_unit_services.loc[region, 'ssnap_name']
                 else:
                     region_label = region
+                st.markdown(f'''
+                    For only this population:
+                    "__{str_this_population}__"
+                    ({prop_this_population:.1%} of all stroke).
+                    ''')
                 # Plot graph:
                 plot_maps.plot_networks(
                     df_net_u, df_net_r, df_unit_services, gdf_nearest_units,
@@ -990,6 +1047,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             c = st.container(width=500, border=True)
         with c:
             st.subheader(region_label)
+            st.markdown(f'''
+                {label_subgroup} in
+                "__{str_this_population}__"
+                ({prop_this_population:.1%} of all stroke).
+                ''')
             df_u = st.session_state['dict_highlighted_region_outcomes'][
                 subgroup]['usual_care'][lsoa_subset]
             df_r = st.session_state['dict_highlighted_region_outcomes'][
@@ -1015,6 +1077,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         with st.container():
                             reg.display_region_summary(df_u, df_r, key)
 
+
                 mrs_lists_dict = {
                     'usual_care': {
                         'noncum': df_u[cols_mrs_noncum],
@@ -1028,14 +1091,14 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                         'cum': df_r[cols_mrs],
                         'std': df_r[cols_mrs_std],
                         'colour': '#56b4e9',
-                        'label': 'Redirection available'
+                        'label': label_redir
                     },
                     'redir_accept': {
                         'noncum': df_a[cols_mrs_noncum],
                         'cum': df_a[cols_mrs],
                         'std': df_a[cols_mrs_std],
                         'colour': '#009e73',
-                        'label': 'Accept redirection'
+                        'label': 'Only redirected patients'
                     },
                     'no_treatment': {
                         'noncum': df_no_treat[cols_mrs_noncum],
@@ -1059,10 +1122,15 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 with containers['map_setup']:
     map_outcome = outcomes.select_outcome_type()
 # Gather data for maps:
-with containers['map_fig']:
+with containers['map_setup_highlights']:
     subgroup_map, subgroup_map_label = maps.select_map_data(
         st.session_state['df_subgroups']
     )
+map_title = f'''
+{subgroup_map_label} — of {str_this_population}
+({prop_this_population:.1%} of all stroke)
+'''
+with containers['map_setup_toggles']:
     use_full_redir = st.toggle(
         '''In middle map, include "reject redirection" and
         "usual care" patients.''',
@@ -1070,8 +1138,7 @@ with containers['map_fig']:
         key='full_redir_subset',
         on_change=set_rerun_map
         )
-    redir_subset = ('redir_allowed' if use_full_redir
-                    else 'redir_accepted_only')
+redir_subset = ('redir_allowed' if use_full_redir else 'redir_accepted_only')
 
 if st.session_state['rerun_maps']:
     st.session_state['map_arrs_dict'], st.session_state['map_vlim_dict'] = (
@@ -1105,9 +1172,9 @@ for p, dp in dicts_colours.items():
 with containers['map_setup']:
     outline_labels_dict = {
         'none': 'None',
+        'ambo22': 'Ambulance service',
         'icb': 'Integrated Care Board',
         'isdn': 'Integrated Stroke Delivery Network',
-        'ambo22': 'Ambulance service',
     }
 
     def f(label):
@@ -1122,6 +1189,12 @@ with containers['map_setup']:
         key='maps_outcomes_outline'
         )
 
+maps_to_show = ['usual_care', 'redir_minus_usual_care']
+with containers['map_setup_toggles']:
+    if st.toggle('Show population density map.',
+                 on_change=set_rerun_map, value=True):
+        maps_to_show.append('pop')
+
 if st.session_state['rerun_maps']:
     # Make traces for maps:
     for col, arr in st.session_state['map_arrs_dict'].items():
@@ -1129,11 +1202,11 @@ if st.session_state['rerun_maps']:
             arr, transform_dict, dicts_colours[col], name=col)
     st.session_state['maps_fig'] = plot_maps.plot_outcome_maps(
         map_traces,
-        ['usual_care', 'redir_minus_usual_care', 'pop'],
+        maps_to_show,
         dicts_colours,
         all_cmaps,
         outline_name=outline_name,
-        title=subgroup_map_label,
+        title=map_title,
         )
     st.session_state['rerun_maps'] = False
 

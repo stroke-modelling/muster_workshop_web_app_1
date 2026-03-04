@@ -1590,9 +1590,11 @@ def plot_outcome_maps(
     # --- Layout ---
     fig = england_map_setup(fig)
     # Figure setup.
+    # Allow two subplots to be taller (800px) than three (600px).
+    h = 1200 - 200 * len(map_order)
     fig.update_layout(
         # width=1200,
-        height=600,
+        height=h,
         margin_t=80,
         margin_b=0,
         )
@@ -1779,7 +1781,7 @@ def plot_networks(
                     axis=-1
                     ),
                 hovertemplate=(
-                    '%{customdata[2]:.1f} patients from catchment area of ' +
+                    '%{customdata[2]:.0f} patients from catchment area of ' +
                     '<br>' +
                     '%{customdata[0]}' +
                     '<br>' +
@@ -1865,7 +1867,7 @@ def plot_networks(
                         axis=-1
                         ),
                     hovertemplate=(
-                        '%{customdata[2]:.1f} patients transfer from ' +
+                        '%{customdata[2]:.0f} patients transfer from ' +
                         '<br>' +
                         '%{customdata[0]}' +
                         '<br>' +
@@ -1910,7 +1912,7 @@ def plot_networks(
         hovertemplate=(
             'Catchment area of<br>%{customdata[0]}' +
             '<br>' +
-            '%{customdata[1]:.1f} patients' +
+            '%{customdata[1]:.0f} patients' +
             # Need the following line to remove default "trace" bit
             # in second "extra" box:
             '<extra></extra>'
