@@ -1681,7 +1681,7 @@ def plot_basic_travel_options_msu():
         )
 
 
-def plot_generic_travel_admissions(df_mt, df_no_mt):
+def plot_generic_travel_admissions(df_mt, df_no_mt, mt_label='MT units'):
     """
     Simple flowchart of generic patient first units and transfers.
 
@@ -1849,10 +1849,25 @@ def plot_generic_travel_admissions(df_mt, df_no_mt):
         font=dict(size=14),
         yanchor='bottom',
         )
+    if len(mt_label) > 10:
+        # Add in a space after every 10 characters.
+        new_mt_label = mt_label[:10]
+        rem = mt_label[10:]
+        while len(rem) > 0:
+            i = 10 if len(rem) >= 10 else len(rem)
+            next_bit = rem[:i]
+            rem = rem[i:]
+            bits = next_bit.split(' ')
+            if len(bits) == 0:
+                pass
+            else:
+                next_bit = '<br>'.join([bits[0], ' '.join(bits[1:])])
+            new_mt_label += next_bit
+        mt_label = new_mt_label
     fig.add_annotation(
         y=coords_dict['csc'][1] - label_y_off,
         x=coords_dict['csc'][0],
-        text='MT units',
+        text=mt_label,
         showarrow=False,
         font=dict(size=14),
         yanchor='top',
@@ -1861,7 +1876,7 @@ def plot_generic_travel_admissions(df_mt, df_no_mt):
     # Set axes properties
     fig.update_xaxes(range=[-label_y_off, t+label_y_off],
                      zeroline=False, showgrid=False, showticklabels=False)
-    fig.update_yaxes(range=[-3.0*label_y_off, t+3.0*label_y_off],
+    fig.update_yaxes(range=[-4.0*label_y_off, t+3.0*label_y_off],
                      zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
     # Set figure size
@@ -2325,7 +2340,6 @@ def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict,
                combination of first and transfer units, split by
                how many patients receive thrombectomy.
     """
-    st.write(dict_pops_u)
     prop_mt_usual_care = (
         dict_pops_u
         .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
@@ -2657,15 +2671,16 @@ def gather_region_admissions_generic(df_net_u_gen, df_net_r_gen):
                     (df_net['nearest_unit_has_mt'] == nearest_mt) &
                     (df_net['first_unit_has_mt'] == first_unit)
                 )]
-                if len(df_here) > 0:
-                    for receive_mt, col in receive_mt_dict.items():
-                        new_col = f'{receive_mt}_{scen}_{nearest_mt_label}'
-                        df_all.loc[first_unit_label, new_col] = df_here[col].values[0]
-                        m_transfer = ((first_unit == 0) & (nearest_mt == 0) &
-                                      (receive_mt == 'mt'))
-                        if m_transfer:
-                            col = 'admissions_first_unit_to_transfer'
-                            df_all.loc['transfer', new_col] = df_here[col].values[0]
+                for receive_mt, col in receive_mt_dict.items():
+                    new_col = f'{receive_mt}_{scen}_{nearest_mt_label}'
+                    v = df_here[col].values[0] if len(df_here) > 0 else 0.0
+                    df_all.loc[first_unit_label, new_col] = v
+                    m_transfer = ((first_unit == 0) & (nearest_mt == 0) &
+                                    (receive_mt == 'mt'))
+                    if m_transfer:
+                        col = 'admissions_first_unit_to_transfer'
+                        v = df_here[col].values[0] if len(df_here) > 0 else 0.0
+                        df_all.loc['transfer', new_col] = v
     return df_all
 
 

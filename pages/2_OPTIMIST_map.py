@@ -787,8 +787,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             format_func=f_mt_label
         )
     if mt_unit_here == 'all':
-        pass
+        mt_unit_here_label = 'MT units'
     else:
+        mt_unit_here_label = df_unit_services.loc[mt_unit_here, 'ssnap_name']
         df_net_u = df_net_u[df_net_u['transfer_unit'] == mt_unit_here]
         df_net_r = df_net_r[df_net_r['transfer_unit'] == mt_unit_here]
 
@@ -796,33 +797,13 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     # Squash the network dfs by unit into generic unit type.
     df_net_u_gen = reg.convert_network_to_generic(df_net_u)
     df_net_r_gen = reg.convert_network_to_generic(df_net_r)
-    st.write(df_net_u_gen)
-    st.write(df_net_r_gen)
     # Rejig into table to show:
     df_region_admissions_generic = reg.gather_region_admissions_generic(
         df_net_u_gen, df_net_r_gen)
-    st.write(df_region_admissions_generic)
     # Rejig for flowcharts:
     dict_region_admissions_generic = (
         reg.calculate_region_admissions_generic(
             df_region_admissions_generic))
-
-    # # # dict_region_admissions_generic
-    # s_admissions = (
-    #     st.session_state['df_highlighted_region_admissions']
-    #     .loc[region]
-    #     )
-    # dict_region_admissions_generic = reg.calculate_region_admissions_generic_old(
-    #     st.session_state['dict_pops']['usual_care'],
-    #     st.session_state['dict_pops']['redir_allowed'],
-    #     s_admissions
-    #     )
-    # st.write(dict_region_admissions_generic)
-    # # Rejig into table to show:
-    # df_region_admissions_generic = reg.gather_region_admissions_generic_old(
-    #     dict_region_admissions_generic)
-    # st.write(df_region_admissions_generic)
-
 
     # Onion:
     with containers_h['onion']:
@@ -864,12 +845,14 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.markdown('Usual care:')
         reg.plot_generic_travel_admissions(
             dict_region_admissions_generic['mt_usual_care'],
-            dict_region_admissions_generic['no_mt_usual_care']
+            dict_region_admissions_generic['no_mt_usual_care'],
+            mt_label=mt_unit_here_label
             )
         st.markdown('Redirection available:')
         reg.plot_generic_travel_admissions(
             dict_region_admissions_generic['mt_redir'],
-            dict_region_admissions_generic['no_mt_redir']
+            dict_region_admissions_generic['no_mt_redir'],
+            mt_label=mt_unit_here_label
             )
         with st.expander('Show flowchart data as table'):
             st.markdown(
