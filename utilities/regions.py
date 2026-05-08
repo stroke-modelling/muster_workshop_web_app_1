@@ -2307,7 +2307,8 @@ def find_unit_admissions_by_region(
     return df_admissions, df_unit_admissions
 
 
-def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict):
+def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict,
+                                 mt_units: list):
     """
     Calculate tracked admissions across units in usual care.
 
@@ -2324,6 +2325,7 @@ def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict):
                combination of first and transfer units, split by
                how many patients receive thrombectomy.
     """
+    st.write(dict_pops_u)
     prop_mt_usual_care = (
         dict_pops_u
         .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
@@ -2349,12 +2351,19 @@ def calculate_network_usual_care(df_network: pd.DataFrame, dict_pops_u: dict):
         df_net_u['admissions_first_unit_to_transfer'].copy())
     mask_no_transfer = (df_net_u['first_unit'] == df_net_u['transfer_unit'])
     df_net_u.loc[mask_no_transfer, 'admissions_first_unit_to_transfer'] = 0.0
+    df_net_u['nearest_unit_postcode'] = df_net_u['nearest_unit'].astype(str)
     df_net_u['nearest_unit'] = (
         'nearest_' + df_net_u['nearest_unit'].astype(str))
+    # Flag whether chosen units offer MT:
+    df_net_u['nearest_unit_has_mt'] = (
+        df_net_u['nearest_unit_postcode'].isin(mt_units))
+    df_net_u['first_unit_has_mt'] = (
+        df_net_u['first_unit'].isin(mt_units))
     return df_net_u
 
 
-def calculate_network_redir(df_network: pd.DataFrame, dict_pops_r: dict):
+def calculate_network_redir(df_network: pd.DataFrame, dict_pops_r: dict,
+                            mt_units: list):
     """
     Calculate tracked admissions across units in redirection scenario.
 
@@ -2372,24 +2381,18 @@ def calculate_network_redir(df_network: pd.DataFrame, dict_pops_r: dict):
                split by how many patients receive thrombectomy.
     """
     # Pick out proportions:
-    prop_no_redir = (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        ['full_population'].sum()
-        )
+    m = dict_pops_r['scenario'] != 'redir_accepted'
+    n = dict_pops_r['scenario'] == 'redir_accepted'
+    cols_mt = ['lvo_mt', 'lvo_ivt_mt']
+
+    prop_no_redir = dict_pops_r[m]['full_population'].sum()
     prop_mt_redir_approved = (
-        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
-        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        ) / (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        ['full_population'].sum()
-    )
+        dict_pops_r[n].loc[cols_mt, 'full_population'].sum()
+        ) / dict_pops_r[n]['full_population'].sum()
     prop_mt_redir_not_approved = (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        ) / (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        ['full_population'].sum()
-    )
+        dict_pops_r[m].loc[cols_mt, 'full_population'].sum()
+        ) / dict_pops_r[m]['full_population'].sum()
+
     # Set up results df:
     df_net_r = df_network.copy()
     # Convert unit columns to generic strings:
@@ -2445,9 +2448,47 @@ def calculate_network_redir(df_network: pd.DataFrame, dict_pops_r: dict):
     # Combine data for patients whose nearest unit is MT:
     df_net_r = df_net_r.groupby(
         ['nearest_unit', 'first_unit', 'transfer_unit']).sum().reset_index()
+    df_net_r['nearest_unit_postcode'] = df_net_r['nearest_unit'].astype(str)
     df_net_r['nearest_unit'] = (
         'nearest_' + df_net_r['nearest_unit'].astype(str))
+    # Flag whether chosen units offer MT:
+    df_net_r['nearest_unit_has_mt'] = (
+        df_net_r['nearest_unit_postcode'].isin(mt_units))
+    df_net_r['first_unit_has_mt'] = (
+        df_net_r['first_unit'].isin(mt_units))
     return df_net_r
+
+
+def convert_network_to_generic(df_net):
+    """
+    Calculate admissions for the flowchart.
+    Squash the network dfs by unit into generic unit type.
+
+    Combine all admissions for:
+    + nearest unit no MT, first unit no MT
+    + nearest unit no MT, first unit MT
+    + nearest unit MT, first unit no MT (shouldn't happen)
+    + nearest unit MT, first unit MT
+
+    Calculate admissions separately for all patients,
+    patients who receive MT, and patients with no MT.
+    """
+    # Drop columns that shouldn't be summed (e.g. postcodes):
+    cols_to_drop = ['nearest_unit', 'first_unit', 'transfer_unit',
+                    'nearest_unit_postcode']
+    df_net = df_net.drop(cols_to_drop, axis='columns')
+    # Sum all admissions from the same groups:
+    cols_to_group = ['nearest_unit_has_mt', 'first_unit_has_mt']
+    df_net = df_net.groupby(cols_to_group).sum().reset_index()
+    # Mark whether these patients were redirected:
+    df_net['redirected'] = (df_net['nearest_unit_has_mt'] !=
+                            df_net['first_unit_has_mt'])
+    # Split off patients who did not receive MT:
+    df_net['admissions_catchment_to_first_unit_no_mt'] = (
+        df_net['admissions_catchment_to_first_unit'] -
+        df_net['thrombectomy']
+    )
+    return df_net
 
 
 def calculate_region_treat_stats(
@@ -2554,134 +2595,77 @@ def calculate_region_treat_stats(
     return d
 
 
-def calculate_region_admissions_generic(
-        dict_pops_u: dict, dict_pops_r: dict, s_admissions: pd.Series):
+def calculate_region_admissions_generic(df_region_admissions_generic):
     """
-    Calculate how many people go to CSC/ATC with MT separately.
+    Input rows: first_csc, first_atc, transfer
+    Input columns: (mt/no_mt)_(usual_care/redir)_(nearest_atc/nearest_csc)
 
-    Inputs
-    ------
-    dict_pops_u  - dict. Proportions of patients with each stroke type
-                   and treatment combination in usual care.
-    dict_pops_r  - dict. Proportions of patients with each stroke type
-                   and treatment combination in redirection scenario.
-    s_admissions - pd.Series. Numbers of admissions.
-
-    Returns
-    -------
-    d - dict. Stores the calculated proportions.
+    Target keys: mt_usual_care, no_mt_usual_care, mt_redir, no_mt_redir.
+    Each value is a df with rows: nearest_csc, nearest_atc
+    and columns: first_csc, first_atc, transfer.
     """
+    keys = ['mt_usual_care', 'no_mt_usual_care', 'mt_redir', 'no_mt_redir']
+    # Store results in here:
     d = {}
-
-    # Numbers redirected:
-    d['prop_mt_usual_care'] = (
-        dict_pops_u
-        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        )
-    d['prop_mt_redir_approved'] = (
-        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
-        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        )
-    d['prop_mt_redir_not_approved'] = (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
-        )
-    rows_no_mt = [r for r in dict_pops_u.index if '_mt' not in r]
-    d['prop_no_mt_redir_approved'] = (
-        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
-        .loc[rows_no_mt, 'full_population'].sum()
-        )
-    d['prop_no_mt_redir_not_approved'] = (
-        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
-        .loc[rows_no_mt, 'full_population'].sum()
-        )
-
-    admissions_nearest_csc = (
-        s_admissions['admissions_all_patients'] -
-        s_admissions['admissions_nearest_unit_no_mt']
-        )
-    mt_nearest_csc = d['prop_mt_usual_care'] * admissions_nearest_csc
-    no_mt_nearest_csc = admissions_nearest_csc - mt_nearest_csc
-
-    # Store numbers of patients in each nearest-unit-first-unit combo:
-    cols = ['first_csc', 'first_atc', 'transfer']
-    inds = ['nearest_csc', 'nearest_atc']
-    df_mt_usual_care = pd.DataFrame(columns=cols, index=inds)
-    df_no_mt_usual_care = pd.DataFrame(columns=cols, index=inds)
-    df_mt_redir = pd.DataFrame(columns=cols, index=inds)
-    df_no_mt_redir = pd.DataFrame(columns=cols, index=inds)
-
-    # The patients nearest a CSC are the same in every case.
-    # Everyone goes to the CSC, nobody to ATC or transfer.
-    for df in [df_mt_usual_care, df_mt_redir]:
-        df.loc['nearest_csc', 'first_csc'] = mt_nearest_csc
-    for df in [df_no_mt_usual_care, df_no_mt_redir]:
-        df.loc['nearest_csc', 'first_csc'] = no_mt_nearest_csc
-    # Patients nearest ATC who go directly to ATC:
-    # Usual care:
-    mt_nearest_atc_first_atc_usual_care = (
-        s_admissions['admissions_nearest_unit_no_mt'] *
-        d['prop_mt_usual_care']
-    )
-    no_mt_nearest_atc_first_atc_usual_care = (
-        s_admissions['admissions_nearest_unit_no_mt'] -
-        mt_nearest_atc_first_atc_usual_care
-    )
-    df_mt_usual_care.loc['nearest_atc', 'first_atc'] = mt_nearest_atc_first_atc_usual_care
-    df_mt_usual_care.loc['nearest_atc', 'transfer'] = mt_nearest_atc_first_atc_usual_care
-    df_no_mt_usual_care.loc['nearest_atc', 'first_atc'] = no_mt_nearest_atc_first_atc_usual_care
-    # Redir scenario, go directly to ATC:
-    mt_nearest_atc_and_not_redirected_redir = (
-        d['prop_mt_redir_not_approved'] *
-        s_admissions['admissions_nearest_unit_no_mt'])
-    mt_nearest_atc_and_redirected_redir = (
-        d['prop_mt_redir_approved'] *
-        s_admissions['admissions_nearest_unit_no_mt'])
-    no_mt_nearest_atc_and_not_redirected_redir = (
-        d['prop_no_mt_redir_not_approved'] *
-        s_admissions['admissions_nearest_unit_no_mt'])
-    no_mt_nearest_atc_and_redirected_redir = (
-        d['prop_no_mt_redir_approved'] *
-        s_admissions['admissions_nearest_unit_no_mt'])
-    #
-    df_mt_redir.loc['nearest_atc', 'first_atc'] = mt_nearest_atc_and_not_redirected_redir
-    df_mt_redir.loc['nearest_atc', 'transfer'] = mt_nearest_atc_and_not_redirected_redir
-    df_mt_redir.loc['nearest_atc', 'first_csc'] = mt_nearest_atc_and_redirected_redir
-    df_no_mt_redir.loc['nearest_atc', 'first_atc'] = no_mt_nearest_atc_and_not_redirected_redir
-    df_no_mt_redir.loc['nearest_atc', 'first_csc'] = no_mt_nearest_atc_and_redirected_redir
-
-    # Gather dfs:
-    df_dict = {
-        'mt_usual_care': df_mt_usual_care,
-        'no_mt_usual_care': df_no_mt_usual_care,
-        'mt_redir': df_mt_redir,
-        'no_mt_redir': df_no_mt_redir
-    }
-
-    # Fill missing values with zeros:
-    for label, df in df_dict.items():
-        df_dict[label] = df.fillna(0.0)
-    return df_dict
+    for k in keys:
+        cols = [c for c in df_region_admissions_generic.columns
+                if c.startswith(k)]
+        df_here = df_region_admissions_generic[cols].copy()
+        rename_dict = dict([(c, c.replace(f'{k}_', '')) for c in cols])
+        df_here = df_here.rename(columns=rename_dict)
+        d[k] = df_here.transpose().fillna(0.0)
+    return d
 
 
-def gather_region_admissions_generic(d):
+def gather_region_admissions_generic(df_net_u_gen, df_net_r_gen):
     """
     Flatten the multiple generic admissions into one dataframe.
 
+    Useful columns in input df:
+    + admissions_catchment_to_first_unit_no_mt
+    + thrombectomy (=admissions_catchment_to_first_unit_mt)
+    + admissions_first_unit_to_transfer
+
+    Target column names:
+    + (mt/no_mt)_(usual_care/redir)_(nearest_csc/nearest_atc)
+    Target rows: first_csc, first_atc, transfer.
+    Each cell has the admissions for that category.
+
     Inputs
     ------
-    d - dict. Contains df for each combo of MT/not-MT and
-              usual care/redirection. 
+
 
     Returns
     -------
     df - pd.DataFrame. The same data as the input dict of dfs
          but flattened out for displaying on the app.
     """
-    df_all = pd.DataFrame()
-    for col, df in d.items():
-        for row in df.index:
-            df_all[f'{col}_{row}'] = df.loc[row]
+    # Lookup for input dataframes:
+    net_lookup = {'usual_care': df_net_u_gen, 'redir': df_net_r_gen}
+    nearest_mt_labels = ['nearest_atc', 'nearest_csc']
+    first_unit_labels = ['first_atc', 'first_csc']
+    receive_mt_dict = {
+        'no_mt': 'admissions_catchment_to_first_unit_no_mt',
+        'mt': 'thrombectomy'
+    }
+    # Store results in here:
+    df_all = pd.DataFrame(index=['first_csc', 'first_atc', 'transfer'])
+    for scen, df_net in net_lookup.items():
+        for nearest_mt, nearest_mt_label in enumerate(nearest_mt_labels):
+            for first_unit, first_unit_label in enumerate(first_unit_labels):
+                df_here = df_net[(
+                    (df_net['nearest_unit_has_mt'] == nearest_mt) &
+                    (df_net['first_unit_has_mt'] == first_unit)
+                )]
+                if len(df_here) > 0:
+                    for receive_mt, col in receive_mt_dict.items():
+                        new_col = f'{receive_mt}_{scen}_{nearest_mt_label}'
+                        df_all.loc[first_unit_label, new_col] = df_here[col].values[0]
+                        m_transfer = ((first_unit == 0) & (nearest_mt == 0) &
+                                      (receive_mt == 'mt'))
+                        if m_transfer:
+                            col = 'admissions_first_unit_to_transfer'
+                            df_all.loc['transfer', new_col] = df_here[col].values[0]
     return df_all
 
 

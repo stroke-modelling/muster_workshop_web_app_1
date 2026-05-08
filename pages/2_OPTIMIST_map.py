@@ -649,11 +649,15 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     # Only keep units that have admissions from selected region:
     df_network = df_network.dropna(subset=['admissions'])
     # Usual care proportions:
+    mt_units = (
+        df_unit_services.loc[df_unit_services['Use_MT'] == 1].index.values)
     df_net_u = reg.calculate_network_usual_care(
-        df_network, st.session_state['dict_pops']['usual_care'])
+        df_network, st.session_state['dict_pops']['usual_care'],
+        mt_units)
     # Redirection proportions:
     df_net_r = reg.calculate_network_redir(
-        df_network, st.session_state['dict_pops']['redir_allowed'])
+        df_network, st.session_state['dict_pops']['redir_allowed'],
+        mt_units)
 
     # Gather units in the network:
     cols_units = ['first_unit', 'transfer_unit']
@@ -718,46 +722,46 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     df_unit_admissions_redir = (
         df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
 
-    # Gather admissions by unit for bar charts.
-    # Want admissions who did and did not receive MT separately.
-    # Keep track of first unit attended and colour by nearest unit.
-    df_net_u_bar = df_net_u.copy()
-    df_net_r_bar = df_net_r.copy()
-    # Copy in unit info.
-    df_unit_services_to_merge = df_unit_services.copy().reset_index()
-    df_unit_services_to_merge['nearest_unit'] = 'nearest_' + df_unit_services_to_merge['Postcode']
-    # Names of first units:
-    cols = ['ssnap_name', 'isdn', 'Postcode', 'Use_MT']
-    df_net_u_bar = pd.merge(
-        df_net_u_bar,
-        df_unit_services_to_merge[cols],
-        left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
-        )
-    df_net_r_bar = pd.merge(
-        df_net_r_bar,
-        df_unit_services_to_merge[cols],
-        left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
-        )
-    # Copy in colours to match catchment map:
-    cols = ['ssnap_name', 'nearest_unit', 'colour', 'isdn']
-    df_net_u_bar = pd.merge(
-        df_net_u_bar,
-        df_unit_services_to_merge[cols],
-        on='nearest_unit', how='left', suffixes=[None, '_nearest']
-        )
-    df_net_r_bar = pd.merge(
-        df_net_r_bar,
-        df_unit_services_to_merge[cols],
-        on='nearest_unit', how='left', suffixes=[None, '_nearest']
-        )
-    # Copy over unit labels:
-    # Separate MT and not MT:
-    df_net_u_bar['not_mt'] = (
-        df_net_u_bar['admissions'] - df_net_u_bar['thrombectomy'])
-    df_net_r_bar['not_mt'] = (
-        df_net_r_bar['admissions'] - df_net_r_bar['thrombectomy'])
-    # Plot bars:
-    reg.plot_admissions_bars_by_unit(df_net_u_bar, df_net_r_bar)
+    # # Gather admissions by unit for bar charts.
+    # # Want admissions who did and did not receive MT separately.
+    # # Keep track of first unit attended and colour by nearest unit.
+    # df_net_u_bar = df_net_u.copy()
+    # df_net_r_bar = df_net_r.copy()
+    # # Copy in unit info.
+    # df_unit_services_to_merge = df_unit_services.copy().reset_index()
+    # df_unit_services_to_merge['nearest_unit'] = 'nearest_' + df_unit_services_to_merge['Postcode']
+    # # Names of first units:
+    # cols = ['ssnap_name', 'isdn', 'Postcode', 'Use_MT']
+    # df_net_u_bar = pd.merge(
+    #     df_net_u_bar,
+    #     df_unit_services_to_merge[cols],
+    #     left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
+    #     )
+    # df_net_r_bar = pd.merge(
+    #     df_net_r_bar,
+    #     df_unit_services_to_merge[cols],
+    #     left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
+    #     )
+    # # Copy in colours to match catchment map:
+    # cols = ['ssnap_name', 'nearest_unit', 'colour', 'isdn']
+    # df_net_u_bar = pd.merge(
+    #     df_net_u_bar,
+    #     df_unit_services_to_merge[cols],
+    #     on='nearest_unit', how='left', suffixes=[None, '_nearest']
+    #     )
+    # df_net_r_bar = pd.merge(
+    #     df_net_r_bar,
+    #     df_unit_services_to_merge[cols],
+    #     on='nearest_unit', how='left', suffixes=[None, '_nearest']
+    #     )
+    # # Copy over unit labels:
+    # # Separate MT and not MT:
+    # df_net_u_bar['not_mt'] = (
+    #     df_net_u_bar['admissions'] - df_net_u_bar['thrombectomy'])
+    # df_net_r_bar['not_mt'] = (
+    #     df_net_r_bar['admissions'] - df_net_r_bar['thrombectomy'])
+    # # Plot bars:
+    # reg.plot_admissions_bars_by_unit(df_net_u_bar, df_net_r_bar)
 
     # Generic numbers redirected
     # (this onion layer only, depends on relative
@@ -788,21 +792,36 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         df_net_u = df_net_u[df_net_u['transfer_unit'] == mt_unit_here]
         df_net_r = df_net_r[df_net_r['transfer_unit'] == mt_unit_here]
 
-    st.write(mt_unit_here)
-    st.write(df_net_r)
-    # dict_region_admissions_generic
-    s_admissions = (
-        st.session_state['df_highlighted_region_admissions']
-        .loc[region]
-        )
-    dict_region_admissions_generic = reg.calculate_region_admissions_generic(
-        st.session_state['dict_pops']['usual_care'],
-        st.session_state['dict_pops']['redir_allowed'],
-        s_admissions
-        )
+    # Calculate admissions for the flowchart.
+    # Squash the network dfs by unit into generic unit type.
+    df_net_u_gen = reg.convert_network_to_generic(df_net_u)
+    df_net_r_gen = reg.convert_network_to_generic(df_net_r)
+    st.write(df_net_u_gen)
+    st.write(df_net_r_gen)
     # Rejig into table to show:
     df_region_admissions_generic = reg.gather_region_admissions_generic(
-        dict_region_admissions_generic)
+        df_net_u_gen, df_net_r_gen)
+    st.write(df_region_admissions_generic)
+    # Rejig for flowcharts:
+    dict_region_admissions_generic = (
+        reg.calculate_region_admissions_generic(
+            df_region_admissions_generic))
+
+    # # # dict_region_admissions_generic
+    # s_admissions = (
+    #     st.session_state['df_highlighted_region_admissions']
+    #     .loc[region]
+    #     )
+    # dict_region_admissions_generic = reg.calculate_region_admissions_generic_old(
+    #     st.session_state['dict_pops']['usual_care'],
+    #     st.session_state['dict_pops']['redir_allowed'],
+    #     s_admissions
+    #     )
+    # st.write(dict_region_admissions_generic)
+    # # Rejig into table to show:
+    # df_region_admissions_generic = reg.gather_region_admissions_generic_old(
+    #     dict_region_admissions_generic)
+    # st.write(df_region_admissions_generic)
 
 
     # Onion:
@@ -1351,6 +1370,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                               'admissions_first_unit_to_transfer_redir',],
                 column_config=config_dict,
                 )
+            st.write(df_unit_services.columns)
 
     # ----- Patient transport maps -----
     if region_type == 'national':
