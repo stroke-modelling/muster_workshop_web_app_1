@@ -414,7 +414,9 @@ def make_shared_map_traces(
     return map_traces, df_unit_services
 
 
-def make_units_traces(gdf_units: gpd.GeoDataFrame):
+def make_units_traces(gdf_units: gpd.GeoDataFrame,
+                      cols_custom_data: list = None,
+                      hovertemplate: str = None):
     """
     Create plotly traces to show stroke unit locations and services.
 
@@ -423,8 +425,11 @@ def make_units_traces(gdf_units: gpd.GeoDataFrame):
 
     Inputs
     ------
-    gdf_units - gpd.GeoDataFrame. Stroke unit coordinates and which
-                services they provide.
+    gdf_units        - gpd.GeoDataFrame. Stroke unit coordinates and
+                       which services they provide.
+    cols_custom_data - list. Which columns of gdf_units to include
+                       in the custom_data.
+    hovertemplate    - str. Template for the hover label.
 
     Returns
     -------
@@ -465,6 +470,20 @@ def make_units_traces(gdf_units: gpd.GeoDataFrame):
         },
     }
 
+    # Set up custom data:
+    if cols_custom_data:
+        pass
+    else:
+        cols_custom_data = ['ssnap_name']
+    if hovertemplate:
+        pass
+    else:
+        hovertemplate = '<br>'.join(['%{customdata['+str(i)+']}' for i in
+                                     range(len(cols_custom_data))])
+        # Need the following line to remove default "trace" bit
+        # in second "extra" box:
+        hovertemplate += '<extra></extra>'
+
     # Build the traces for the stroke units.
     traces = {}
     for service, s_dict in format_dict.items():
@@ -481,15 +500,10 @@ def make_units_traces(gdf_units: gpd.GeoDataFrame):
             },
             name=s_dict['label'],
             customdata=np.stack(
-                [gdf_units.loc[mask, 'ssnap_name']],
+                [gdf_units.loc[mask, c] for c in cols_custom_data],
                 axis=-1
                 ),
-            hovertemplate=(
-                '%{customdata[0]}' +
-                # Need the following line to remove default "trace" bit
-                # in second "extra" box:
-                '<extra></extra>'
-                )
+            hovertemplate=hovertemplate
         )
         traces[service] = trace
     return traces
@@ -1946,6 +1960,133 @@ def plot_networks(
         y=0.25,
         xanchor='center',
         x=0.25,
+    ))
+    plotly_config = get_map_config()
+    st.plotly_chart(fig, config=plotly_config, width='stretch')
+
+
+def plot_catchment(
+        gdf_units: gpd.GeoDataFrame,
+        bounds: list,
+        catch_trace: go.Heatmap,
+        gdf_region: gpd.GeoDataFrame = None,
+        region_display_name: str = None,
+        ):
+    """
+    Draw maps with arrows to show patient flow between units.
+
+    Inputs
+    ------
+    df_net_u            - pd.DataFrame. Patient numbers to nearest,
+                          first, transfer units for the units here
+                          in the usual care scenario.
+    df_net_r            - pd.DataFrame. As above for the unusual
+                          scenario e.g. redirection.
+    df_unit_services    - pd.DataFrame. Use as a lookup for stroke
+                          units and their display names.
+    gdf_nearest_units   - gpd.GeoDataFrame. Coordinates for catchment
+                          area boxes and the admissions in each area. 
+    gdf_units           - gpd.GeoDataFrame. Coordinates of stroke
+                          units.
+    bounds              - list. Extent of the network map geography.
+    catch_trace         - go.HeatMap. Plotly trace showing unit
+                          catchment areas.
+    gdf_region          - gpd.GeoDataFrame or None. Outline for a
+                          single selected region to draw on maps.
+    region_display_name - str. Display name of selected region.
+    subplot_titles      - list. Subplot titles. Top left, right,
+                          bottom left, right.
+    """
+    fig = go.Figure()
+
+    # --- Draw traces ---
+    # Border:
+    fig.add_shape(
+        type="rect",
+        x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
+        fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
+        line=dict(color='grey', width=4,),
+        layer='between',  # below other traces
+    )
+
+    # Load England and restrict it to the area being drawn:
+    gdf_eng = load_england_outline(bounds)
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    fig.add_trace(go.Scatter(
+        x=gdf_eng['x'],
+        y=gdf_eng['y'],
+        mode='lines',
+        fill="toself",
+        fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
+        # fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
+        # fillcolor='rgba(0.573, 0.573, 0.573, 1)',  # grey
+        line_color='rgba(0, 0, 0, 0)',
+        showlegend=False,
+        hoverinfo='skip',
+        zorder=-1,
+        ),
+    )
+
+    # Region catchment heatmap:
+    fig.add_trace(catch_trace)
+
+    # Selected region:
+    if isinstance(gdf_region, pd.DataFrame):
+        for i in gdf_region.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_region.loc[i, 'x'],
+                y=gdf_region.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor='rgba(0, 0, 0, 0)',
+                line_color='black',
+                name=region_display_name,
+                # text=gdf_region.loc[i, region_type],
+                hoverinfo='skip',
+                # hoverlabel=dict(bgcolor='#ff4b4b'),
+                ),
+                )
+
+    # Stroke units:
+    hovertemplate=(
+        '%{customdata[1]:.0f} patients' +
+        '<br>' +
+        'in catchment area of<br>%{customdata[0]}' +
+        # Need the following line to remove default "trace" bit
+        # in second "extra" box:
+        '<extra></extra>'
+        )
+    unit_traces = make_units_traces(
+        gdf_units,
+        cols_custom_data=['ssnap_name', 'admissions'],
+        hovertemplate=hovertemplate
+        )
+    fig.add_trace(go.Scatter(unit_traces['ivt']))
+    fig.add_trace(go.Scatter(unit_traces['mt']))
+
+    # --- Layout ---
+    fig.update_layout(hovermode='closest')
+
+    fig = england_map_setup(fig)
+    fig.update_yaxes(scaleanchor='x', scaleratio=1)
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')  # region_display_name)
+
+    # Calculate height based on aspect ratio:
+    width = 800
+    height = width
+    # Figure setup.
+    fig.update_layout(
+        # width=width, height=height,
+        margin_t=0, margin_b=0, margin_l=0, margin_r=0,)
+    fig.update_layout(legend=dict(
+        # orientation="h",
+        yanchor='top',
+        y=0.0,
+        xanchor='center',
+        x=0.5,
     ))
     plotly_config = get_map_config()
     st.plotly_chart(fig, config=plotly_config, width='stretch')

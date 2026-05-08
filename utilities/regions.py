@@ -1681,6 +1681,226 @@ def plot_basic_travel_options_msu():
         )
 
 
+def plot_generic_travel_admissions(df_mt, df_no_mt):
+    """
+    Simple flowchart of generic patient first units and transfers.
+
+    This version is for OPTIMIST. It shows two generic starting
+    locations, one that is slightly nearer to the IVT-only unit
+    and the other slightly nearer to the MT unit.
+
+    Patient start 1 🏠 ------> o IVT unit
+                       \\__    |
+                           \\__v
+    Patient start 2 🏠 ------> * MT unit
+
+    Arrows are drawn separately for patients who receive MT and don't.
+    """
+    # Total number of patients in the dataframes:
+    # (use for fattening arrows)
+    n_total = (df_mt[['first_csc', 'first_atc']].sum().sum() +
+               df_no_mt[['first_csc', 'first_atc']].sum().sum())
+
+    fig = go.Figure()
+
+    # Setup for marker locations and spacing:
+    t = 4.0
+    label_x_off = 0.5
+    label_y_off = 0.5
+    coords_dict = {
+        'nearest_atc': [0, t],
+        'nearest_csc': [0, 0],
+        'csc': [t*1.5, 0],
+        'atc': [t*1.5, t]
+    }
+    arrow_kwargs = dict(
+        mode='lines+markers',
+        marker=dict(size=10, symbol='arrow-up', angleref='previous',
+                    standoff=16),
+        showlegend=False,
+        hoverinfo='skip',
+    )
+    dict_arrows = {
+        'mt': {'colour': '#ff4b4b', 'offset': -0.1, 'label_offset': -0.4},
+        'no_mt': {'colour': 'grey', 'offset': 0.1, 'label_offset': 0.4}
+        }
+
+    for patient in ['nearest_atc', 'nearest_csc']:
+        for unit in ['atc', 'csc']:
+            for df_label, df in {'no_mt': df_no_mt, 'mt': df_mt}.items():
+                offset = dict_arrows[df_label]['offset']
+                n_direct = df.loc[patient, f'first_{unit}']
+
+                if ~np.isnan(n_direct) & (n_direct > 0.0):
+                    xs = [coords_dict[patient][0], coords_dict[unit][0]]
+                    ys = [coords_dict[patient][1] + offset, coords_dict[unit][1] + offset]
+                    w = np.max([0.5, 10.0*n_direct/n_total])
+                    # Arrows:
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        **arrow_kwargs,
+                        line=dict(color=dict_arrows[df_label]['colour'], width=w),
+                    ))
+                    if df_label == 'no_mt':
+                        label = f'{n_direct:.0f} no MT'
+                        y_offset = dict_arrows['no_mt']['label_offset']
+                    else:
+                        label = f'{n_direct:.0f} MT'
+                        # label = label.replace(' no MT', ' no MT,<br>')
+                        y_offset = dict_arrows['mt']['label_offset']
+
+                    # Text labels:
+                    if ((patient == 'nearest_atc') & (unit == 'csc')):
+                        # Redirection
+                        annotation_kwargs = dict(
+                            # bordercolor='black',
+                            # bgcolor='white',
+                            textangle=-np.arctan2(ys[1]-ys[0], xs[1]-xs[0])*180.0/np.pi,
+                            align='center'
+                        )
+                    else:
+                        annotation_kwargs = dict()
+                    fig.add_annotation(
+                        y=np.mean(ys) + y_offset,
+                        x=np.mean(xs),
+                        text=label,
+                        showarrow=False,
+                        font=dict(size=14),
+                        yanchor='middle',
+                        **annotation_kwargs
+                        )
+
+    # Draw transfers:
+    n_transfer = df_mt.loc['nearest_atc', 'transfer']
+    if ~np.isnan(n_transfer) & (n_transfer > 0.0):
+        # Assume transfer from IVT-only to MT unit.
+        # Don't use arrow offset - assume only one arrow drawn.
+        xs_t = [coords_dict['atc'][0], coords_dict['csc'][0]]
+        ys_t = [coords_dict['atc'][1], coords_dict['csc'][1]]
+        w = np.max([0.5, 10.0*n_transfer/n_total])
+        fig.add_trace(go.Scatter(
+            x=xs_t,
+            y=ys_t,
+            **arrow_kwargs,
+            line=dict(color=dict_arrows[df_label]['colour'], width=w),
+        ))
+        # Text label:
+        label_trans = f'{n_transfer:.0f} MT'
+        x_offset = abs(dict_arrows['mt']['label_offset'])
+        # Text labels:
+        fig.add_annotation(
+            y=np.mean(ys_t),
+            x=np.mean(xs_t),
+            text=label_trans,
+            showarrow=False,
+            font=dict(size=14),
+            yanchor='middle',
+            # **annotation_kwargs
+            )
+
+    # Units and start location markers:
+    for patient in ['nearest_atc', 'nearest_csc']:
+        fig.add_trace(go.Scatter(
+            x=[coords_dict[patient][0]],
+            y=[coords_dict[patient][1]],
+            text=['🏠'],
+            mode='text+markers',
+            textfont=dict(size=32),
+            marker=dict(size=0, color='rgba(0, 0, 0, 0)'),
+            showlegend=False,
+            hoverinfo='skip',
+        ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['atc'][0]],
+        y=[coords_dict['atc'][1]],
+        mode='markers',
+        marker=dict(size=20, symbol='circle', color='white',
+                    line={'color': 'black', 'width': 1},),
+        name='IVT unit',
+        hoverinfo='skip',
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=[coords_dict['csc'][0]],
+        y=[coords_dict['csc'][1]],
+        mode='markers',
+        marker=dict(size=26, symbol='star', color='white',
+                    line={'color': 'black', 'width': 1},),
+        name='MT unit',
+        hoverinfo='skip',
+        showlegend=False,
+    ))
+
+    # Text labels:
+    fig.add_annotation(
+        y=np.mean([coords_dict['nearest_atc'][1], coords_dict['nearest_csc'][1]]),
+        x=coords_dict['nearest_atc'][0] - 2.0*label_x_off,
+        text='Patient<br>locations',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='middle',
+        )
+    fig.add_annotation(
+        y=coords_dict['atc'][1] + label_y_off,
+        x=coords_dict['atc'][0],
+        text='IVT units',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='bottom',
+        )
+    fig.add_annotation(
+        y=coords_dict['csc'][1] - label_y_off,
+        x=coords_dict['csc'][0],
+        text='MT units',
+        showarrow=False,
+        font=dict(size=14),
+        yanchor='top',
+        )
+
+    # Set axes properties
+    fig.update_xaxes(range=[-label_y_off, t+label_y_off],
+                     zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(range=[-3.0*label_y_off, t+3.0*label_y_off],
+                     zeroline=False, showgrid=False, showticklabels=False)
+    fig.update_yaxes(scaleanchor='x', scaleratio=1)
+    # Set figure size
+    fig.update_layout(width=300, height=200, margin_t=0, margin_b=0,
+                      margin_l=0, margin_r=0,)
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text='')
+    fig.update_layout(dragmode=False)  # change from default zoombox
+    # Turn off legend click events
+    # (default is click on legend item, remove that item from the plot)
+    fig.update_layout(legend_itemclick=False)
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            'zoom',
+            'pan',
+            'select',
+            'zoomIn',
+            'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(
+        fig,
+        config=plotly_config,
+        width='content',
+        )
+
+
 def gather_this_region_travel_times(
         d: dict,
         lsoa_subset: str,
@@ -2332,3 +2552,218 @@ def calculate_region_treat_stats(
         s_admissions['admissions_nearest_unit_no_mt']
         )
     return d
+
+
+def calculate_region_admissions_generic(
+        dict_pops_u: dict, dict_pops_r: dict, s_admissions: pd.Series):
+    """
+    Calculate how many people go to CSC/ATC with MT separately.
+
+    Inputs
+    ------
+    dict_pops_u  - dict. Proportions of patients with each stroke type
+                   and treatment combination in usual care.
+    dict_pops_r  - dict. Proportions of patients with each stroke type
+                   and treatment combination in redirection scenario.
+    s_admissions - pd.Series. Numbers of admissions.
+
+    Returns
+    -------
+    d - dict. Stores the calculated proportions.
+    """
+    d = {}
+
+    # Numbers redirected:
+    d['prop_mt_usual_care'] = (
+        dict_pops_u
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    d['prop_mt_redir_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    d['prop_mt_redir_not_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        .loc[['lvo_mt', 'lvo_ivt_mt'], 'full_population'].sum()
+        )
+    rows_no_mt = [r for r in dict_pops_u.index if '_mt' not in r]
+    d['prop_no_mt_redir_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] == 'redir_accepted']
+        .loc[rows_no_mt, 'full_population'].sum()
+        )
+    d['prop_no_mt_redir_not_approved'] = (
+        dict_pops_r[dict_pops_r['scenario'] != 'redir_accepted']
+        .loc[rows_no_mt, 'full_population'].sum()
+        )
+
+    admissions_nearest_csc = (
+        s_admissions['admissions_all_patients'] -
+        s_admissions['admissions_nearest_unit_no_mt']
+        )
+    mt_nearest_csc = d['prop_mt_usual_care'] * admissions_nearest_csc
+    no_mt_nearest_csc = admissions_nearest_csc - mt_nearest_csc
+
+    # Store numbers of patients in each nearest-unit-first-unit combo:
+    cols = ['first_csc', 'first_atc', 'transfer']
+    inds = ['nearest_csc', 'nearest_atc']
+    df_mt_usual_care = pd.DataFrame(columns=cols, index=inds)
+    df_no_mt_usual_care = pd.DataFrame(columns=cols, index=inds)
+    df_mt_redir = pd.DataFrame(columns=cols, index=inds)
+    df_no_mt_redir = pd.DataFrame(columns=cols, index=inds)
+
+    # The patients nearest a CSC are the same in every case.
+    # Everyone goes to the CSC, nobody to ATC or transfer.
+    for df in [df_mt_usual_care, df_mt_redir]:
+        df.loc['nearest_csc', 'first_csc'] = mt_nearest_csc
+    for df in [df_no_mt_usual_care, df_no_mt_redir]:
+        df.loc['nearest_csc', 'first_csc'] = no_mt_nearest_csc
+    # Patients nearest ATC who go directly to ATC:
+    # Usual care:
+    mt_nearest_atc_first_atc_usual_care = (
+        s_admissions['admissions_nearest_unit_no_mt'] *
+        d['prop_mt_usual_care']
+    )
+    no_mt_nearest_atc_first_atc_usual_care = (
+        s_admissions['admissions_nearest_unit_no_mt'] -
+        mt_nearest_atc_first_atc_usual_care
+    )
+    df_mt_usual_care.loc['nearest_atc', 'first_atc'] = mt_nearest_atc_first_atc_usual_care
+    df_mt_usual_care.loc['nearest_atc', 'transfer'] = mt_nearest_atc_first_atc_usual_care
+    df_no_mt_usual_care.loc['nearest_atc', 'first_atc'] = no_mt_nearest_atc_first_atc_usual_care
+    # Redir scenario, go directly to ATC:
+    mt_nearest_atc_and_not_redirected_redir = (
+        d['prop_mt_redir_not_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    mt_nearest_atc_and_redirected_redir = (
+        d['prop_mt_redir_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    no_mt_nearest_atc_and_not_redirected_redir = (
+        d['prop_no_mt_redir_not_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    no_mt_nearest_atc_and_redirected_redir = (
+        d['prop_no_mt_redir_approved'] *
+        s_admissions['admissions_nearest_unit_no_mt'])
+    #
+    df_mt_redir.loc['nearest_atc', 'first_atc'] = mt_nearest_atc_and_not_redirected_redir
+    df_mt_redir.loc['nearest_atc', 'transfer'] = mt_nearest_atc_and_not_redirected_redir
+    df_mt_redir.loc['nearest_atc', 'first_csc'] = mt_nearest_atc_and_redirected_redir
+    df_no_mt_redir.loc['nearest_atc', 'first_atc'] = no_mt_nearest_atc_and_not_redirected_redir
+    df_no_mt_redir.loc['nearest_atc', 'first_csc'] = no_mt_nearest_atc_and_redirected_redir
+
+    # Gather dfs:
+    df_dict = {
+        'mt_usual_care': df_mt_usual_care,
+        'no_mt_usual_care': df_no_mt_usual_care,
+        'mt_redir': df_mt_redir,
+        'no_mt_redir': df_no_mt_redir
+    }
+
+    # Fill missing values with zeros:
+    for label, df in df_dict.items():
+        df_dict[label] = df.fillna(0.0)
+    return df_dict
+
+
+def gather_region_admissions_generic(d):
+    """
+    Flatten the multiple generic admissions into one dataframe.
+
+    Inputs
+    ------
+    d - dict. Contains df for each combo of MT/not-MT and
+              usual care/redirection. 
+
+    Returns
+    -------
+    df - pd.DataFrame. The same data as the input dict of dfs
+         but flattened out for displaying on the app.
+    """
+    df_all = pd.DataFrame()
+    for col, df in d.items():
+        for row in df.index:
+            df_all[f'{col}_{row}'] = df.loc[row]
+    return df_all
+
+
+def plot_admissions_bars_by_unit(df_net_u, df_net_r):
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=['no MT', 'MT'], shared_xaxes=True)
+
+    # # Sort by transfer unit then by admissions
+    # # to gather units in similar geographic areas.
+    # df_net_r = df_net_r.copy().sort_values(
+    #     ['isdn_nearest', 'isdn', 'transfer_unit', 'admissions'],
+    #     ascending=[True, True, True, False])
+    # df_net_r['sort_order'] = range(len(df_net_r))
+    # df_net_u = pd.merge(df_net_u, df_net_r[['first_unit', 'sort_order']].drop_duplicates(subset='first_unit'),
+    #                     on='first_unit', how='left')
+    # df_net_u = df_net_u.sort_values('sort_order')
+
+    df_net_r = df_net_r.sort_values('admissions', ascending=False)
+
+    # Show MT units in their own bar. Combine non-MT units.
+    mask_u = df_net_u['Use_MT'] == 1
+    mask_r = df_net_r['Use_MT'] == 1
+
+    df_net_u.loc[~mask_u, 'ssnap_name'] = 'Non-MT unit'
+    df_net_r.loc[~mask_r, 'ssnap_name'] = 'Non-MT unit'
+
+
+    st.write(df_net_u)
+    st.write(df_net_r)
+
+
+    for nearest_unit in df_net_r['nearest_unit'].unique():
+        df_here = df_net_r[mask_r & (df_net_r['nearest_unit'] == nearest_unit)]
+        for i, treat in enumerate(['not_mt', 'thrombectomy']):
+            fig.add_trace(go.Bar(
+                x=df_here['ssnap_name'],
+                y=df_here[treat],
+                name=nearest_unit,
+                showlegend=False,
+                marker_color=df_here['colour'],
+                offsetgroup=1,
+                ), row=i+1, col=1)
+
+    for first_unit in df_net_u['first_unit'].unique():
+        df_here = df_net_u[mask_u & (df_net_u['first_unit'] == first_unit)]
+        for i, treat in enumerate(['not_mt', 'thrombectomy']):
+            fig.add_trace(go.Bar(
+                x=df_here['ssnap_name'],
+                y=df_here[treat],
+                name=first_unit,
+                showlegend=False,
+                marker_color='rgba(1, 1, 1, 0)',
+                marker_line_color='grey',
+                marker_line_width=2,
+                offsetgroup=2,
+                ), row=i+1, col=1)
+
+    # Change the bar mode
+    fig.update_layout(barmode='stack')
+
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        )
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, config=plotly_config)
