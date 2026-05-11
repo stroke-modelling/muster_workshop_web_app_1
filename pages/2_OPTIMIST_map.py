@@ -866,7 +866,17 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 
     # Redirection time change:
     with containers_h['redir_time']:
-        st.write('redir_time')
+        # This dict has separate entries for "all_patients" and
+        # "nearest_unit_no_mt":
+        s = 'dict_highlighted_region_unique_treatment_times'
+        # Pick out a dataframe with the treatment times as index
+        # and a single region's admissions as the column:
+        df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
+        # Convert column to 2D grid:
+        df_times_grid = reg.create_time_diff_admissions_grid(df_times)
+        reg.plot_time_diff_admissions_grid(df_times_grid)
+
+        
 
     # mRS distribution bar charts:
     with containers_h['mrs_dists']:

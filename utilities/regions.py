@@ -2766,3 +2766,69 @@ def plot_admissions_bars_by_unit(df_net_u, df_net_r):
         'toImageButtonOptions': {'height': None, 'width': None},
         }
     st.plotly_chart(fig, config=plotly_config)
+
+
+def create_time_diff_admissions_grid(df_times, r=5):
+    cols_index = df_times.index.names
+    col_admissions = df_times.columns[0]
+    df_times = df_times.reset_index()
+    # Calculate time differences due to redir:
+    df_times['diff_ivt'] = (df_times['redirection_approved_ivt'] -
+                            df_times['usual_care_ivt'])
+    df_times['diff_mt'] = (df_times['redirection_approved_mt'] -
+                            df_times['usual_care_mt'])
+    # Round to nearest "r" minutes:
+    df_times['diff_ivt'] = (np.round(1e-4 + df_times['diff_ivt'] / r, 0)) * r
+    df_times['diff_mt'] = (np.round(1e-4 + df_times['diff_mt'] / r, 0)) * r
+    # Group time diffs:
+    df_times = df_times.drop(cols_index, axis='columns')
+    df_times = df_times.groupby(['diff_ivt', 'diff_mt']).sum().reset_index()
+    # Convert to 2D grid:
+    df_times = df_times.pivot(index='diff_ivt', columns='diff_mt', values=col_admissions)
+    # Fill in any missing rows/columns:
+    times_index = np.arange(df_times.index.values.min(), df_times.index.values.max() + r, r)
+    times_index = times_index[times_index not in df_times.index.values]
+    df_times.loc[times_index] = np.nan
+    times_columns = np.arange(df_times.columns.min(), df_times.columns.max() + r, r)
+    times_columns = [c for c in times_columns if c not in df_times.columns]
+    df_times[times_columns] = np.nan
+    df_times = df_times[sorted(df_times.columns)].sort_index()
+    return df_times
+
+
+def plot_time_diff_admissions_grid(df_times):
+    ht = ''.join([
+        'IVT %{y:+}min, MT %{x:+}min:<br>',
+        '%{z} patients',
+        '<extra></extra>'
+    ])
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(
+        z=df_times.values,
+        y=df_times.index,
+        x=df_times.columns,
+        colorbar={'title': 'Number of patients', 'title_side': 'right'},
+        hovertemplate=ht,
+        hoverongaps=False,
+        ))
+    t = 15
+    lowest_tick_ivt = int(df_times.index.min() / t) * t
+    lowest_tick_mt = int(min(df_times.columns) / t) * t
+    fig.update_yaxes(
+        title_text='Change in time to IVT',
+        tickmode='linear',
+        tick0=lowest_tick_ivt,
+        dtick=t,
+        )
+    fig.update_xaxes(
+        title_text='Change in time to MT',
+        tickmode='linear',
+        tick0=lowest_tick_mt,
+        dtick=t,
+        )
+    title_text = ''.join([
+        'Numbers of patients by change in treatment times<br>',
+        'due to redirection.'
+        ])
+    fig.update_layout(title_text=title_text)
+    st.plotly_chart(fig)
