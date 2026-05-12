@@ -1009,7 +1009,7 @@ def calculate_nested_average_outcomes(
 
 
 def display_region_summary(
-        series_u: pd.Series, series_r: pd.Series, k: str = 'mrs_0-2'):
+        series_u: pd.Series, series_r: pd.Series, d, k: str = 'mrs_0-2'):
     """
     Show metrics of key outcomes.
 
@@ -1024,26 +1024,29 @@ def display_region_summary(
     label_dict = {
         'mrs_0-2': {
             'label': 'Proportion with mRS<2',
-            'format': '.1%',
+            'format': '.0%',
+            'delta_format': '.1%',
             'delta_color': 'normal',
         },
         'mrs_shift': {
             'label': 'Change in mRS score',
-            'format': '.3f',
+            'format': '+.2f',
+            'delta_format': '+.3f',
             'delta_color': 'inverse',
         },
         'utility_shift': {
             'label': 'Change in utility',
-            'format': '.3f',
+            'format': '+.2f',
+            'delta_format': '+.3f',
             'delta_color': 'normal',
         },
     }
     s = 'from usual care'
-    d = series_r[k] - series_u[k]
+    # d = series_r[k] - series_u[k]
     st.metric(
         label_dict[k]['label'],
-        value=f"{series_r[k]:^{label_dict[k]['format']}}",
-        delta=f"{d:^{label_dict[k]['format']}} {s}",
+        value=f"{series_r:^{label_dict[k]['format']}}",
+        delta=f"{d:^{label_dict[k]['delta_format']}} {s}",
         delta_color=label_dict[k]['delta_color']
         )
     # st.write(series_r[k], series_u[k])
@@ -2681,6 +2684,7 @@ def gather_region_admissions_generic(df_net_u_gen, df_net_r_gen):
                         col = 'admissions_first_unit_to_transfer'
                         v = df_here[col].values[0] if len(df_here) > 0 else 0.0
                         df_all.loc['transfer', new_col] = v
+    df_all = df_all.fillna(0.0)
     return df_all
 
 
@@ -2815,13 +2819,13 @@ def plot_time_diff_admissions_grid(df_times):
     lowest_tick_ivt = int(df_times.index.min() / t) * t
     lowest_tick_mt = int(min(df_times.columns) / t) * t
     fig.update_yaxes(
-        title_text='Change in time to IVT',
+        title_text='Change in time to IVT (minutes)',
         tickmode='linear',
         tick0=lowest_tick_ivt,
         dtick=t,
         )
     fig.update_xaxes(
-        title_text='Change in time to MT',
+        title_text='Change in time to MT (minutes)',
         tickmode='linear',
         tick0=lowest_tick_mt,
         dtick=t,

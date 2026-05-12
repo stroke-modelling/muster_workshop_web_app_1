@@ -805,6 +805,154 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         reg.calculate_region_admissions_generic(
             df_region_admissions_generic))
 
+
+    # Where to pick out mRS data from the outcomes df:
+    cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
+    cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
+    cols_mrs_std = [f'{c}_std' for c in cols_mrs]
+    # Label for redir scenario on the mRS results:
+    label_redir = ''.join([
+    'Redirection available (mix of usual care,<br>',
+    'redirection approved, redirection rejected)'
+    ])
+    options_labels = {
+        'usual_care': 'Usual care',
+        'redir_allowed': label_redir,
+        'redir_accept': 'Only redirected patients',
+        'no_treatment': 'No treatment',
+    }
+    scenario_labels = {
+        'usual_care': 'Usual care',
+        'redir_allowed':  'Redir.',
+        'redir_accepted_only': 'Only redirected patients',
+        'no_treatment': 'No treatment',
+        'diff_redir_allowed_minus_usual_care': 'Diff.',
+    }
+    scenario_help = {
+        'usual_care': None,
+        'redir_allowed': ''.join([
+            'Redirection available (mix of usual care, ',
+            'redirection approved, redirection rejected).'
+        ]),
+        'redir_accepted_only': None,
+        'no_treatment': None,
+        'diff_redir_allowed_minus_usual_care': (
+            'Difference between redirection available and usual care.'),
+        }
+    outcome_labels = {
+        'mrs_0-2': 'Percentage with mRS<2',
+        'mrs_shift': 'Average change in mRS score',
+        'utility_shift': 'Change in utility',
+    }
+    outcome_formats = {
+        'mrs_0-2': '%.1f%%',
+        'mrs_shift': '%+.2f',
+        'utility_shift': '%+.2f',
+    }
+
+    # mRS distribution summary values and bar charts:
+    dict_metrics = {}
+    dict_mrs_bars = {}
+    for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+
+        # Calculate "no treatment" data.
+        # Should have the same total proportions of nLVO
+        # and LVO in both the usual care and redir groups,
+        # with only the details of who goes where differing,
+        # so only calculate one set of no-treatment mRS dists.
+        pops = (
+            st.session_state['dict_pops']['usual_care'][subgroup])
+        df_no_treat = reg.calculate_no_treatment_mrs(
+            pops, dict_no_treatment_outcomes)
+
+        d = 'dict_highlighted_region_outcomes'
+        df_u = st.session_state[d][subgroup]['usual_care'][
+            lsoa_subset]
+        df_r = st.session_state[d][subgroup]['redir_allowed'][
+            lsoa_subset]
+        df_a = st.session_state[d][subgroup]['redir_accepted_only'][
+            lsoa_subset]
+        try:
+            df_u = df_u.loc[region]
+            df_r = df_r.loc[region]
+            df_a = df_a.loc[region]
+            selected_region_is_mt_unit = False
+        except KeyError:
+            # This is an MT unit and the LSOA subset excludes patients
+            # nearest MT units.
+            selected_region_is_mt_unit = True
+        if selected_region_is_mt_unit:
+            pass
+        else:
+            # Calculate summary values for metrics:
+            df_d = df_r - df_u
+            dict_metrics[subgroup] = {}
+            for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+                p = 100 if key == 'mrs_0-2' else 1
+                dict_metrics[subgroup][key] = {
+                    'usual_care': df_u[key] * p,
+                    'redir_allowed': df_r[key] * p,
+                    'redir_accepted_only': df_a[key] * p,
+                    'diff_redir_allowed_minus_usual_care': df_d[key] * p
+                }
+
+            # Gather mRS distributions:
+            dict_mrs_bars[subgroup] = {
+                'usual_care': {
+                    'noncum': df_u[cols_mrs_noncum],
+                    'cum': df_u[cols_mrs],
+                    'std': df_u[cols_mrs_std],
+                    'colour': '#0072b2',
+                    'label': 'Usual care',
+                },
+                'redir_allowed': {
+                    'noncum': df_r[cols_mrs_noncum],
+                    'cum': df_r[cols_mrs],
+                    'std': df_r[cols_mrs_std],
+                    'colour': '#56b4e9',
+                    'label': label_redir
+                },
+                'redir_accept': {
+                    'noncum': df_a[cols_mrs_noncum],
+                    'cum': df_a[cols_mrs],
+                    'std': df_a[cols_mrs_std],
+                    'colour': '#009e73',
+                    'label': 'Only redirected patients'
+                },
+                'no_treatment': {
+                    'noncum': df_no_treat[cols_mrs_noncum],
+                    'cum': df_no_treat[cols_mrs],
+                    'colour': 'grey',
+                    'label': 'No treatment'
+                },
+            }
+
+    # Gather metrics:
+    dict_df_metrics = {}
+    for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+        df_metrics = pd.DataFrame()
+        for subgroup, d in dict_metrics.items():
+            df_metrics[subgroup] = d[key]
+            df_metrics.loc['subgroup', subgroup] = st.session_state['df_subgroups'].loc[subgroup, 'label']
+        dict_df_metrics[key] = df_metrics.transpose()
+
+    # Gather mRS dists:
+    dict_df_mrs = {}
+    for subgroup, dict_mrs in dict_mrs_bars.items():
+        s_scens = []
+        for scenario, dict_scen in dict_mrs.items():
+            s_scen = []
+            for col in ['noncum', 'cum', 'std']:
+                try:
+                    s = dict_scen[col]
+                    s.name = scenario
+                    s_scen.append(s)
+                except KeyError:
+                    pass
+            s_scens.append(pd.concat(s_scen, axis='rows'))
+        df_mrs = pd.concat(s_scens, axis='columns')
+        dict_df_mrs[subgroup] = df_mrs
+
     # Onion:
     with containers_h['onion']:
         # Highlight admissions for this onion layer:
@@ -813,6 +961,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         admissions_here_nearest_atc = df_admissions_onion.loc[str_this_population, 'admissions_nearest_atc']
 
         st.metric(f'__{str_this_population}__:', f'{admissions_here:,.0f} patients')
+        st.markdown(f'({prop_this_population:.1%} of all stroke)')
         st.markdown(f'__{prop_here_nearest_csc:.0%} have nearest unit with MT__')
 
         # Full table:
@@ -828,7 +977,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             for c in df_admissions_onion.columns
             ])
         config['_index'] = st.column_config.TextColumn(width='small')
-        with st.expander('Show admissions for all populations'):
+        with st.expander('Admissions for all populations'):
             st.dataframe(df_admissions_onion, column_config=config)
 
     # Catchment map:
@@ -854,15 +1003,19 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             dict_region_admissions_generic['no_mt_redir'],
             mt_label=mt_unit_here_label
             )
-        with st.expander('Show flowchart data as table'):
+        with st.expander('Data behind the flowchart'):
             st.markdown(
-                '''Row names show where patients are going to.
-                Column names are a combination of (MT/no MT),
+                '''Column names show where patients are going to.
+                Row names are a combination of (MT/no MT),
                 (usual care / redirection), and
                 (patients nearest CSC / patients nearest IVT unit).
                 '''
                 )
-            st.dataframe(df_region_admissions_generic)
+            column_config = {'_index': st.column_config.TextColumn(width=150)}
+            for c in df_region_admissions_generic.index:
+                column_config[c] = st.column_config.NumberColumn(format='%.1f')
+            st.dataframe(df_region_admissions_generic.transpose(),
+                         column_config=column_config)
 
     # Redirection time change:
     with containers_h['redir_time']:
@@ -874,13 +1027,74 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
         # Convert column to 2D grid:
         df_times_grid = reg.create_time_diff_admissions_grid(df_times)
-        reg.plot_time_diff_admissions_grid(df_times_grid)
-
-        
-
-    # mRS distribution bar charts:
+        reg.plot_time_diff_admissions_grid(df_times_grid.round(1))
+        with st.expander('Data behind the figure'):
+            st.markdown(''.join([
+                'Rows are the change in time to IVT and ',
+                'columns are the change in time to MT. ',
+                'Both are rounded to the nearest 5 minutes. ',
+                'The only patients shown are those where redirection ',
+                'changes the treatment times, and the time changes are ',
+                'when redirection is accepted.'
+            ]))
+            st.dataframe(df_times_grid)
+    
+    # Outcome metrics:
+    scen_dict = {}
     with containers_h['mrs_dists']:
-        st.write('mrs_dists')
+        cols_to_show = ['usual_care', 'redir_allowed', 'diff_redir_allowed_minus_usual_care']
+        keys_to_show = ['mrs_0-2', 'mrs_shift']
+        for key in keys_to_show:
+            column_config = {'_index': st.column_config.TextColumn(width=150)}
+            for c in cols_to_show:
+                column_config[c] = st.column_config.NumberColumn(
+                    width=40, label=scenario_labels[c], help=scenario_help[c],
+                    format=outcome_formats[key]
+                    )
+            
+            st.markdown(outcome_labels[key])
+            df = dict_df_metrics[key].reset_index(drop=True).set_index('subgroup')
+            df = df[cols_to_show]
+            st.dataframe(df, column_config=column_config)
+        
+    # mRS dists:
+    with containers_h['mrs_dists']:
+        with st.expander('__mRS distributions__ bar charts'):
+            containers_h['mrs_figs'] = st.container()
+            containers_h['mrs_options'] = st.container()
+        with containers_h['mrs_options']:
+            def f(label):
+                """Display subgroup with nice name instead of key."""
+                return options_labels[label]
+            st.multiselect(
+                'Scenarios to display on the bar chart',
+                options_labels.keys(),
+                format_func=f,
+                default=['usual_care', 'redir_allowed', 'no_treatment'],
+                key=f'mrs_dist_options_{region}',
+            )
+        with containers_h['mrs_figs']:
+            for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+                subgroup_label = st.session_state['df_subgroups'].loc[subgroup, 'label']
+                st.markdown(f'__{subgroup_label}__')
+                try:
+                    mrs_lists_dict = dict_mrs_bars[subgroup]
+                    show = True
+                except KeyError:
+                    st.markdown('No data available.')
+                    show = False
+                if show:
+                    mrs_lists_dict_to_show = {}
+                    for k in st.session_state[f'mrs_dist_options_{region}']:
+                        mrs_lists_dict_to_show[k] = mrs_lists_dict[k]
+                    reg.plot_mrs_bars(mrs_lists_dict_to_show,
+                                    key='_'.join([region, subgroup]))
+                    
+        with st.expander('Data behind the mRS bar charts'):
+            for subgroup, df in dict_df_mrs.items():
+                subgroup_label = st.session_state['df_subgroups'].loc[subgroup, 'label']
+                st.markdown(subgroup_label)
+                st.dataframe(df)
 
     # Outcome maps:
     with containers_h['outcome_maps']:
