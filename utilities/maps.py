@@ -9,7 +9,7 @@ import os
 from utilities.utils import print_progress_loc, set_rerun_map
 
 
-def select_map_data(df_subgroups: pd.DataFrame):
+def select_map_data(df_subgroups: pd.DataFrame, region):
     """
     Pick which subgroup to show on the outcome maps.
 
@@ -38,7 +38,8 @@ def select_map_data(df_subgroups: pd.DataFrame):
         options=df_subgroups.index,
         format_func=f,
         index=0,
-        on_change=set_rerun_map
+        on_change=set_rerun_map,
+        key=f'select_map_subgroup_{region}'
         )
     label = df_subgroups.loc[key, 'label']
     return key, label

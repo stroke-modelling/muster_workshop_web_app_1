@@ -1877,13 +1877,13 @@ def plot_generic_travel_admissions(df_mt, df_no_mt, mt_label='MT units'):
         )
 
     # Set axes properties
-    fig.update_xaxes(range=[-label_y_off, t+label_y_off],
+    fig.update_xaxes(range=[1.5, t+label_y_off],
                      zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(range=[-4.0*label_y_off, t+3.0*label_y_off],
                      zeroline=False, showgrid=False, showticklabels=False)
     fig.update_yaxes(scaleanchor='x', scaleratio=1)
     # Set figure size
-    fig.update_layout(width=300, height=200, margin_t=0, margin_b=0,
+    fig.update_layout(width=400, height=200, margin_t=0, margin_b=0,
                       margin_l=0, margin_r=0,)
 
     fig = update_plotly_font_sizes(fig)

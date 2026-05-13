@@ -1531,7 +1531,10 @@ def plot_outcome_maps(
         all_cmaps: list,
         outline_name: str = 'none',
         show_msu_bases: bool = False,
-        title: str = ''
+        title: str = '',
+        gdf_single_region: gpd.GeoDataFrame = None,
+        region_display_name: str = None,
+        bounds: list = []
         ):
     """
     Draw three maps: usual outcome, difference, and population.
@@ -1586,13 +1589,58 @@ def plot_outcome_maps(
             )
 
     # --- Region, unit, road traces ---
-    if outline_name == 'none':
+    # Selected region:
+    if isinstance(gdf_single_region, pd.DataFrame):
+        # Background and border:
+        # Border:
+        fig.add_shape(
+            type="rect",
+            x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
+            fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
+            line=dict(color='grey', width=4,),
+            layer='between',  # below other traces
+            row='all', col='all')
+        # Load England and restrict it to the area being drawn:
+        gdf_eng = load_england_outline(bounds)
+        # Scatter the edges of the polygons and use "fill" to colour
+        # within the lines.
+        fig.add_trace(go.Scatter(
+            x=gdf_eng['x'],
+            y=gdf_eng['y'],
+            mode='lines',
+            fill="toself",
+            fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
+            # fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
+            # fillcolor='rgba(0.573, 0.573, 0.573, 1)',  # grey
+            line_color='rgba(0, 0, 0, 0)',
+            showlegend=False,
+            hoverinfo='skip',
+            zorder=-1,
+            ), row='all', col='all'
+        )
+        # Selected region outline:
+        for i in gdf_single_region.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_single_region.loc[i, 'x'],
+                y=gdf_single_region.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor='rgba(0, 0, 0, 0)',
+                line_color='black',
+                name=region_display_name,
+                # text=gdf_region.loc[i, region_type],
+                hoverinfo='skip',
+                # hoverlabel=dict(bgcolor='#ff4b4b'),
+                ), row='all', col='all'
+                )
+    elif (outline_name == 'none'):
         # Draw England:
         fig.add_trace(map_traces['england_outline'], row='all', col='all')
-    else:
+    if outline_name != 'none':
         # Draw region outlines:
         for t in map_traces[f'{outline_name}_outlines']:
             fig.add_trace(t, row='all', col='all')
+
     # Always draw roads:
     fig.add_trace(map_traces['roads'], row='all', col='all')
     # Draw stroke units:
@@ -1617,6 +1665,9 @@ def plot_outcome_maps(
         # Equivalent to pyplot set_aspect='equal':
         x = 'x' if i == 0 else f'x{i+1}'
         fig.update_yaxes(col=i+1, scaleanchor=x, scaleratio=1)
+        # Update xlim and ylim:
+        fig.update_xaxes(col=i+1, range=[bounds[0], bounds[2]])
+        fig.update_yaxes(col=i+1, range=[bounds[1], bounds[3]])
     # Shared pan and zoom settings:
     fig.update_xaxes(matches='x')
     fig.update_yaxes(matches='y')

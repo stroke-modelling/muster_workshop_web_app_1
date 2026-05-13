@@ -264,9 +264,9 @@ def select_colour_maps():
 
 def select_colour_limits(
         map_outcome: str,
-        vlim_dict: dict,
+        # vlim_dict: dict,
         scenario_name: str = 'redir',
-        scenario_label: str = 'redirection'
+        scenario_label: str = 'redirection',
         ):
     """
     Draw editable dataframe of limits of actual and plotted data.
@@ -309,10 +309,11 @@ def select_colour_limits(
         }
     diff_name = f'{scenario_name}_minus_usual_care'
     d[diff_name] = {
-        'title': f'''
-        Benefit of {scenario_label} over usual care:
-        {map_outcome_label}''',
-        }
+        'title': ''.join([
+            f'Benefit of {scenario_label} over usual care: ',
+            f'{map_outcome_label}'
+            ]),
+    }
     d['pop'] = {
         'title': 'Population density (people per square kilometre)',
         }
@@ -326,9 +327,9 @@ def select_colour_limits(
     d['pop']['vmin'] = 0.0
     d['pop']['vmax'] = 100.0
 
-    # Copy over data min/max values:
-    for c in d.keys():
-        d[c] = d[c] | vlim_dict[c]
+    # # Copy over data min/max values:
+    # for c in d.keys():
+    #     d[c] = d[c] | vlim_dict[c]
 
     # Set up display:
     st.markdown('__Edit the limits of the colour scales:__')
@@ -336,15 +337,17 @@ def select_colour_limits(
     cols = st.columns(3)
     for c, c_dict in d.items():
         arr = np.array([
-            [c_dict['data_min'], c_dict['vmin']],
-            [c_dict['data_max'], c_dict['vmax']]
+            # [c_dict['data_min'], c_dict['vmin']],
+            # [c_dict['data_max'], c_dict['vmax']]
+            [c_dict['vmin']],
+            [c_dict['vmax']]
             ])
-        df = pd.DataFrame(arr, columns=['Map data', 'Colour scale'],
+        df = pd.DataFrame(arr, columns=['Colour scale'], # columns=['Map data', 'Colour scale'],
                           index=['Minimum', 'Maximum'])
         with cols[i]:
             st.markdown(c_dict['title'])
             df = st.data_editor(
-                df, disabled=['Map data'],
+                df, #disabled=['Map data'],
                 key=f'{c}_colour_setup',
                 on_change=set_rerun_map
                 )

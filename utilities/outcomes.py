@@ -36,7 +36,8 @@ def select_outcome_type():
         index=0,  # 'added utility' as default
         format_func=f,
         # horizontal=True
-        on_change=set_rerun_map
+        on_change=set_rerun_map,
+        key=f'radio_outcome_for_map'
     )
     return outcome_type
 
