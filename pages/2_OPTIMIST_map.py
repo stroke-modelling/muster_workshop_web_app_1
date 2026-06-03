@@ -632,6 +632,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     else:
         region_label = region
 
+    # Flag whether we need to make a new map:
+    if f'maps_fig_region_{region}' in list(st.session_state.keys()):
+        pass
+    else:
+        st.session_state['rerun_maps'] = True
 
     # Set up containers:
     containers_highlighted[region] = {}
