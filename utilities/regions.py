@@ -2836,3 +2836,36 @@ def plot_time_diff_admissions_grid(df_times):
         ])
     fig.update_layout(title_text=title_text)
     st.plotly_chart(fig)
+
+
+def calculate_quantiles(df_times, time_cols, region, quants, r=5):
+    """
+    """
+    # Store results in here:
+    list_quants = []
+    for col in time_cols:
+        # Make sure the times column is sorted:
+        df_times = df_times.sort_values(col)
+        # Calculate results.
+        # Cumulative sum of numbers of patients:
+        col_cumsum = f'{region}_cumsum'
+        df_times[col_cumsum] = df_times[region].cumsum()
+        # Results for this region will go in here:
+        s_quants = pd.Series()
+        for q in quants:
+            # Convert fraction to number of patients:
+            n_target = round(q * df_times[col_cumsum].max(), r)
+            # Where is this condition met?
+            m = df_times[col_cumsum] >= n_target
+            # Pick out first time where condition met:
+            t = df_times.loc[m, col].values[0]
+            # Store:
+            s_quants[q] = t
+        # Store results for this region:
+        s_quants.name = col
+        list_quants.append(s_quants)
+    # Convert results into dataframe:
+    df_q = pd.concat(list_quants, axis='columns')
+    df_q.index.name = 'Quantile'
+    df_q.columns.name = 'Treatment time'
+    return df_q

@@ -640,7 +640,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     with containers['results']:
         containers_h['top'] = st.container(border=True)
     with containers_h['top']:
-        st.subheader(region_label)
+        st.header(region_label)
         containers_h['h'] = st.container(horizontal=True)
         containers_h['h2'] = st.container(horizontal=True)
         containers_h['h3'] = st.container(horizontal=True)
@@ -654,11 +654,32 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             containers_h['onion_extra'] = st.container()
         with c[1]:
             containers_h['redir_flow'] = st.container()
-            c2 = st.columns(2)
-            with c2[0]:
+            containers_h['redir_time_top'] = st.container()
+            with containers_h['redir_time_top']:
                 containers_h['redir_time'] = st.container()
-            with c2[1]:
+                c2 = st.columns(2)
+                with c2[0]:
+                    containers_h['redir_time_single'] = st.container()
+                with c2[1]:
+                    containers_h['redir_time_combo'] = st.container()
+            # c2 = st.columns(2)
+            # # with c2[0]:
+            # with c2[1]:
+            containers_h['outcomes_top'] = st.container()
+            with containers_h['outcomes_top']:
+                containers_h['outcomes'] = st.container()
+                c2 = st.columns(2)
+                with c2[0]:
+                    containers_h['outcomes_perc'] = st.container()
+                with c2[1]:
+                    containers_h['outcomes_av'] = st.container()
+
                 containers_h['mrs_dists'] = st.container()
+                c2 = st.columns(2)
+                with c2[0]:
+                    containers_h['mrs_dists_left'] = st.container()
+                with c2[1]:
+                    containers_h['mrs_dists_right'] = st.container()
 
         # for label in container_labels[:3]:
         #     containers_h[label] = st.container()
@@ -669,6 +690,17 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         containers_h['outcome_maps'] = st.container()
     with containers_h['outcome_maps']:
         containers_h['map_fig'] = st.container()
+
+    with containers_h['redir_flow']:
+        st.subheader('Admissions changes')
+        (containers_h['redir_flow_0'],
+         containers_h['redir_flow_1']) = st.columns(2, gap=None)
+        (containers_h['redir_flow_mt_select'],
+         containers_h['redir_flow_data']) = st.columns([1, 3])#, gap=None)
+    with containers_h['redir_time']:
+        st.subheader('Time changes')
+    with containers_h['outcomes']:
+        st.subheader('Outcomes')
 
     # Calculations
 
@@ -846,10 +878,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     def f_mt_label(lookup):
         """Display layer with nice name instead of key."""
         return dict_mt_labels[lookup]
-
-    with containers_h['redir_flow']:
+    with containers_h['redir_flow_mt_select']:
         mt_unit_here = st.selectbox(
-            'MT unit to show in the flowchart',
+            'MT unit to show in the flowcharts',
             dict_mt_labels.keys(),
             format_func=f_mt_label
         )
@@ -872,6 +903,30 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         reg.calculate_region_admissions_generic(
             df_region_admissions_generic))
 
+    # Time change quantile calculations:
+    # Set up time df for quantile calculations:
+    # This dict has separate entries for "all_patients" and
+    # "nearest_unit_no_mt":
+    s = 'dict_highlighted_region_unique_treatment_times'
+    df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
+    df_times = df_times.reset_index().copy()
+    # Calculate difference due to redir:
+    df_times['redir_change_ivt'] = (
+        df_times['redirection_approved_ivt'] -
+        df_times['usual_care_ivt']
+        )
+    df_times['redir_change_mt'] = (
+        df_times['redirection_approved_mt'] -
+        df_times['usual_care_mt']
+        )
+    cols_time = ['usual_care_ivt', 'redir_change_ivt',
+                    'usual_care_mt', 'redir_change_mt']
+    df_q_ivt = reg.calculate_quantiles(
+        df_times,
+        cols_time,
+        region,
+        [0.05, 0.25, 0.5, 0.75, 0.95]
+        )
 
     # Where to pick out mRS data from the outcomes df:
     cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
@@ -1057,22 +1112,23 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
 
 
     # Redirection flowcharts:
-    with containers_h['redir_flow']:
-        c = st.columns(2, gap=None)
-        with c[0]:
-            st.markdown('Usual care:')
-            reg.plot_generic_travel_admissions(
-                dict_region_admissions_generic['mt_usual_care'],
-                dict_region_admissions_generic['no_mt_usual_care'],
-                mt_label=mt_unit_here_label
-                )
-        with c[1]:
-            st.markdown('Redirection available:')
-            reg.plot_generic_travel_admissions(
-                dict_region_admissions_generic['mt_redir'],
-                dict_region_admissions_generic['no_mt_redir'],
-                mt_label=mt_unit_here_label
-                )
+    with containers_h['redir_flow_0']:
+        # c = st.columns(2, gap=None)
+        # with c[0]:
+        st.markdown('Usual care:')
+        reg.plot_generic_travel_admissions(
+            dict_region_admissions_generic['mt_usual_care'],
+            dict_region_admissions_generic['no_mt_usual_care'],
+            mt_label=mt_unit_here_label
+            )
+    with containers_h['redir_flow_1']:
+        st.markdown('Redirection available:')
+        reg.plot_generic_travel_admissions(
+            dict_region_admissions_generic['mt_redir'],
+            dict_region_admissions_generic['no_mt_redir'],
+            mt_label=mt_unit_here_label
+            )
+    with containers_h['redir_flow_data']:
         with st.expander('Data behind the flowcharts'):
             st.markdown(
                 '''Column names show where patients are going to.
@@ -1085,35 +1141,91 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             for c in df_region_admissions_generic.index:
                 column_config[c] = st.column_config.NumberColumn(format='%.1f')
             st.dataframe(df_region_admissions_generic.transpose(),
-                         column_config=column_config)
+                            column_config=column_config,
+                            height=160)
 
     # Redirection time change:
     with containers_h['redir_time']:
-        # This dict has separate entries for "all_patients" and
-        # "nearest_unit_no_mt":
-        s = 'dict_highlighted_region_unique_treatment_times'
-        # Pick out a dataframe with the treatment times as index
-        # and a single region's admissions as the column:
-        df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
-        # Convert column to 2D grid:
-        df_times_grid = reg.create_time_diff_admissions_grid(df_times)
-        reg.plot_time_diff_admissions_grid(df_times_grid.round(0))
-        with st.expander('Data behind the figure'):
-            st.markdown(''.join([
-                'Rows are the change in time to IVT and ',
-                'columns are the change in time to MT. ',
-                'Both are rounded to the nearest 5 minutes. ',
-                'The only patients shown are those where redirection ',
-                'changes the treatment times, and the time changes are ',
-                'when redirection is accepted.'
-            ]))
-            st.dataframe(df_times_grid)
+        # Summary values:
+        t_ivt = df_q_ivt.loc[0.5, 'redir_change_ivt']
+        t_mt = df_q_ivt.loc[0.5, 'redir_change_mt']
+
+        def make_string_time_change(t):
+            if t > 0:
+                s = f'__:red[↑ {t:.0f}]__ minutes later'
+            elif t < 0:
+                s = f'__:green[↓ {abs(t):.0f}]__ minutes sooner'
+            elif t == 0:
+                s = 'no change.'
+            return s
+        s_ivt = make_string_time_change(t_ivt)
+        s_mt = make_string_time_change(t_mt)
+
+        c = st.columns(3)
+        with c[0]:
+            st.markdown('Median time changes:')
+        with c[1]:
+            s = st.container(border=True)
+            with s:
+                st.markdown(f'__IVT__ {s_ivt}')
+        with c[2]:
+            s = st.container(border=True)
+            with s:
+                st.markdown(f'__MT__ {s_mt}')
+
+        with containers_h['redir_time_single']:
+            with st.expander('Time statistics for one treatment'):
+                st.markdown(''.join([
+                    'The only patients shown are those where redirection ',
+                    'changes the treatment times, and the time changes are ',
+                    'when redirection is accepted.'
+                ]))
+
+                st.markdown(''.join([
+                    'Each time field is considered separately. ',
+                ]))
+                # Display quantile table:
+                st.dataframe(df_q_ivt)
+
+        with containers_h['redir_time_combo']:
+            with st.expander('Time changes for both treatments'):
+                st.markdown(''.join([
+                    'The only patients shown are those where redirection ',
+                    'changes the treatment times, and the time changes are ',
+                    'when redirection is accepted.'
+                ]))
+                # This dict has separate entries for "all_patients" and
+                # "nearest_unit_no_mt":
+                s = 'dict_highlighted_region_unique_treatment_times'
+                # Pick out a dataframe with the treatment times as index
+                # and a single region's admissions as the column:
+                df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
+                # Scale down admissions to match redir patients only,
+                # not all patients with nearest unit no mt:
+                d = st.session_state['dict_pops']['redir_allowed']
+                p_redir = d.loc[d['scenario'] == 'redir_accepted',
+                                'full_population'].sum()
+                df_times *= p_redir
+
+                # Convert column to 2D grid:
+                df_times_grid = reg.create_time_diff_admissions_grid(df_times)
+                reg.plot_time_diff_admissions_grid(df_times_grid.round(0))
+            # with st.expander('Data behind the figure'):
+                st.markdown('__Data behind the figure:__')
+                st.markdown(''.join([
+                    'Rows are the change in time to IVT and ',
+                    'columns are the change in time to MT. ',
+                    'Both are rounded to the nearest 5 minutes. ',
+                ]))
+                st.dataframe(df_times_grid)
 
     # Outcome metrics:
     scen_dict = {}
-    with containers_h['mrs_dists']:
+    with containers_h['outcomes']:
         cols_to_show = ['usual_care', 'redir_allowed', 'diff_redir_allowed_minus_usual_care']
         keys_to_show = ['mrs_0-2', 'mrs_shift']
+        conts = [containers_h['outcomes_perc'], containers_h['outcomes_av']]
+        i = 0
         for key in keys_to_show:
             column_config = {'_index': st.column_config.TextColumn(width=150)}
             for c in cols_to_show:
@@ -1121,14 +1233,15 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     width=40, label=scenario_labels[c], help=scenario_help[c],
                     format=outcome_formats[key]
                     )
-
-            st.markdown(outcome_labels[key])
-            df = dict_df_metrics[key].reset_index(drop=True).set_index('subgroup')
-            df = df[cols_to_show]
-            st.dataframe(df, column_config=column_config)
+            with conts[i]:
+                st.markdown(outcome_labels[key])
+                df = dict_df_metrics[key].reset_index(drop=True).set_index('subgroup')
+                df = df[cols_to_show]
+                st.dataframe(df, column_config=column_config)
+            i += 1
 
     # mRS dists:
-    with containers_h['mrs_dists']:
+    with containers_h['mrs_dists_left']:
         with st.expander('__mRS distributions__ bar charts'):
             containers_h['mrs_figs'] = st.container()
             containers_h['mrs_options'] = st.container()
@@ -1160,14 +1273,17 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     reg.plot_mrs_bars(mrs_lists_dict_to_show,
                                     key='_'.join([region, subgroup]))
 
+    with containers_h['mrs_dists_right']:
         with st.expander('Data behind the mRS bar charts'):
             for subgroup, df in dict_df_mrs.items():
                 subgroup_label = st.session_state['df_subgroups'].loc[subgroup, 'label']
                 st.markdown(subgroup_label)
-                st.dataframe(df)
+                st.dataframe(df, height=160)
 
     # Outcome maps:
     # Gather data for maps:
+    with containers_h['map_fig']:
+        st.subheader('Outcome maps')
     with containers_h['map_fig']:
         subgroup_map, subgroup_map_label = maps.select_map_data(
             st.session_state['df_subgroups'], region
