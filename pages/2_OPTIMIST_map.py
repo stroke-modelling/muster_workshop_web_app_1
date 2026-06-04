@@ -504,6 +504,12 @@ highlighted_region_types = sorted(list(set(
 # Average the results over each geographical region.
 # Find two copies of the results - one with all LSOA in the region
 # and one with only LSOA whose nearest unit is not a CSC.
+with containers['results']:
+    c_names = list(df_highlighted_regions['highlighted_region'].values)
+    conts_tabs = st.tabs(c_names)
+    for (label, cont) in zip(c_names, conts_tabs):
+        containers[f'results_{label}'] = cont
+
 # --- CALCULATIONS:
 # + Calculate admissions-weighted average outcomes.
 
@@ -643,7 +649,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     containers_highlighted[region] = {}
     # For shorter lines:
     containers_h = containers_highlighted[region]
-    with containers['results']:
+    with containers[f'results_{region}']:
         containers_h['top'] = st.container(border=True)
     with containers_h['top']:
         st.header(region_label)
