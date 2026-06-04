@@ -582,6 +582,7 @@ if st.session_state['rerun_region_summaries']:
 else:
     pass
 
+
 # Map setup.
 # Do this only once, not a new set for each set of summary results.
 # For the selected data type to show on the maps, gather the full
@@ -1312,7 +1313,12 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             pass
         else:
             # Limit the LSOAs to only those in the selected region.
-            mask = df_times['nearest_ivt_unit'].isin(all_units)
+            # units_here = [n.replace('nearest_', '') for n in nearest_units]
+            # mask = df_times['nearest_ivt_unit'].isin(units_here)
+            df_lsoa_to_keep = reg.load_lsoa_region_lookups()
+            m = df_lsoa_to_keep[region_type] == region
+            s_lsoa_to_keep = df_lsoa_to_keep.loc[m, 'lsoa']
+            mask = df_times['LSOA'].isin(s_lsoa_to_keep)
             df_times = df_times.loc[mask].copy()
 
         (st.session_state[f'map_arrs_dict_region_{region}'],
