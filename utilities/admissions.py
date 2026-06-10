@@ -3,6 +3,8 @@ Calculate and display admissions changes.
 """
 import pandas as pd
 import streamlit as st
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 
 
 def calculate_region_admissions_onion(
@@ -369,3 +371,90 @@ def select_mt_unit_here(df_unit_services, dict_network_units):
         format_func=f_mt_label
     )
     return mt_unit_here
+
+
+def plot_admissions_bars_by_unit(df_net_u, df_net_r):
+    """
+    June 2026 - unused.
+    """
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=['no MT', 'MT'], shared_xaxes=True)
+
+    # # Sort by transfer unit then by admissions
+    # # to gather units in similar geographic areas.
+    # df_net_r = df_net_r.copy().sort_values(
+    #     ['isdn_nearest', 'isdn', 'transfer_unit', 'admissions'],
+    #     ascending=[True, True, True, False])
+    # df_net_r['sort_order'] = range(len(df_net_r))
+    # df_net_u = pd.merge(df_net_u, df_net_r[['first_unit', 'sort_order']].drop_duplicates(subset='first_unit'),
+    #                     on='first_unit', how='left')
+    # df_net_u = df_net_u.sort_values('sort_order')
+
+    df_net_r = df_net_r.sort_values('admissions', ascending=False)
+
+    # Show MT units in their own bar. Combine non-MT units.
+    mask_u = df_net_u['Use_MT'] == 1
+    mask_r = df_net_r['Use_MT'] == 1
+
+    df_net_u.loc[~mask_u, 'ssnap_name'] = 'Non-MT unit'
+    df_net_r.loc[~mask_r, 'ssnap_name'] = 'Non-MT unit'
+
+
+    st.write(df_net_u)
+    st.write(df_net_r)
+
+
+    for nearest_unit in df_net_r['nearest_unit'].unique():
+        df_here = df_net_r[mask_r & (df_net_r['nearest_unit'] == nearest_unit)]
+        for i, treat in enumerate(['not_mt', 'thrombectomy']):
+            fig.add_trace(go.Bar(
+                x=df_here['ssnap_name'],
+                y=df_here[treat],
+                name=nearest_unit,
+                showlegend=False,
+                marker_color=df_here['colour'],
+                offsetgroup=1,
+                ), row=i+1, col=1)
+
+    for first_unit in df_net_u['first_unit'].unique():
+        df_here = df_net_u[mask_u & (df_net_u['first_unit'] == first_unit)]
+        for i, treat in enumerate(['not_mt', 'thrombectomy']):
+            fig.add_trace(go.Bar(
+                x=df_here['ssnap_name'],
+                y=df_here[treat],
+                name=first_unit,
+                showlegend=False,
+                marker_color='rgba(1, 1, 1, 0)',
+                marker_line_color='grey',
+                marker_line_width=2,
+                offsetgroup=2,
+                ), row=i+1, col=1)
+
+    # Change the bar mode
+    fig.update_layout(barmode='stack')
+
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        )
+    # Options for the mode bar.
+    # (which doesn't appear on touch devices.)
+    plotly_config = {
+        # Mode bar always visible:
+        # 'displayModeBar': True,
+        # Plotly logo in the mode bar:
+        'displaylogo': False,
+        # Remove the following from the mode bar:
+        'modeBarButtonsToRemove': [
+            # 'zoom',
+            # 'pan',
+            'select',
+            # 'zoomIn',
+            # 'zoomOut',
+            'autoScale',
+            'lasso2d'
+            ],
+        # Options when the image is saved:
+        'toImageButtonOptions': {'height': None, 'width': None},
+        }
+    st.plotly_chart(fig, config=plotly_config)

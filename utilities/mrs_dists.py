@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 
 from utilities.utils import update_plotly_font_sizes
 
@@ -266,3 +267,117 @@ def plot_mrs_bars(mrs_lists_dict: dict, key: str = None):
         config=plotly_config,
         key=key
         )
+
+
+def plot_mrs_bars_plus_cumulative(
+        mrs_lists_dict: dict,
+        title_text: str = '',
+        return_fig: bool = False,
+        key: str = None
+        ):
+    """
+    Plot mRS distributions. Top ax bars, bottom ax cumulative line.
+
+    June 2026 - currently unused.
+
+    Inputs
+    ------
+    mrs_lists_dict - dict. Data and kwargs for each set of data
+                     to be plotted. Keys include 'noncum', 'cum',
+                     'std', 'label', 'colour', 'linestyle'.
+    title_text     - str. Top heading for the figure.
+    return_fig     - bool. Whether to call return the figure or
+                     call plotly_chart here.
+    key            - str. Key for plotly_chart widget.
+
+    Returns
+    -------
+    fig - go.Figure. Plotly figure object.
+    """
+    # fig = go.Figure()
+    subplot_titles = [
+        'Discharge disability<br>probability distribution',
+        'Cumulative probability<br>of discharge disability'
+    ]
+
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=subplot_titles, shared_xaxes=True)
+    fig.update_layout(xaxis_showticklabels=True)
+
+    for label, mrs_dict in mrs_lists_dict.items():
+
+        fig.add_trace(go.Bar(
+            x=[*range(7)],
+            y=mrs_dict['noncum'],
+            error_y=dict(
+                type='data',
+                array=mrs_dict['std'],
+                visible=True),
+            name=mrs_dict['label'],
+            legendgroup=1,
+            marker_color=mrs_dict['colour'],
+            ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=[*range(7)],
+            y=mrs_dict['cum'],
+            name=mrs_dict['label'],
+            legendgroup=2,
+            marker_color=mrs_dict['colour'],
+            mode='lines',
+            line=dict(dash=mrs_dict['linestyle'])
+            ), row=2, col=1)
+
+    fig.update_layout(barmode='group')
+    # Bump the second half of the legend downwards:
+    # (bump amount is eyeballed based on fig height)
+    fig.update_layout(legend_tracegroupgap=240)
+
+    fig.update_layout(title=title_text)
+    for row in [1, 2]:  # 'all' doesn't work for some reason
+        fig.update_xaxes(
+            title_text='Discharge disability (mRS)',
+            # Ensure that all mRS ticks are shown:
+            tickmode='linear',
+            tick0=0,
+            dtick=1,
+            row=row, col=1
+            )
+    fig.update_yaxes(title_text='Probability', row=1, col=1)
+    fig.update_yaxes(title_text='Cumulative probability', row=2, col=1)
+
+    # Figure setup.
+    fig.update_layout(
+        # width=1200,
+        height=700,
+        )
+    fig = update_plotly_font_sizes(fig)
+
+    if return_fig:
+        return fig
+    else:
+        # Options for the mode bar.
+        # (which doesn't appear on touch devices.)
+        plotly_config = {
+            # Mode bar always visible:
+            # 'displayModeBar': True,
+            # Plotly logo in the mode bar:
+            'displaylogo': False,
+            # Remove the following from the mode bar:
+            'modeBarButtonsToRemove': [
+                # 'zoom',
+                # 'pan',
+                'select',
+                # 'zoomIn',
+                # 'zoomOut',
+                'autoScale',
+                'lasso2d'
+                ],
+            # Options when the image is saved:
+            'toImageButtonOptions': {'height': None, 'width': None},
+            }
+        st.plotly_chart(
+            fig,
+            config=plotly_config,
+            key=key
+            )
