@@ -29,6 +29,9 @@ import utilities.population as pop
 import utilities.colour_setup as colour_setup
 from utilities.utils import set_rerun_map, set_rerun_full_results, \
     set_rerun_lsoa_units_times
+import utilities.admissions as admissions
+import utilities.times as times
+import utilities.mrs_dists as mrs
 
 
 #MARK: Functions
@@ -258,6 +261,7 @@ map_traces_constant = plot_maps.make_constant_map_traces()
 
 with containers['units_df']:
     df_unit_services = reg.select_unit_services()
+mt_units = df_unit_services.loc[df_unit_services['Use_MT'] == 1].index.values
 
 # If units are updated, the following block runs.
 # Calculate LSOA-unit allocation now so that the unit catchment
@@ -515,6 +519,8 @@ with containers['results']:
 
 # --- CALCULATIONS:
 # + Calculate admissions-weighted average outcomes.
+(options_labels, scenario_labels, scenario_help,
+outcome_labels, outcome_formats, bar_colours) = mrs.set_up_mrs_labels()
 
 if st.session_state['rerun_region_summaries']:
     # Clear existing map figs/setup:
@@ -587,7 +593,243 @@ if st.session_state['rerun_region_summaries']:
                 _log_loc=containers['log_regions']
                 )
         )
+
+
+        # ----- Calculations for results for each region -----
+        st.session_state['dict_admissions_onion'] = {}
+        for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+            # --- Admissions onion ---
+            # Define these to shorten function inputs:
+            d = st.session_state['df_region_unit_admissions']
+            p = dict_onion['prop_of_all_stroke']
+            df_admissions_onion = admissions.calculate_region_admissions_onion(
+                d[f'{region}_nearest_unit_no_mt'] / p,
+                d[f'{region}_all_patients'] / p,
+                df_onion_pops,
+                )
+            # Store results:
+            st.session_state['dict_admissions_onion'][region] = df_admissions_onion
+
+        st.session_state['dict_networks'] = {}
+        for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+            # --- Admissions changes ---
+            # For now, calculate for all patients:
+            # lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
+            lsoa_subset = 'all_patients'
+            # Setup for admissions:
+            c = f'{region}_{lsoa_subset}'
+            cols = ['nearest_ivt_unit', 'nearest_mt_unit', 'transfer_unit', c]
+            df_network = (st.session_state['df_region_unit_admissions'][cols].copy()
+                        .rename(columns={c: 'admissions'}))
+            # Only keep units that have admissions from selected region:
+            df_network = df_network.dropna(subset=['admissions'])
+            # Find tracked admissions between units
+            # split by usual care and redirection:
+            df_net_u = admissions.calculate_network_usual_care(
+                df_network, st.session_state['dict_pops']['usual_care'], mt_units)
+            df_net_r = admissions.calculate_network_redir(
+                df_network, st.session_state['dict_pops']['redir_allowed'], mt_units)
+            # Pick out which units exist in these networks:
+            dict_network_units = admissions.gather_network_units(df_net_u, df_net_r)
+
+
+            # Tabulate direct admissions and transfers in usual care
+            # and in redir scenario for each unit.
+            cols = ['first_unit', 'admissions_catchment_to_first_unit',
+                    'admissions_first_unit_to_transfer']
+            df_unit_admissions = df_net_u[cols].copy()
+            # Combine redirection scenario rows. Patients for one first unit
+            # can cover many rows depending on their catchment unit,
+            # so find total admissions to each unit regardless of whether
+            # they were redirected there.
+            df_unit_admissions_redir = (
+                df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
+
+            # if 1 == 0:
+            #     # Optionally limit to only one MT unit.
+            #     with containers_h['redir_flow_mt_select']:
+            #         mt_unit_here = admissions.select_mt_unit_here(
+            #             df_unit_services, dict_network_units)
+            #     if mt_unit_here == 'all':
+            #         mt_unit_here_label = 'MT units'
+            #     else:
+            #         mt_unit_here_label = df_unit_services.loc[mt_unit_here, 'ssnap_name']
+            #         df_net_u = df_net_u[df_net_u['transfer_unit'] == mt_unit_here]
+            #         df_net_r = df_net_r[df_net_r['transfer_unit'] == mt_unit_here]
+            # mt_unit_here_label = 'MT units'
+
+            # Calculate admissions for the flowchart.
+            # Squash the network dfs by unit into generic unit type.
+            df_net_u_gen = admissions.convert_network_to_generic(df_net_u)
+            df_net_r_gen = admissions.convert_network_to_generic(df_net_r)
+            # Rejig into table to show:
+            df_region_admissions_generic = admissions.gather_region_admissions_generic(
+                df_net_u_gen, df_net_r_gen)
+            # Rejig for flowcharts:
+            dict_region_admissions_generic = (
+                admissions.calculate_region_admissions_generic(
+                    df_region_admissions_generic))
+
+            # Store results:
+            st.session_state['dict_networks'][region] = {
+                'df_net_u': df_net_u,
+                'df_net_r': df_net_r,
+                'units': dict_network_units,
+                'df_generic': df_region_admissions_generic,
+                'dict_generic': dict_region_admissions_generic,
+            }
+
+        st.session_state['dict_map_catchment'] = {}
+        for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+            # Set up region display:
+            region_type = df_highlighted_regions.loc[
+                df_highlighted_regions['highlighted_region'] == region,
+                'region_type'].values[0]
+
+            # --- Catchment map ---
+            gdf_units = plot_maps.generate_node_coordinates(
+                df_unit_services, st.session_state['dict_networks'][region]['units']['all'])
+            gdf_region, region_display_name = (
+                plot_maps.load_region_outline_here(region_type, region))
+            # Set up colours for catchment units:
+            catch_trace, transform_dict_units, gdf_nearest_units = (
+                plot_maps.make_unit_catchment_raster(
+                    df_lsoa_units_times,
+                    # gdf_units.loc[[n.replace('nearest_', '')
+                    #                 for n in nearest_units]],
+                    gdf_units.loc[st.session_state['dict_networks'][region]['units']['all']],
+                    df_raster,
+                    transform_dict,
+                    nearest_unit_column='nearest_ivt_unit',
+                    redo_transform=True,
+                    )
+            )
+            # Limit the extent of the map to reasonable bounds:
+            bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
+                gdf_units, gdf_region, transform_dict_units)
+            gdf_nearest_units = (
+                plot_maps.make_coords_nearest_unit_catchment(
+                    gdf_units, df_net_u, bounds,
+                    st.session_state['dict_networks'][region]['units']['nearest'],
+                    x_buffer, y_buffer
+                    )
+                )
+            # New gdf for plotting stroke unit markers:
+            gdf_units_here = pd.merge(
+                gdf_units.reset_index(),
+                df_net_u[['first_unit', 'admissions']],
+                left_on='Postcode', right_on='first_unit', how='left'
+                ).set_index('Postcode')
+            # Store results:
+            st.session_state['dict_map_catchment'][region] = {
+                'gdf_units': gdf_units_here,
+                'bounds': bounds,
+                'catch_trace': catch_trace,
+                'gdf_region': gdf_region,
+            }
+
+        st.session_state['dict_times'] = {}
+        for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+            # --- Time changes ---
+            # Quantiles.
+            # Set up time df for quantile calculations:
+            # This dict has separate entries for "all_patients" and
+            # "nearest_unit_no_mt":
+            s = 'dict_highlighted_region_unique_treatment_times'
+            df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
+            df_times = df_times.reset_index().copy()
+            # Calculate difference due to redir:
+            r = 'redirection_approved'
+            u = 'usual_care'
+            c = 'redir_change'
+            for i in ['ivt', 'mt']:
+                df_times[f'{c}_{i}'] = df_times[f'{r}_{i}'] - df_times[f'{u}_{i}']
+            # Dataframe to be displayed:
+            df_q_ivt = times.calculate_quantiles(
+                df_times,
+                [f'{u}_ivt', f'{c}_ivt', f'{u}_mt', f'{c}_mt'],
+                region,
+                [0.05, 0.25, 0.5, 0.75, 0.95]
+                )
+
+            # Grid.
+            # This dict has separate entries for "all_patients" and
+            # "nearest_unit_no_mt":
+            s = 'dict_highlighted_region_unique_treatment_times'
+            # Pick out a dataframe with the treatment times as index
+            # and a single region's admissions as the column:
+            df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
+            # Scale down admissions to match redir patients only,
+            # not all patients with nearest unit no mt:
+            d = st.session_state['dict_pops']['redir_allowed']
+            p_redir = d.loc[d['scenario'] == 'redir_accepted', 'full_population'].sum()
+            df_times *= p_redir
+            # Convert column to 2D grid:
+            df_times_grid = times.create_time_diff_admissions_grid(df_times)
+
+            # Store results:
+            st.session_state['dict_times'][region] = {
+                'quantiles': df_q_ivt,
+                'grid': df_times_grid,
+            }
+
+        st.session_state['dict_mrs'] = {}
+        for r, region in enumerate(df_highlighted_regions['highlighted_region']):
+            # --- mRS distributions ---
+
+            # mRS distribution summary values and bar charts:
+            dict_metrics = {}
+            dict_mrs_bars = {}
+            for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
+                pops = st.session_state['dict_pops']['usual_care'][subgroup]
+                dict_mrs_bars[subgroup], dict_metrics[subgroup] = (
+                    mrs.calculate_mrs_bars(
+                        st.session_state['dict_highlighted_region_outcomes'][subgroup],
+                        region,
+                        lsoa_subset,
+                        pops,
+                        dict_no_treatment_outcomes,
+                        bar_colours,
+                        options_labels
+                    ))
+
+            # Gather metrics:
+            dict_df_metrics = {}
+            for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
+                df_metrics = pd.DataFrame()
+                for subgroup, d in dict_metrics.items():
+                    df_metrics[subgroup] = d[key]
+                    df_metrics.loc['subgroup', subgroup] = (
+                        st.session_state['df_subgroups'].loc[subgroup, 'label'])
+                dict_df_metrics[key] = df_metrics.transpose()
+
+            # Gather mRS dists:
+            dict_df_mrs = {}
+            for subgroup, dict_mrs_here in dict_mrs_bars.items():
+                s_scens = []
+                for scenario, dict_scen in dict_mrs_here.items():
+                    s_scen = []
+                    for col in ['noncum', 'cum', 'std']:
+                        try:
+                            s = dict_scen[col]
+                            s.name = scenario
+                            s_scen.append(s)
+                        except KeyError:
+                            pass
+                    s_scens.append(pd.concat(s_scen, axis='rows'))
+                df_mrs = pd.concat(s_scens, axis='columns')
+                dict_df_mrs[subgroup] = df_mrs
+
+            # Store results:
+            st.session_state['dict_mrs'][region] = {
+                'dict_metrics': dict_metrics,
+                'dict_mrs_bars': dict_mrs_bars,
+                'dict_df_metrics': dict_df_metrics,
+                'dict_df_mrs': dict_df_mrs,
+            }
+
         st.session_state['rerun_region_summaries'] = False
+
 else:
     pass
 
@@ -717,386 +959,18 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     with containers_h['outcomes']:
         st.subheader('Outcomes')
 
-    # Calculations
 
-
-    # How many patients are in each onion layer in this region?
-    admissions_this_region_nearest_no_mt = (
-        st.session_state['df_region_unit_admissions']
-        [f'{region}_nearest_unit_no_mt'].sum() /
-        dict_onion['prop_of_all_stroke']
-    )
-    admissions_this_region = (
-        st.session_state['df_region_unit_admissions']
-        [f'{region}_all_patients'].sum() /
-        dict_onion['prop_of_all_stroke']
-    )
-    admissions_this_region_nearest_mt = (
-        admissions_this_region - admissions_this_region_nearest_no_mt
-        )
-    df_admissions_onion = pd.DataFrame(
-        index=df_onion_pops['label'].values,
-        columns=['admissions', 'admissions_nearest_csc', 'admissions_nearest_atc']
-        )
-    for onion_label in df_onion_pops['population'].values:
-        m = df_onion_pops['population'] == onion_label
-        label = df_onion_pops.loc[m, 'label'].values[0]
-        prop = df_onion_pops.loc[m, 'prop_of_all_stroke'].values[0]
-        a = admissions_this_region * prop
-        a_csc = admissions_this_region_nearest_mt * prop
-        a_atc = admissions_this_region_nearest_no_mt * prop
-        prop_here_nearest_csc = a_csc / a
-        df_admissions_onion.loc[label] = [a, a_csc, a_atc]
-
-    # For now, calculate for all patients:
-    # lsoa_subset = 'nearest_unit_no_mt' if use_lsoa_subset else 'all_patients'
-    lsoa_subset = 'all_patients'
-    # # Find tracked admissions between units:
-    cols_units = ['nearest_ivt_unit', 'nearest_mt_unit',
-                  'transfer_unit']
-    df_network = (
-        st.session_state['df_region_unit_admissions']
-        [cols_units + [f'{region}_{lsoa_subset}']])
-    df_network = df_network.rename(columns={
-        f'{region}_{lsoa_subset}': 'admissions'})
-    # Only keep units that have admissions from selected region:
-    df_network = df_network.dropna(subset=['admissions'])
-    # Usual care proportions:
-    mt_units = (
-        df_unit_services.loc[df_unit_services['Use_MT'] == 1].index.values)
-    df_net_u = reg.calculate_network_usual_care(
-        df_network, st.session_state['dict_pops']['usual_care'],
-        mt_units)
-    # Redirection proportions:
-    df_net_r = reg.calculate_network_redir(
-        df_network, st.session_state['dict_pops']['redir_allowed'],
-        mt_units)
-
-    # Gather units in the network:
-    cols_units = ['first_unit', 'transfer_unit']
-    all_units = sorted(list(
-        set(df_net_u[cols_units].values.flatten()) |
-        set(df_net_r[cols_units].values.flatten())
-    ))
-    # Only units whose catchment area is in the selected region:
-    nearest_units = sorted(list(
-        set(df_net_u['nearest_unit'].values) |
-        set(df_net_r['nearest_unit'].values)
-    ))
-    # Only MT units that can catch patients in the selected region:
-    mt_units = sorted(list(
-        set(df_net_u['transfer_unit'].values) |
-        set(df_net_r['transfer_unit'].values)
-    ))
-
-    # For catchment map:
-    gdf_units = plot_maps.generate_node_coordinates(
-        df_unit_services, all_units)
-    gdf_region, region_display_name = (
-        plot_maps.load_region_outline_here(region_type, region))
-    # Set up colours for catchment units:
-    catch_trace, transform_dict_units, gdf_nearest_units = (
-        plot_maps.make_unit_catchment_raster(
-            df_lsoa_units_times,
-            # gdf_units.loc[[n.replace('nearest_', '')
-            #                 for n in nearest_units]],
-            gdf_units.loc[all_units],
-            df_raster,
-            transform_dict,
-            nearest_unit_column='nearest_ivt_unit',
-            redo_transform=True,
-            )
-    )
-    # Limit the extent of the map to reasonable bounds:
-    bounds, x_buffer, y_buffer = plot_maps.set_network_map_bounds(
-        gdf_units, gdf_region, transform_dict_units)
-    gdf_nearest_units = (
-        plot_maps.make_coords_nearest_unit_catchment(
-            gdf_units, df_net_u, bounds, nearest_units,
-            x_buffer, y_buffer
-            )
-        )
-    # New gdf for plotting stroke unit markers:
-    gdf_units_here = pd.merge(
-        gdf_units.reset_index(),
-        df_net_u[['first_unit', 'admissions']],
-        left_on='Postcode', right_on='first_unit', how='left'
-        ).set_index('Postcode')
-
-    # Tabulate direct admissions and transfers in usual care
-    # and in redir scenario for each unit.
-    catchment_units = sorted(list(df_net_u['first_unit'].values))
-    cols = ['first_unit', 'admissions_catchment_to_first_unit',
-            'admissions_first_unit_to_transfer']
-    df_unit_admissions = df_net_u[cols].copy()
-    # Combine redirection scenario rows. Patients for one first unit
-    # can cover many rows depending on their catchment unit,
-    # so find total admissions to each unit regardless of whether
-    # they were redirected there.
-    df_unit_admissions_redir = (
-        df_net_r[cols].copy().groupby('first_unit').sum().reset_index())
-
-    # # Gather admissions by unit for bar charts.
-    # # Want admissions who did and did not receive MT separately.
-    # # Keep track of first unit attended and colour by nearest unit.
-    # df_net_u_bar = df_net_u.copy()
-    # df_net_r_bar = df_net_r.copy()
-    # # Copy in unit info.
-    # df_unit_services_to_merge = df_unit_services.copy().reset_index()
-    # df_unit_services_to_merge['nearest_unit'] = 'nearest_' + df_unit_services_to_merge['Postcode']
-    # # Names of first units:
-    # cols = ['ssnap_name', 'isdn', 'Postcode', 'Use_MT']
-    # df_net_u_bar = pd.merge(
-    #     df_net_u_bar,
-    #     df_unit_services_to_merge[cols],
-    #     left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
-    #     )
-    # df_net_r_bar = pd.merge(
-    #     df_net_r_bar,
-    #     df_unit_services_to_merge[cols],
-    #     left_on='first_unit', right_on='Postcode', how='left', suffixes=[None, '_first']
-    #     )
-    # # Copy in colours to match catchment map:
-    # cols = ['ssnap_name', 'nearest_unit', 'colour', 'isdn']
-    # df_net_u_bar = pd.merge(
-    #     df_net_u_bar,
-    #     df_unit_services_to_merge[cols],
-    #     on='nearest_unit', how='left', suffixes=[None, '_nearest']
-    #     )
-    # df_net_r_bar = pd.merge(
-    #     df_net_r_bar,
-    #     df_unit_services_to_merge[cols],
-    #     on='nearest_unit', how='left', suffixes=[None, '_nearest']
-    #     )
-    # # Copy over unit labels:
-    # # Separate MT and not MT:
-    # df_net_u_bar['not_mt'] = (
-    #     df_net_u_bar['admissions'] - df_net_u_bar['thrombectomy'])
-    # df_net_r_bar['not_mt'] = (
-    #     df_net_r_bar['admissions'] - df_net_r_bar['thrombectomy'])
-    # # Plot bars:
-    # reg.plot_admissions_bars_by_unit(df_net_u_bar, df_net_r_bar)
-
-    # Generic numbers redirected
-    # (this onion layer only, depends on relative
-    # numbers of patients with occlusion-treatment combos)
-
-    # Optionally limit to only one MT unit.
-    dict_mt_labels = (
-        df_unit_services.loc[mt_units, 'ssnap_name']
-        .copy().to_dict()
-    )
-    # Sort by label:
-    dict_mt_labels = {'all': 'All in this region'} | dict(sorted(
-        dict_mt_labels.items(), key=lambda item: item[1]))
-
-    def f_mt_label(lookup):
-        """Display layer with nice name instead of key."""
-        return dict_mt_labels[lookup]
-    with containers_h['redir_flow_mt_select']:
-        mt_unit_here = st.selectbox(
-            'MT unit to show in the flowcharts',
-            dict_mt_labels.keys(),
-            format_func=f_mt_label
-        )
-    if mt_unit_here == 'all':
-        mt_unit_here_label = 'MT units'
-    else:
-        mt_unit_here_label = df_unit_services.loc[mt_unit_here, 'ssnap_name']
-        df_net_u = df_net_u[df_net_u['transfer_unit'] == mt_unit_here]
-        df_net_r = df_net_r[df_net_r['transfer_unit'] == mt_unit_here]
-
-    # Calculate admissions for the flowchart.
-    # Squash the network dfs by unit into generic unit type.
-    df_net_u_gen = reg.convert_network_to_generic(df_net_u)
-    df_net_r_gen = reg.convert_network_to_generic(df_net_r)
-    # Rejig into table to show:
-    df_region_admissions_generic = reg.gather_region_admissions_generic(
-        df_net_u_gen, df_net_r_gen)
-    # Rejig for flowcharts:
-    dict_region_admissions_generic = (
-        reg.calculate_region_admissions_generic(
-            df_region_admissions_generic))
-
-    # Time change quantile calculations:
-    # Set up time df for quantile calculations:
-    # This dict has separate entries for "all_patients" and
-    # "nearest_unit_no_mt":
-    s = 'dict_highlighted_region_unique_treatment_times'
-    df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
-    df_times = df_times.reset_index().copy()
-    # Calculate difference due to redir:
-    df_times['redir_change_ivt'] = (
-        df_times['redirection_approved_ivt'] -
-        df_times['usual_care_ivt']
-        )
-    df_times['redir_change_mt'] = (
-        df_times['redirection_approved_mt'] -
-        df_times['usual_care_mt']
-        )
-    cols_time = ['usual_care_ivt', 'redir_change_ivt',
-                    'usual_care_mt', 'redir_change_mt']
-    df_q_ivt = reg.calculate_quantiles(
-        df_times,
-        cols_time,
-        region,
-        [0.05, 0.25, 0.5, 0.75, 0.95]
-        )
-
-    # Where to pick out mRS data from the outcomes df:
-    cols_mrs = [f'mrs_dists_{i}' for i in range(7)]
-    cols_mrs_noncum = [c.replace('dists_', 'dists_noncum_') for c in cols_mrs]
-    cols_mrs_std = [f'{c}_std' for c in cols_mrs]
-    # Label for redir scenario on the mRS results:
-    label_redir = ''.join([
-    'Redirection available (mix of usual care,<br>',
-    'redirection approved, redirection rejected)'
-    ])
-    options_labels = {
-        'usual_care': 'Usual care',
-        'redir_allowed': label_redir,
-        'redir_accept': 'Only redirected patients',
-        'no_treatment': 'No treatment',
-    }
-    scenario_labels = {
-        'usual_care': 'Usual care',
-        'redir_allowed':  'Redir.',
-        'redir_accepted_only': 'Only redirected patients',
-        'no_treatment': 'No treatment',
-        'diff_redir_allowed_minus_usual_care': 'Diff.',
-    }
-    scenario_help = {
-        'usual_care': None,
-        'redir_allowed': ''.join([
-            'Redirection available (mix of usual care, ',
-            'redirection approved, redirection rejected).'
-        ]),
-        'redir_accepted_only': None,
-        'no_treatment': None,
-        'diff_redir_allowed_minus_usual_care': (
-            'Difference between redirection available and usual care.'),
-        }
-    outcome_labels = {
-        'mrs_0-2': 'Percentage with mRS<2',
-        'mrs_shift': 'Average change in mRS score',
-        'utility_shift': 'Change in utility',
-    }
-    outcome_formats = {
-        'mrs_0-2': '%.1f%%',
-        'mrs_shift': '%+.2f',
-        'utility_shift': '%+.2f',
-    }
-
-    # mRS distribution summary values and bar charts:
-    dict_metrics = {}
-    dict_mrs_bars = {}
-    for s, subgroup in enumerate(st.session_state['df_subgroups'].index):
-
-        # Calculate "no treatment" data.
-        # Should have the same total proportions of nLVO
-        # and LVO in both the usual care and redir groups,
-        # with only the details of who goes where differing,
-        # so only calculate one set of no-treatment mRS dists.
-        pops = (
-            st.session_state['dict_pops']['usual_care'][subgroup])
-        df_no_treat = reg.calculate_no_treatment_mrs(
-            pops, dict_no_treatment_outcomes)
-
-        d = 'dict_highlighted_region_outcomes'
-        df_u = st.session_state[d][subgroup]['usual_care'][
-            lsoa_subset]
-        df_r = st.session_state[d][subgroup]['redir_allowed'][
-            lsoa_subset]
-        df_a = st.session_state[d][subgroup]['redir_accepted_only'][
-            lsoa_subset]
-        try:
-            df_u = df_u.loc[region]
-            df_r = df_r.loc[region]
-            df_a = df_a.loc[region]
-            selected_region_is_mt_unit = False
-        except KeyError:
-            # This is an MT unit and the LSOA subset excludes patients
-            # nearest MT units.
-            selected_region_is_mt_unit = True
-        if selected_region_is_mt_unit:
-            pass
-        else:
-            # Calculate summary values for metrics:
-            df_d = df_r - df_u
-            dict_metrics[subgroup] = {}
-            for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
-                p = 100 if key == 'mrs_0-2' else 1
-                dict_metrics[subgroup][key] = {
-                    'usual_care': df_u[key] * p,
-                    'redir_allowed': df_r[key] * p,
-                    'redir_accepted_only': df_a[key] * p,
-                    'diff_redir_allowed_minus_usual_care': df_d[key] * p
-                }
-
-            # Gather mRS distributions:
-            dict_mrs_bars[subgroup] = {
-                'usual_care': {
-                    'noncum': df_u[cols_mrs_noncum],
-                    'cum': df_u[cols_mrs],
-                    'std': df_u[cols_mrs_std],
-                    'colour': '#0072b2',
-                    'label': 'Usual care',
-                },
-                'redir_allowed': {
-                    'noncum': df_r[cols_mrs_noncum],
-                    'cum': df_r[cols_mrs],
-                    'std': df_r[cols_mrs_std],
-                    'colour': '#56b4e9',
-                    'label': label_redir
-                },
-                'redir_accept': {
-                    'noncum': df_a[cols_mrs_noncum],
-                    'cum': df_a[cols_mrs],
-                    'std': df_a[cols_mrs_std],
-                    'colour': '#009e73',
-                    'label': 'Only redirected patients'
-                },
-                'no_treatment': {
-                    'noncum': df_no_treat[cols_mrs_noncum],
-                    'cum': df_no_treat[cols_mrs],
-                    'colour': 'grey',
-                    'label': 'No treatment'
-                },
-            }
-
-    # Gather metrics:
-    dict_df_metrics = {}
-    for key in ['mrs_0-2', 'mrs_shift', 'utility_shift']:
-        df_metrics = pd.DataFrame()
-        for subgroup, d in dict_metrics.items():
-            df_metrics[subgroup] = d[key]
-            df_metrics.loc['subgroup', subgroup] = st.session_state['df_subgroups'].loc[subgroup, 'label']
-        dict_df_metrics[key] = df_metrics.transpose()
-
-    # Gather mRS dists:
-    dict_df_mrs = {}
-    for subgroup, dict_mrs in dict_mrs_bars.items():
-        s_scens = []
-        for scenario, dict_scen in dict_mrs.items():
-            s_scen = []
-            for col in ['noncum', 'cum', 'std']:
-                try:
-                    s = dict_scen[col]
-                    s.name = scenario
-                    s_scen.append(s)
-                except KeyError:
-                    pass
-            s_scens.append(pd.concat(s_scen, axis='rows'))
-        df_mrs = pd.concat(s_scens, axis='columns')
-        dict_df_mrs[subgroup] = df_mrs
-
+    # ----- Display results -----
     # Onion:
+    df_admissions_onion = st.session_state['dict_admissions_onion'][region]
+    # Pick out proportion for later display:
+    s = df_admissions_onion.loc[str_this_population]
+    prop_here_nearest_csc = s['admissions_nearest_csc'] / s['admissions']
+    # Highlight admissions for this onion layer:
+    admissions_here = s['admissions']
+    admissions_here_nearest_csc = s['admissions_nearest_csc']
+    admissions_here_nearest_atc = s['admissions_nearest_atc']
     with containers_h['onion']:
-        # Highlight admissions for this onion layer:
-        admissions_here = df_admissions_onion.loc[str_this_population, 'admissions']
-        admissions_here_nearest_csc = df_admissions_onion.loc[str_this_population, 'admissions_nearest_csc']
-        admissions_here_nearest_atc = df_admissions_onion.loc[str_this_population, 'admissions_nearest_atc']
-
         st.metric(f'__{str_this_population}__:', f'{admissions_here:,.0f} patients')
         st.markdown(f'({prop_this_population:.1%} of all stroke)')
         st.markdown(f'__{prop_here_nearest_csc:.0%} have nearest unit with MT__')
@@ -1121,27 +995,30 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
     with containers_h['catchment_map']:
         # Plot graph:
         plot_maps.plot_catchment(
-            gdf_units_here, bounds, catch_trace,
-            gdf_region, region_label,
+            st.session_state['dict_map_catchment'][region]['gdf_units'],
+            st.session_state['dict_map_catchment'][region]['bounds'],
+            st.session_state['dict_map_catchment'][region]['catch_trace'],
+            st.session_state['dict_map_catchment'][region]['gdf_region'],
+            region_label
             )
-
 
     # Redirection flowcharts:
     with containers_h['redir_flow_0']:
         # c = st.columns(2, gap=None)
         # with c[0]:
+        d = st.session_state['dict_networks'][region]['dict_generic']
         st.markdown('Usual care:')
         reg.plot_generic_travel_admissions(
-            dict_region_admissions_generic['mt_usual_care'],
-            dict_region_admissions_generic['no_mt_usual_care'],
-            mt_label=mt_unit_here_label
+            d['mt_usual_care'],
+            d['no_mt_usual_care'],
+            mt_label='MT units'
             )
     with containers_h['redir_flow_1']:
         st.markdown('Redirection available:')
         reg.plot_generic_travel_admissions(
-            dict_region_admissions_generic['mt_redir'],
-            dict_region_admissions_generic['no_mt_redir'],
-            mt_label=mt_unit_here_label
+            d['mt_redir'],
+            d['no_mt_redir'],
+            mt_label='MT units'
             )
     with containers_h['redir_flow_data']:
         with st.expander('Data behind the flowcharts'):
@@ -1152,16 +1029,18 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 (patients nearest CSC / patients nearest IVT unit).
                 '''
                 )
+            df = st.session_state['dict_networks'][region]['df_generic']
             column_config = {'_index': st.column_config.TextColumn(width=150)}
-            for c in df_region_admissions_generic.index:
+            for c in df.index:
                 column_config[c] = st.column_config.NumberColumn(format='%.1f')
-            st.dataframe(df_region_admissions_generic.transpose(),
-                            column_config=column_config,
-                            height=160)
+            st.dataframe(df.transpose(),
+                         column_config=column_config,
+                         height=160)
 
     # Redirection time change:
     with containers_h['redir_time']:
         # Summary values:
+        df_q_ivt = st.session_state['dict_times'][region]['quantiles']
         t_ivt = df_q_ivt.loc[0.5, 'redir_change_ivt']
         t_mt = df_q_ivt.loc[0.5, 'redir_change_mt']
 
@@ -1202,6 +1081,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 # Display quantile table:
                 st.dataframe(df_q_ivt)
 
+        df_times_grid = st.session_state['dict_times'][region]['grid']
         with containers_h['redir_time_combo']:
             with st.expander('Time changes for both treatments'):
                 st.markdown(''.join([
@@ -1209,22 +1089,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     'changes the treatment times, and the time changes are ',
                     'when redirection is accepted.'
                 ]))
-                # This dict has separate entries for "all_patients" and
-                # "nearest_unit_no_mt":
-                s = 'dict_highlighted_region_unique_treatment_times'
-                # Pick out a dataframe with the treatment times as index
-                # and a single region's admissions as the column:
-                df_times = st.session_state[s]['nearest_unit_no_mt'][[region]]
-                # Scale down admissions to match redir patients only,
-                # not all patients with nearest unit no mt:
-                d = st.session_state['dict_pops']['redir_allowed']
-                p_redir = d.loc[d['scenario'] == 'redir_accepted',
-                                'full_population'].sum()
-                df_times *= p_redir
-
-                # Convert column to 2D grid:
-                df_times_grid = reg.create_time_diff_admissions_grid(df_times)
-                reg.plot_time_diff_admissions_grid(df_times_grid.round(0))
+                times.plot_time_diff_admissions_grid(df_times_grid.round(0))
             # with st.expander('Data behind the figure'):
                 st.markdown('__Data behind the figure:__')
                 st.markdown(''.join([
@@ -1235,11 +1100,11 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 st.dataframe(df_times_grid)
 
     # Outcome metrics:
-    scen_dict = {}
+    cols_to_show = ['usual_care', 'redir_allowed',
+                    'diff_redir_allowed_minus_usual_care']
+    keys_to_show = ['mrs_0-2', 'mrs_shift']
+    conts = [containers_h['outcomes_perc'], containers_h['outcomes_av']]
     with containers_h['outcomes']:
-        cols_to_show = ['usual_care', 'redir_allowed', 'diff_redir_allowed_minus_usual_care']
-        keys_to_show = ['mrs_0-2', 'mrs_shift']
-        conts = [containers_h['outcomes_perc'], containers_h['outcomes_av']]
         i = 0
         for key in keys_to_show:
             column_config = {'_index': st.column_config.TextColumn(width=150)}
@@ -1250,7 +1115,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     )
             with conts[i]:
                 st.markdown(outcome_labels[key])
-                df = dict_df_metrics[key].reset_index(drop=True).set_index('subgroup')
+                df = st.session_state['dict_mrs'][region]['dict_df_metrics'][key].reset_index(drop=True).set_index('subgroup')
                 df = df[cols_to_show]
                 st.dataframe(df, column_config=column_config)
             i += 1
@@ -1276,7 +1141,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                 subgroup_label = st.session_state['df_subgroups'].loc[subgroup, 'label']
                 st.markdown(f'__{subgroup_label}__')
                 try:
-                    mrs_lists_dict = dict_mrs_bars[subgroup]
+                    mrs_lists_dict = st.session_state['dict_mrs'][region]['dict_mrs_bars'][subgroup]
                     show = True
                 except KeyError:
                     st.markdown('No data available.')
@@ -1285,12 +1150,12 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
                     mrs_lists_dict_to_show = {}
                     for k in st.session_state[f'mrs_dist_options_{region}']:
                         mrs_lists_dict_to_show[k] = mrs_lists_dict[k]
-                    reg.plot_mrs_bars(mrs_lists_dict_to_show,
+                    mrs.plot_mrs_bars(mrs_lists_dict_to_show,
                                     key='_'.join([region, subgroup]))
 
     with containers_h['mrs_dists_right']:
         with st.expander('Data behind the mRS bar charts'):
-            for subgroup, df in dict_df_mrs.items():
+            for subgroup, df in st.session_state['dict_mrs'][region]['dict_df_mrs'].items():
                 subgroup_label = st.session_state['df_subgroups'].loc[subgroup, 'label']
                 st.markdown(subgroup_label)
                 st.dataframe(df, height=160)
@@ -1366,9 +1231,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             all_cmaps,
             outline_name=outline_name,
             title=map_title,
-            gdf_single_region=(gdf_region if region != 'National' else None),
+            gdf_single_region=(st.session_state['dict_map_catchment'][region]['gdf_region'] if region != 'National' else None),
             region_display_name=(region_label if region != 'National' else None),
-            bounds=bounds,
+            bounds=st.session_state['dict_map_catchment'][region]['bounds'],
             )
 
     with containers_h['map_fig']:
