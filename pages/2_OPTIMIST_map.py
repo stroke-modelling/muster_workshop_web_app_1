@@ -723,6 +723,7 @@ if st.session_state['rerun_region_summaries']:
             # Store results:
             st.session_state['dict_map_catchment'][region] = {
                 'gdf_units': gdf_units_here,
+                'gdf_nearest_units': gdf_nearest_units,
                 'bounds': bounds,
                 'catch_trace': catch_trace,
                 'gdf_region': gdf_region,
@@ -900,7 +901,7 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         st.header(region_label)
         containers_h['h'] = st.container(horizontal=True)
         containers_h['h2'] = st.container(horizontal=True)
-        containers_h['h3'] = st.container(horizontal=True)
+        containers_h['h3'] = st.container()
 
     # container_labels = ['redir_flow', 'redir_time', 'mrs_dists']
     with containers_h['h']:
@@ -947,6 +948,9 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
         containers_h['outcome_maps'] = st.container()
     with containers_h['outcome_maps']:
         containers_h['map_fig'] = st.container()
+    with containers_h['h3']:
+        containers_h['map_network'] = st.container()
+
 
     with containers_h['redir_flow']:
         st.subheader('Admissions changes')
@@ -1243,6 +1247,28 @@ for r, region in enumerate(df_highlighted_regions['highlighted_region']):
             config=plotly_config,
             # width='content',
             key=region
+            )
+
+    with containers_h['map_network']:
+        plot_maps.plot_networks(
+            st.session_state['dict_networks'][region]['df_net_u'],
+            st.session_state['dict_networks'][region]['df_net_r'],
+            df_unit_services,
+            st.session_state['dict_map_catchment'][region]['gdf_nearest_units'],
+            st.session_state['dict_map_catchment'][region]['gdf_units'],
+            st.session_state['dict_map_catchment'][region]['bounds'],
+            st.session_state['dict_map_catchment'][region]['gdf_region'],
+            region_display_name='',
+            subplot_titles=['Usual care', 'Redirection available']
+            )
+
+        admissions.plot_admissions_sankey(
+            st.session_state['dict_networks'][region]['df_net_u'],
+            df_unit_services
+            )
+        admissions.plot_admissions_sankey(
+            st.session_state['dict_networks'][region]['df_net_r'],
+            df_unit_services
             )
 
 st.session_state['rerun_maps'] = False

@@ -3,6 +3,7 @@ Calculate and display admissions changes.
 """
 import pandas as pd
 import streamlit as st
+import numpy as np
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
@@ -458,3 +459,124 @@ def plot_admissions_bars_by_unit(df_net_u, df_net_r):
         'toImageButtonOptions': {'height': None, 'width': None},
         }
     st.plotly_chart(fig, config=plotly_config)
+
+
+def plot_admissions_sankey(df_net, df_unit_services):
+    """
+    Sankey diagram to show patient flow.
+    """
+    df = df_net.copy()
+    st.write(df)
+    transfer_units = df['transfer_unit'].unique()
+    transfer_only_units = list(
+        set(df['transfer_unit']) - set(df['first_unit']))
+    # Rejig input df into format for Sankey.
+    # Sources and targets must be integers to match
+    # indices of node labels.
+    r = {'nearest_unit': 'start',
+         'first_unit': 'end',
+         'admissions_catchment_to_first_unit': 'admissions'
+         }
+    df_nearest = df[list(r.keys())]
+    df_nearest = df_nearest.rename(columns=r)
+
+    # # Sort by catchment area size:
+    # df_catch = df_nearest.groupby('start')[['admissions']].sum()
+    # df_catch = df_catch.sort_values('admissions', ascending=False)
+    # y_ad = np.cumsum(np.concatenate(([0.0], df_catch['admissions'].values)))
+    # y_mean = []
+    # for i, y in enumerate(y_ad[:-1]):
+    #     y_mean.append(np.mean([y, y_ad[i+1]]))
+    # df_catch['y_ad'] = y_mean
+    # df_catch['y'] = df_catch['y_ad'] / df_catch['admissions'].sum()
+    # df_catch['unit'] = df_catch.index.str.split('_').str[-1]
+    # dict_unit_order = dict(zip(df_catch['unit'], range(len(df_catch['unit']))))
+    # df_catch.loc[df_catch['y'] == 0.0, 'y'] = 0.001
+    # df_catch.loc[df_catch['y'] == 1.0, 'y'] = 0.999
+    # dict_unit_y = dict(zip(df_catch['unit'], df_catch['y']))
+    # st.write(dict_unit_order)
+
+    # df_nearest = pd.merge(df_nearest, df_catch['admissions'])
+
+    t = {'first_unit': 'start',
+         'transfer_unit': 'end',
+         'admissions_first_unit_to_transfer': 'admissions'
+        }
+    df_transfers = df[list(t.keys())]
+    # Combine duplicates now that the source unit has gone:
+    df_transfers = df_transfers.groupby(['first_unit', 'transfer_unit']).sum()
+    df_transfers = df_transfers.reset_index().rename(columns=t)
+
+    df = pd.concat((df_nearest, df_transfers), axis='rows')
+
+    df_nodes = pd.DataFrame()
+    df_nodes['node'] = np.unique(df[['start', 'end']].to_numpy().flatten())
+    df_nodes['nodes_for_colours'] = df_nodes['node'].str.split('_').str[-1]
+    df_nodes = pd.merge(df_nodes, df_unit_services,
+                        left_on='nodes_for_colours', right_on='Postcode',
+                        how='left')
+    df_nodes = df_nodes.sort_values(['Use_MT', 'node'], ascending=[False, False])
+    df_nodes['int'] = range(len(df_nodes))
+
+    m = df_nodes['node'].str.startswith('nearest_')
+    df_nodes['label'] = df_nodes['ssnap_name'].copy()
+    df_nodes.loc[m, 'label'] = 'Catchment area of ' + df_nodes.loc[m, 'label']
+
+
+    # # Node x and y coordinates must be between 0 and 1 exclusive.
+    # xl = 0.001
+    # xm = 0.5
+    # xr = 0.999
+
+    # df_nodes['x'] = xm
+    # # Unit catchment areas go in the left column:
+    # df_nodes.loc[m, 'x'] = xl
+    # # Any unit that is only a transfer unit goes in an extra column.
+    # n = df_nodes['node'].isin(transfer_only_units)
+    # df_nodes.loc[n, 'x'] = xr
+    # # Any unit that's a first unit stays in the second column.
+
+    # # y-coordinates define the centre of the node from the top.
+
+    # # Set node y coords:
+    # # df_nodes.loc[m, 'sort_xl'] = df_nodes.loc[m, 'node'].str.split('_').str[-1].map(dict_unit_order)
+    # # df_nodes.loc[~m, 'sort_xmr'] = df_nodes.loc[m, 'node'].map(dict_unit_order)
+    # m = df_nodes['x'] != xm
+    # # df_nodes.loc[m, 'y'] = df_nodes['nodes_for_colours'].map(dict_unit_y)
+    # df_nodes['y'] = df_nodes['nodes_for_colours'].map(dict_unit_y)
+
+
+    nodes_dict = dict(zip(df_nodes['node'], df_nodes['int']))
+    st.write(nodes_dict)
+    df['source'] = df['start'].map(nodes_dict)
+    df['target'] = df['end'].map(nodes_dict)
+
+    st.write(df_nodes)
+    st.write(df)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Sankey(
+        # arrangement='fixed',
+        valueformat='.0f',
+        valuesuffix=' admissions',
+        node=dict(
+            pad=5,
+            thickness=15,
+            line=dict(color="black", width=0.5),
+            label=df_nodes['label'],
+            color=df_nodes['colour'],
+            # x=df_nodes['x'],
+            # y=df_nodes['y']
+        ),
+        link=dict(
+            source=df['source'],
+            target=df['target'],
+            value=df['admissions'],
+            # label=df['nearest_unit']
+    )))
+    fig.update_xaxes(visible=True)
+    fig.update_yaxes(visible=True)
+    # Set figure size
+    fig.update_layout(width=200, height=600)
+    st.plotly_chart(fig)

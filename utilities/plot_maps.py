@@ -1678,7 +1678,7 @@ def plot_outcome_maps(
     return fig
 
 
-def plot_networks(
+def plot_networks_catchment(
         df_net_u: pd.DataFrame,
         df_net_r: pd.DataFrame,
         df_unit_services: pd.DataFrame,
@@ -2138,6 +2138,336 @@ def plot_catchment(
         y=0.0,
         xanchor='center',
         x=0.5,
+    ))
+    plotly_config = get_map_config()
+    st.plotly_chart(fig, config=plotly_config, width='stretch')
+
+
+def plot_networks(
+        df_net_u: pd.DataFrame,
+        df_net_r: pd.DataFrame,
+        df_unit_services: pd.DataFrame,
+        gdf_nearest_units: gpd.GeoDataFrame,
+        gdf_units: gpd.GeoDataFrame,
+        bounds: list,
+        gdf_region: gpd.GeoDataFrame = None,
+        region_display_name: str = None,
+        subplot_titles: list = []
+        ):
+    """
+    Draw maps with arrows to show patient flow between units.
+
+    Inputs
+    ------
+    df_net_u            - pd.DataFrame. Patient numbers to nearest,
+                          first, transfer units for the units here
+                          in the usual care scenario.
+    df_net_r            - pd.DataFrame. As above for the unusual
+                          scenario e.g. redirection.
+    df_unit_services    - pd.DataFrame. Use as a lookup for stroke
+                          units and their display names.
+    gdf_nearest_units   - gpd.GeoDataFrame. Coordinates for catchment
+                          area boxes and the admissions in each area.
+    gdf_units           - gpd.GeoDataFrame. Coordinates of stroke
+                          units.
+    bounds              - list. Extent of the network map geography.
+    gdf_region          - gpd.GeoDataFrame or None. Outline for a
+                          single selected region to draw on maps.
+    region_display_name - str. Display name of selected region.
+    subplot_titles      - list. Subplot titles. Top left, right,
+                          bottom left, right.
+    """
+    fig = make_subplots(
+        rows=1, cols=2,
+        horizontal_spacing=0.0,
+        subplot_titles=subplot_titles,
+        )
+
+    # --- Draw traces ---
+    # Border:
+    fig.add_shape(
+        type="rect",
+        x0=bounds[0], y0=bounds[1], x1=bounds[2], y1=bounds[3],
+        fillcolor='rgba(0.95, 0.95, 0.95, 1.0)',
+        line=dict(color='grey', width=4,),
+        layer='between',  # below other traces
+        col='all', row='all',
+    )
+
+    # Load England and restrict it to the area being drawn:
+    gdf_eng = load_england_outline(bounds)
+    # Scatter the edges of the polygons and use "fill" to colour
+    # within the lines.
+    fig.add_trace(go.Scatter(
+        x=gdf_eng['x'],
+        y=gdf_eng['y'],
+        mode='lines',
+        fill="toself",
+        fillcolor='rgba(0.753, 0.753, 0.753, 1)',  # silver
+        # fillcolor='rgba(0.663, 0.663, 0.663, 1)',  # darkgrey
+        # fillcolor='rgba(0.573, 0.573, 0.573, 1)',  # grey
+        line_color='rgba(0, 0, 0, 0)',
+        showlegend=False,
+        hoverinfo='skip',
+        zorder=-1,
+        ),
+        col='all', row='all',
+    )
+
+    # Selected region:
+    if isinstance(gdf_region, pd.DataFrame):
+        for i in gdf_region.index:
+            fig.add_trace(go.Scatter(
+                x=gdf_region.loc[i, 'x'],
+                y=gdf_region.loc[i, 'y'],
+                mode='lines',
+                fill="toself",
+                fillcolor='rgba(0, 0, 0, 0)',
+                line_color='black',
+                name=region_display_name,
+                # text=gdf_region.loc[i, region_type],
+                hoverinfo='skip',
+                # hoverlabel=dict(bgcolor='#ff4b4b'),
+                ),
+                col='all', row='all'
+                )
+
+    # Links between units:
+    link_drawn_to_first = False
+    link_drawn_to_trans = False
+    for d, df_net in enumerate([df_net_u, df_net_r]):
+        for i in df_net.index:
+            s = df_net.loc[i]
+            name_catch = df_unit_services.loc[
+                df_unit_services.index == s['nearest_unit']
+                .replace('nearest_', ''), 'ssnap_name'
+                ].values[0]
+            name_first = df_unit_services.loc[
+                df_unit_services.index == s['first_unit'], 'ssnap_name'
+                ].values[0]
+            # Catchment to first unit:
+            m = gdf_nearest_units['nearest_unit'] == s['nearest_unit']
+            x_nearest = gdf_nearest_units.loc[m, 'x_anchor'].values[0]
+            y_nearest = gdf_nearest_units.loc[m, 'y_anchor'].values[0]
+            colour = gdf_nearest_units.loc[m, 'colour'].values[0]
+            m = gdf_units.index == s['first_unit']
+            x_first = gdf_units.loc[m, 'BNG_E'].values[0]
+            y_first = gdf_units.loc[m, 'BNG_N'].values[0]
+            a = s['admissions_catchment_to_first_unit']
+            w = np.log(a)  # / 75.0
+            w = 1.0 if w < 1.0 else w
+            aw = w * 5 if w < 3 else w*2
+            standoff = 5
+            # Setup for sneaking:
+            bw = w * 1.3
+            baw = aw * 1.0
+            bcolour = 'black'
+            # Sneaky background arrow for outline effect:
+            fig.add_trace(go.Scatter(
+                x=[x_nearest, x_first],
+                y=[y_nearest, y_first],
+                mode='lines+markers',
+                marker=dict(size=baw, symbol='arrow-up', angleref='previous',
+                            standoff=standoff,
+                            line=dict(color='black', width=2)),
+                line_color=bcolour,
+                line_width=bw,
+                # text=[a],
+                hoverinfo='skip',
+                name=None,
+            ), row=1, col=d+1)
+            # The actual arrow:
+            fig.add_trace(go.Scatter(
+                x=[x_nearest, x_first],
+                y=[y_nearest, y_first],
+                mode='lines+markers',
+                marker=dict(size=aw, symbol='arrow-up', angleref='previous',
+                            standoff=standoff),
+                line_color=colour,
+                line_width=w,
+                # text=[a],
+                hoverinfo='skip',
+                name=(None if link_drawn_to_first
+                      else 'Admissions to first unit'),
+            ), row=1, col=d+1)
+            # Add a sneaky trace halfway along the line for a hoverlabel:
+            fig.add_trace(go.Scatter(
+                x=[0.5*(x_nearest+x_first)],
+                y=[0.5*(y_nearest+y_first)],
+                mode='markers',
+                marker=dict(color='rgba(0, 0, 0, 0)'),
+                # text=[a],
+                customdata=np.stack(
+                    [[name_catch]*2,
+                     [name_first]*2,
+                     [a]*2],
+                    axis=-1
+                    ),
+                hovertemplate=(
+                    '%{customdata[2]:.0f} patients from catchment area of ' +
+                    '<br>' +
+                    '%{customdata[0]}' +
+                    '<br>' +
+                    'go to' +
+                    '<br>' +
+                    '%{customdata[1]}.' +
+                    '<br>' +
+                    # Need the following line to remove default "trace" bit
+                    # in second "extra" box:
+                    '<extra></extra>'
+                    ),
+                hoverlabel=dict(bordercolor=colour),
+            ), row=1, col=d+1)
+
+        # First unit to transfer unit:
+        df_net_trans = df_net.copy()
+        df_net_trans = df_net_trans.drop('nearest_unit', axis='columns')
+        df_net_trans = df_net_trans.groupby(
+            ['first_unit', 'transfer_unit']).sum().reset_index()
+        colour = 'rgba(0.9, 0.9, 0.9, 1.0)'
+        for i in df_net_trans.index:
+            s = df_net_trans.loc[i]
+            name_first = df_unit_services.loc[
+                df_unit_services.index == s['first_unit'], 'ssnap_name'
+                ].values[0]
+            name_trans = df_unit_services.loc[
+                df_unit_services.index == s['transfer_unit'], 'ssnap_name'
+                ].values[0]
+            if s['first_unit'] != s['transfer_unit']:
+                m = gdf_units.index == s['first_unit']
+                x_first = gdf_units.loc[m, 'BNG_E'].values[0]
+                y_first = gdf_units.loc[m, 'BNG_N'].values[0]
+                m = gdf_units.index == s['transfer_unit']
+                x_trans = gdf_units.loc[m, 'BNG_E'].values[0]
+                y_trans = gdf_units.loc[m, 'BNG_N'].values[0]
+                a = s['admissions_first_unit_to_transfer']
+                w = np.log(a)
+                w = 1.0 if w < 1.0 else w
+                aw = w * 5 if w < 3 else w*2
+                # Setup for sneaking:
+                bw = w * 1.3
+                baw = aw * 1.0
+                bcolour = 'black'
+                # Sneaky background arrow for outline effect:
+                fig.add_trace(go.Scatter(
+                    x=[x_first, x_trans],
+                    y=[y_first, y_trans],
+                    mode='lines+markers',
+                    marker=dict(size=baw, symbol='arrow-up',
+                                angleref='previous',
+                                standoff=standoff,
+                                line=dict(color='black', width=2)),
+                    line_color=bcolour,
+                    line_width=bw,
+                    # text=[a],
+                    hoverinfo='skip',
+                    name=None,
+                ), row=1, col=d+1)
+                # The actual arrow:
+                fig.add_trace(go.Scatter(
+                    x=[x_first, x_trans],
+                    y=[y_first, y_trans],
+                    mode='lines+markers',
+                    marker=dict(size=aw, symbol='arrow-up',
+                                angleref='previous', standoff=standoff),
+                    line_color=colour,
+                    line_width=w,
+                    hoverinfo='skip',
+                    name=(None if link_drawn_to_trans
+                          else 'Transfers for thrombectomy'),
+                ), row=1, col=d+1)
+                # Add a sneaky trace halfway along the line for a hoverlabel:
+                fig.add_trace(go.Scatter(
+                    x=[0.5*(x_first+x_trans)],
+                    y=[0.5*(y_first+y_trans)],
+                    mode='markers',
+                    marker=dict(color='rgba(0, 0, 0, 0)'),
+                    # text=[a],
+                    customdata=np.stack(
+                        [[name_first]*2,
+                         [name_trans]*2,
+                         [a]*2],
+                        axis=-1
+                        ),
+                    hovertemplate=(
+                        '%{customdata[2]:.0f} patients transfer from ' +
+                        '<br>' +
+                        '%{customdata[0]}' +
+                        '<br>' +
+                        'to' +
+                        '<br>' +
+                        '%{customdata[1]}' +
+                        '<br>' +
+                        'for thrombectomy.' +
+                        '<br>' +
+                        # Need the following line to remove default "trace" bit
+                        # in second "extra" box:
+                        '<extra></extra>'
+                        ),
+                    hoverlabel=dict(bordercolor=colour),
+                ), row=1, col=d+1)
+
+    # Stroke units:
+    unit_traces = make_units_traces(gdf_units)
+    fig.add_trace(go.Scatter(unit_traces['ivt']),
+                  col='all', row='all',)
+    fig.add_trace(go.Scatter(unit_traces['mt']),
+                  col='all', row='all',)
+
+    # Catchment boxes:
+    fig.add_trace(go.Scatter(
+        x=gdf_nearest_units['x_anchor'],
+        y=gdf_nearest_units['y_anchor'],
+        mode='markers',
+        text=gdf_nearest_units.index,
+        marker={
+            'symbol': 'square',
+            'color': gdf_nearest_units['colour'],
+            'line': {'color': 'black', 'width': 1},
+            'size': 25
+        },
+        # name=s_dict['label'],
+        customdata=np.stack(
+            [gdf_nearest_units['ssnap_name'],
+             gdf_nearest_units['admissions']],
+            axis=-1
+            ),
+        hovertemplate=(
+            'Catchment area of<br>%{customdata[0]}' +
+            '<br>' +
+            '%{customdata[1]:.0f} patients' +
+            # Need the following line to remove default "trace" bit
+            # in second "extra" box:
+            '<extra></extra>'
+            ),
+        hoverlabel=dict(bordercolor=gdf_nearest_units['colour']),
+    ), row=1, col='all')
+
+    # --- Layout ---
+    fig.update_layout(hovermode='closest')
+
+    fig = england_map_setup(fig)
+    fig.update_yaxes(col=1, row=1, scaleanchor='x', scaleratio=1)
+    fig.update_yaxes(col=2, row=1, scaleanchor='x', scaleratio=1)
+    # Shared pan and zoom settings:
+    fig.update_xaxes(matches='x')
+    fig.update_yaxes(matches='y')
+
+    fig = update_plotly_font_sizes(fig)
+    fig.update_layout(title_text=region_display_name)
+
+    # Calculate height based on aspect ratio:
+    width = 800
+    height = width
+    # Figure setup.
+    fig.update_layout(width=width, height=height, margin_t=50, margin_b=0,
+                      margin_l=0, margin_r=0,)
+    fig.update_layout(legend=dict(
+        # orientation="h",
+        yanchor='middle',
+        y=0.25,
+        xanchor='center',
+        x=0.25,
     ))
     plotly_config = get_map_config()
     st.plotly_chart(fig, config=plotly_config, width='stretch')
